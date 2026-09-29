@@ -6,4 +6,5 @@ const envPath: string = path.resolve(
   process.cwd(),
   process.env.NODE_ENV === 'test' ? '.env.test' : '.env',
 );
-config({ path: envPath });
+// dotenv 18 logs by default; keep database command output free of its banner.
+config({ path: envPath, quiet: true });

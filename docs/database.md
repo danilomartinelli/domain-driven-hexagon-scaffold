@@ -147,8 +147,9 @@ docker compose -p ddh -f docker/docker-compose.yml rm --stop --force postgres-te
 
 ## Verification and remaining work
 
-See [the issue #4 operational record](validation/issue-4-database.md) for actual
-outcomes. No new test suite, scenario, hook, CI workflow, or aggregate validation
+See [the combined issue #8 record](validation/issue-8-upgrade.md) for the database
+workflow rerun on the final dependencies, and [the issue #4 operational record](validation/issue-4-database.md)
+for the original migration replacement. No new test suite, scenario, hook, CI workflow, or aggregate validation
 command was added. No production database was migrated.
 
 The broader modernization remains governed by [ADR 0001](adr/0001-modernize-with-bun.md).

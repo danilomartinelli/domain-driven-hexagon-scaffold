@@ -23,6 +23,12 @@ See [adapter compatibility](adapters.md) for the Nest/Apollo versions, CLI
 command definition, and the limits of each example. The existing start scripts
 continue to execute the full application directly under Bun.
 
+The shared dotenv 18 loader selects `.env.test` only when `NODE_ENV=test`,
+otherwise `.env`; shell-provided values take precedence. Its new startup banner
+is disabled so database status output remains readable. Bun's automatic env
+loading stays disabled in `bunfig.toml`. See [database settings](database.md#postgresql-and-connections)
+before using custom ports or database names. Application HTTP port remains 3000.
+
 `bun run typecheck` runs TypeScript **6.0.3** with `noEmit`. Native execution is
 not type checking. Type-only imports are explicit so Bun does not try to load
 interfaces as runtime values, while injectable classes retain decorator metadata.
@@ -134,8 +140,9 @@ has been removed.
 
 The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
 Strict lint/type settings and architecture tooling are documented in
-[developer checks](developer-checks.md); complete dependency remediation and
-combined validation remain in #8. As required by
+[developer checks](developer-checks.md). The [dependency inventory](dependencies.md)
+and [combined validation record](validation/issue-8-upgrade.md) cover the completed
+remediation, clean frozen install and real application checks. As required by
 [ADR 0001](adr/0001-modernize-with-bun.md), future goals
 remain: an Nx monorepo; removing the domain's context/framework/event-publication
 coupling; and completing startup and executable CLI/messaging examples.
