@@ -11,6 +11,7 @@ hooks or aggregate validation command is installed.
 | Formatting   | `bun run format:check`  | Application/tests, database scripts, tool configs, package/TypeScript JSON, Docker/test YAML and `docs/` Markdown |
 | Architecture | `bun run deps:validate` | `src/`, including type-only imports and aliases                                                                   |
 | Behavior     | `bun test`              | The seven existing Gherkin cases with real Nest, HTTP and PostgreSQL                                              |
+| Dependencies | `bun audit`             | Complete locked tree, including development packages; no advisory ignores                                         |
 
 `bun run lint:fix` applies available lint fixes. `bun run format` writes Prettier
 formatting. Lint itself never rewrites files, and Prettier runs separately from
@@ -90,6 +91,8 @@ Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
 name. Both commands use the same ESM architecture configuration.
 
 The future objectives remain an **Nx monorepo**, **correcting hexagonal coupling**,
-and **completing CLI and messaging examples**. Whole-tree dependency remediation
-and combined acceptance belong to #8. See the [issue #7 execution record](validation/issue-7-checks.md)
-for actual validation results and the outstanding audit finding.
+and **completing CLI and messaging examples**. See the
+[dependency inventory](dependencies.md) for version decisions and security overrides,
+and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for
+final validation. The [issue #7 record](validation/issue-7-checks.md) retains the
+historical diagnostics and audit finding before remediation.

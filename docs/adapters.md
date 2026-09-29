@@ -115,8 +115,9 @@ proof**: the seven existing Gherkin cases do not force a wallet failure. No new
 scenario, adapter suite or testing boundary was added. See [execution evidence](validation/issue-6-adapters.md).
 
 Future objectives remain **Nx monorepo; correction of hexagonal coupling;
-completion of the CLI and messaging examples**. Strict developer tooling (#7)
-and the complete dependency/security remediation (#8) remain separate tickets.
+completion of the CLI and messaging examples**. See [developer checks](developer-checks.md)
+and the [combined upgrade validation](validation/issue-8-upgrade.md) for the final
+strict-tooling and dependency-remediation results.
 
 References: [Nest 12 migration guide](https://docs.nestjs.com/migration-guide),
 [Nest GraphQL installation](https://docs.nestjs.com/graphql/quick-start),

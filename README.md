@@ -20,6 +20,12 @@ for local PostgreSQL, SQL migrations, seeds, and the recorded validation results
 Run the application with `bun run start:dev` and the existing Gherkin cases with
 `bun test`. See the [runtime guide](docs/runtime.md) for setup, type checking,
 and the distinction between the seven application cases and transaction review.
+The [dependency inventory](docs/dependencies.md) records compatible versions and
+security fixes; [combined upgrade evidence](docs/validation/issue-8-upgrade.md)
+records the clean installation and real application/database checks. Run
+`bun audit` separately to recheck the complete dependency tree.
+Next objectives remain an Nx monorepo, correction of hexagonal coupling, and
+completion of the CLI and messaging examples.
 
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
 
