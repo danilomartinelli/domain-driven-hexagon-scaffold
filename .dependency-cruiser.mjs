@@ -36,9 +36,46 @@ const corePaths = [
   '^src/modules/[^/]+/commands/.*\\.command\\.ts$',
 ];
 
+// Root files are entry points; every package subfolder is private.
+const PACKAGES_ROOT = 'src/packages';
+const PACKAGE_INTERNALS = `^${PACKAGES_ROOT}/[^/]+/[^/]+/`;
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 const config = {
   forbidden: [
+    {
+      name: 'entrypoint-boundary-from-app',
+      severity: 'error',
+      comment: 'Outside code must use package root entry points.',
+      from: { pathNot: `^${PACKAGES_ROOT}/` },
+      to: { path: PACKAGE_INTERNALS },
+    },
+    {
+      name: 'entrypoint-boundary-across-packages',
+      severity: 'error',
+      comment:
+        'A package may reach other packages only through their entry points.',
+      from: {
+        path: `^${PACKAGES_ROOT}/([^/]+)/`,
+        pathNot: `^${PACKAGES_ROOT}/[^/]+/tests/`,
+      },
+      to: { path: PACKAGE_INTERNALS, pathNot: `^${PACKAGES_ROOT}/$1/` },
+    },
+    {
+      name: 'tests-through-entrypoints',
+      severity: 'error',
+      comment:
+        'Tests may use package entry points and their own test fixtures only.',
+      from: { path: `^${PACKAGES_ROOT}/([^/]+)/tests/` },
+      to: { path: PACKAGE_INTERNALS, pathNot: `^${PACKAGES_ROOT}/$1/tests/` },
+    },
+    {
+      name: 'tests-folder-is-private',
+      severity: 'error',
+      comment: 'Production code must not import package tests or fixtures.',
+      from: { pathNot: `^${PACKAGES_ROOT}/[^/]+/tests/` },
+      to: { path: `^${PACKAGES_ROOT}/[^/]+/tests/` },
+    },
     {
       name: 'core-is-context-independent',
       comment:
@@ -103,17 +140,13 @@ const config = {
     },
 
     /* rules from the 'recommended' preset: */
-    // {
-    //   name: 'no-circular',
-    //   severity: 'warn',
-    //   comment:
-    //     'This dependency is part of a circular relationship. You might want to revise ' +
-    //     'your solution (i.e. use dependency inversion, make sure the modules have a single responsibility) ',
-    //   from: {},
-    //   to: {
-    //     circular: true,
-    //   },
-    // },
+    {
+      name: 'no-circular',
+      severity: 'error',
+      comment: 'No dependency cycles, including type-only imports.',
+      from: {},
+      to: { circular: true },
+    },
     {
       name: 'no-orphans',
       comment:
@@ -434,7 +467,7 @@ const config = {
          [".js", ".jsx"]). This can speed up the most expensive step in 
          dependency cruising (module resolution) quite a bit.
        */
-      // extensions: [".js", ".jsx", ".ts", ".tsx", ".d.ts"],
+      extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json'],
       /* 
          If your TypeScript project makes use of types specified in 'types'
          fields in package.jsons of external dependencies, specify "types"

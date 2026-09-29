@@ -41,7 +41,8 @@ type, lint, format and architecture commands.
 
 ## Infrastructure-free core
 
-`bun test` (also `bun run test:unit`) discovers only `tests/unit`. It has no
+`bun run test:unit` (also `bun run test`) discovers `tests/unit` and colocated
+package tests under `src/packages`. Bare `bun test` discovers only `tests/unit`. Neither has a
 preload, app bootstrap, dotenv loader, Nest, database or broker. These native
 Bun tests cover User roles and address invariants, Wallet balances, commands,
 recorded events and serializable exceptions through their public interfaces.

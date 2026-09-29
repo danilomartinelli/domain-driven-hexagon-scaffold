@@ -4,7 +4,7 @@ import { Result } from 'oxide.ts';
 import { ResponseBase } from '../../../../libs/api/response.base';
 import { Paginated } from '../../../../libs/ddd';
 import type { PaginatedParams } from '../../../../libs/ddd/query.base';
-import type { UserModel } from '../../database/user.repository';
+import type { UserModel } from '../../database/user.schema';
 import { UserPaginatedGraphqlResponseDto } from '../../dtos/graphql/user.paginated-gql-response.dto';
 import { FindUsersQuery } from './find-users.query-handler';
 

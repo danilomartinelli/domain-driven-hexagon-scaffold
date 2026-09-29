@@ -16,6 +16,9 @@ Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`, created lazily 
 
 ### Validation
 
+Packages are deep modules: see [src/packages/README.md](./src/packages/README.md)
+before adding or importing one.
+
 Before declaring code changes ready, run `bun run check:full`. Pre-commit hooks
 run the infrastructure-free checks; see `docs/developer-checks.md` for setup,
 individual suites and documentation-only validation.

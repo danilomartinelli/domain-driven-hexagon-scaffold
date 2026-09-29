@@ -3,25 +3,25 @@
 Use **Bun 1.4.2** and install with `bun install --frozen-lockfile`. The `prepare`
 script installs Husky for this checkout. Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
-core tests). The hook runs without Docker. A failure blocks the commit.
+core/package tests). The hook runs without Docker. A failure blocks the commit.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files and verification of changed links/commands.
 
-| Check            | Command                 | Scope                                                                                                         |
-| ---------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Fast gate        | `bun run check`         | Formatting plus `check:code`                                                                                  |
-| Full gate        | `bun run check:full`    | Fast gate, runner lifecycle tests and provisioned application E2E                                             |
-| Types            | `bun run typecheck`     | Application, tests, runner, database scripts and tool configs; includes decorator fixture                     |
-| Lint             | `bun run lint`          | Same code/configuration scope; errors and warnings fail                                                       |
-| Formatting       | `bun run format:check`  | Configured source, tooling, docs and root agent guidance                                                      |
-| Architecture     | `bun run deps:validate` | `src/`, including type-only imports and aliases                                                               |
-| Core             | `bun test`              | Infrastructure-free User/Wallet domain, commands and exceptions                                               |
-| Live behavior    | `bun run test:e2e`      | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up |
-| Runner lifecycle | `bun run test:tooling`  | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                |
-| Dependencies     | `bun audit`             | Complete locked tree; no advisory ignores                                                                     |
+| Check             | Command                   | Scope                                                                                                         |
+| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                  |
+| Full gate         | `bun run check:full`      | Fast gate, runner lifecycle tests and provisioned application E2E                                             |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                     |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                       |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                      |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/` and `scripts/`, including type-only imports and aliases; `deps:validate` is an alias         |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                      |
+| Live behavior     | `bun run test:e2e`        | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                |
+| Dependencies      | `bun audit`               | Complete locked tree; no advisory ignores                                                                     |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -112,8 +112,12 @@ the conversion and decorator helpers have been removed.
 `.dependency-cruiser.mjs` closes the import graph of shared DDD, exceptions,
 foundation helpers, User/Wallet domain and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
-The domain request-context exception is removed. The broader application/service
-boundaries and circular-dependency cleanup remain later migration work. Type-only adapter imports from development declarations
+The domain request-context exception is removed. New packages follow
+[the deep-module convention](../src/packages/README.md): root files are public
+entry points, all subfolders are private, tests use entry points and their own
+fixtures, and dependency cycles are errors throughout the checked graph. The
+existing `src/modules` layout stays in place until the planned Nx migration.
+Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was
 removed: [AsyncLocalStorage is stable](https://nodejs.org/api/async_context.html#class-asynclocalstorage).
@@ -124,8 +128,9 @@ Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
 name. Both commands use the same ESM architecture configuration.
 
 Run every applicable check above, including the live suite, before declaring code
-ready. `bun test`, watch, coverage and debug defaults use only `tests/unit`; the
-E2E preload is opt-in via the live commands. Nx orchestration and independent
+ready. `bun run test`, `test:unit`, `test:watch`, `test:cov` and `test:debug` include
+`tests/unit` and colocated tests under `src/packages`. Bare `bun test` retains its
+`tests/unit` default. The E2E preload is opt-in via the live commands. Nx orchestration and independent
 service suites belong to later tickets in [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
 
 The remaining objectives are Nx, application-owned ports/transactions and durable

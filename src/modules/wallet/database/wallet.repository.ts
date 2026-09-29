@@ -1,23 +1,13 @@
 import { Inject } from '@nestjs/common';
 import { DATABASE_POOL } from '@libs/db/database.module';
 import type { DatabasePool } from 'slonik';
-import { z } from 'zod';
+import { type WalletModel, walletSchema } from './wallet.schema';
 import { SqlRepositoryBase } from '@src/libs/db/sql-repository.base';
 import type { WalletRepositoryPort } from './wallet.repository.port';
 import { WalletEntity } from '../domain/wallet.entity';
 import { WalletMapper } from '../wallet.mapper';
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-
-export const walletSchema = z.object({
-  id: z.string().min(1).max(255),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  balance: z.number().min(0).max(9999999),
-  userId: z.string().min(1).max(255),
-});
-
-export type WalletModel = z.output<typeof walletSchema>;
 
 @Injectable()
 export class WalletRepository

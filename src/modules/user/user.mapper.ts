@@ -1,5 +1,5 @@
 import type { Mapper } from '@libs/ddd';
-import { type UserModel, userSchema } from './database/user.repository';
+import { type UserModel, userSchema } from './database/user.schema';
 import { Address } from './domain/value-objects/address.value-object';
 import { UserEntity } from './domain/user.entity';
 import { UserResponseDto } from './dtos/user.response.dto';
