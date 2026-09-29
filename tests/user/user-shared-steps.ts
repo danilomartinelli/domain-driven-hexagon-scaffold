@@ -1,7 +1,7 @@
-import { Mutable } from '@src/libs/types';
+import type { Mutable } from '@src/libs/types';
 import { CreateUserRequestDto } from '@src/modules/user/commands/create-user/create-user.request.dto';
-import { DefineStepFunction } from 'jest-cucumber';
-import { TestContext } from 'tests/test-utils/TestContext';
+import type { DefineStepFunction } from 'jest-cucumber';
+import { TestContext } from '@tests/test-utils/TestContext';
 import { ApiClient } from '@tests/test-utils/ApiClient';
 
 /**

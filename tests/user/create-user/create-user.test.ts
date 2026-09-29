@@ -1,11 +1,10 @@
+import { expect } from 'bun:test';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { getConnectionPool } from '../../setup/jestSetupAfterEnv';
 import { UserResponseDto } from '@modules/user/dtos/user.response.dto';
-import { DatabasePool, sql } from 'slonik';
 import { TestContext } from '@tests/test-utils/TestContext';
 import { IdResponse } from '@src/libs/api/id.response.dto';
 import {
-  CreateUserTestContext,
+  type CreateUserTestContext,
   givenUserProfileData,
   iSendARequestToCreateAUser,
 } from '../user-shared-steps';
@@ -20,17 +19,7 @@ const feature = loadFeature('tests/user/create-user/create-user.feature');
  */
 
 defineFeature(feature, (test) => {
-  let pool: DatabasePool;
   const apiClient = new ApiClient();
-
-  beforeAll(() => {
-    pool = getConnectionPool();
-  });
-
-  afterEach(async () => {
-    await pool.query(sql`TRUNCATE "users"`);
-    await pool.query(sql`TRUNCATE "wallets"`);
-  });
 
   test('I can create a user', ({ given, when, then, and }) => {
     const ctx = new TestContext<CreateUserTestContext>();

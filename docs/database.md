@@ -19,8 +19,9 @@ Migrations use stable `node-pg-migrate` **9.0.0** with `pg` **8.23.0**. The `.mj
 entry points run directly under Bun, independently of the application's TypeScript
 toolchain and Slonik. Node, `ts-node`, and `jiti` are not used to execute these
 commands or SQL migrations. `jiti` remains an accepted transitive dependency of
-the migrator. Application/test runtime changes belong to [#5](https://github.com/danilomartinelli/vibecoding-starter-js/issues/5);
-framework and remaining dependency/tooling upgrades follow separately.
+the migrator. The application and Gherkin cases also run directly under Bun;
+see the [runtime guide](runtime.md). Framework and remaining dependency/tooling
+upgrades follow separately.
 
 ## PostgreSQL and connections
 

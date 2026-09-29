@@ -1,5 +1,5 @@
 import { RequestContext } from 'nestjs-request-context';
-import { DatabaseTransactionConnection } from 'slonik';
+import type { DatabaseTransactionConnection } from 'slonik';
 
 /**
  * Setting some isolated context for each request.

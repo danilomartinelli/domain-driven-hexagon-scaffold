@@ -1,11 +1,10 @@
+import { expect } from 'bun:test';
 import { UserResponseDto } from '@modules/user/dtos/user.response.dto';
 import { IdResponse } from '@src/libs/api/id.response.dto';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { DatabasePool, sql } from 'slonik';
 import { TestContext } from '@tests/test-utils/TestContext';
-import { getConnectionPool } from '../../setup/jestSetupAfterEnv';
 import {
-  CreateUserTestContext,
+  type CreateUserTestContext,
   givenUserProfileData,
   iSendARequestToCreateAUser,
 } from '../user-shared-steps';
@@ -14,17 +13,7 @@ import { ApiClient } from '@tests/test-utils/ApiClient';
 const feature = loadFeature('tests/user/delete-user/delete-user.feature');
 
 defineFeature(feature, (test) => {
-  let pool: DatabasePool;
   const apiClient = new ApiClient();
-
-  beforeAll(() => {
-    pool = getConnectionPool();
-  });
-
-  afterEach(async () => {
-    await pool.query(sql`TRUNCATE "users"`);
-    await pool.query(sql`TRUNCATE "wallets"`);
-  });
 
   test('I can delete a user', ({ given, when, then, and }) => {
     const ctx = new TestContext<CreateUserTestContext>();

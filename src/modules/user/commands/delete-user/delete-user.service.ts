@@ -1,5 +1,5 @@
 import { NotFoundException } from '@libs/exceptions';
-import { UserRepositoryPort } from '@modules/user/database/user.repository.port';
+import type { UserRepositoryPort } from '@modules/user/database/user.repository.port';
 import { Inject } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
 import { Err, Ok, Result } from 'oxide.ts';

@@ -1,5 +1,5 @@
 import { UserCreatedDomainEvent } from '@modules/user/domain/events/user-created.domain-event';
-import { WalletRepositoryPort } from '@modules/wallet/database/wallet.repository.port';
+import type { WalletRepositoryPort } from '@modules/wallet/database/wallet.repository.port';
 import { WalletEntity } from '../../domain/wallet.entity';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Inject, Injectable } from '@nestjs/common';

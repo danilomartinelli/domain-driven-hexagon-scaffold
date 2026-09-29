@@ -1,18 +1,12 @@
 {
   "compilerOptions": {
     "strict": true,
-    "module": "commonjs",
-    "declaration": true,
-    "removeComments": true,
+    "module": "preserve",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "strictPropertyInitialization": false,
-    "target": "es2019",
-    "sourceMap": true,
-    "outDir": "./dist",
-    "baseUrl": "./",
-    "incremental": true,
+    "target": "ES2022",
     "skipLibCheck": true,
     "strictNullChecks": true,
     "noImplicitAny": false,
@@ -20,11 +14,18 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@src/*": ["src/*"],
-      "@modules/*": ["src/modules/*"],
-      "@config/*": ["src/configs/*"],
-      "@libs/*": ["src/libs/*"],
-      "@tests/*": ["tests/*"]
-    }
-  }
+      "@src/*": ["./src/*"],
+      "@modules/*": ["./src/modules/*"],
+      "@config/*": ["./src/configs/*"],
+      "@libs/*": ["./src/libs/*"],
+      "@tests/*": ["./tests/*"]
+    },
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "types": ["bun"],
+    "esModuleInterop": true,
+    "verbatimModuleSyntax": true,
+    "useDefineForClassFields": false
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }
