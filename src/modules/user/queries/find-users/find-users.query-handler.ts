@@ -23,7 +23,7 @@ export class FindUsersQuery extends PaginatedQueryBase {
 }
 
 @QueryHandler(FindUsersQuery)
-export class FindUsersQueryHandler implements IQueryHandler {
+export class FindUsersQueryHandler implements IQueryHandler<FindUsersQuery> {
   constructor(
     @Inject(DATABASE_POOL)
     private readonly pool: DatabasePool,

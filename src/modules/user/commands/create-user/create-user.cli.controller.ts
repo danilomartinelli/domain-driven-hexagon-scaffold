@@ -1,14 +1,11 @@
-import { Inject, Logger } from '@nestjs/common';
-import { Command, Console } from 'nestjs-console';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Command } from 'commander';
 import { CommandBus } from '@nestjs/cqrs';
 import { CreateUserCommand } from './create-user.command';
 import type { LoggerPort } from '@libs/ports/logger.port';
 
-// Allows creating a user using CLI (Command Line Interface)
-@Console({
-  command: 'new',
-  description: 'A command to create a user',
-})
+// CLI command definition only; this example has no bootstrap or context setup.
+@Injectable()
 export class CreateUserCliController {
   constructor(
     private readonly commandBus: CommandBus,
@@ -16,10 +13,20 @@ export class CreateUserCliController {
     private readonly logger: LoggerPort,
   ) {}
 
-  @Command({
-    command: 'user <email> <country> <postalCode> <street>',
-    description: 'Create a user',
-  })
+  createCommand(): Command {
+    const command = new Command('new').description(
+      'A command to create a user',
+    );
+    command
+      .command('user <email> <country> <postalCode> <street>')
+      .description('Create a user')
+      .action(
+        (email: string, country: string, postalCode: string, street: string) =>
+          this.createUser(email, country, postalCode, street),
+      );
+    return command;
+  }
+
   async createUser(
     email: string,
     country: string,

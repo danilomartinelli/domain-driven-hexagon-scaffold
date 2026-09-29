@@ -11,7 +11,7 @@ import { Inject } from '@nestjs/common';
 import { USER_REPOSITORY } from '../../user.di-tokens';
 
 @CommandHandler(CreateUserCommand)
-export class CreateUserService implements ICommandHandler {
+export class CreateUserService implements ICommandHandler<CreateUserCommand> {
   constructor(
     @Inject(USER_REPOSITORY)
     protected readonly userRepo: UserRepositoryPort,

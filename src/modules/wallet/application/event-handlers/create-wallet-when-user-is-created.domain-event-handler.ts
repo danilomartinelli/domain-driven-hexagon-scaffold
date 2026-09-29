@@ -13,7 +13,11 @@ export class CreateWalletWhenUserIsCreatedDomainEventHandler {
   ) {}
 
   // Handle a Domain Event by performing changes to other aggregates (inside the same Domain).
-  @OnEvent(UserCreatedDomainEvent.name, { async: true, promisify: true })
+  @OnEvent(UserCreatedDomainEvent.name, {
+    async: true,
+    promisify: true,
+    suppressErrors: false, // Let wallet failures reject the user transaction.
+  })
   async handle(event: UserCreatedDomainEvent): Promise<any> {
     const wallet = WalletEntity.create({
       userId: event.aggregateId,

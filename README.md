@@ -30,8 +30,8 @@ Patterns and principles presented here are **framework/language agnostic**. Ther
 
 - [Domain-Driven Hexagon](#domain-driven-hexagon)
 - [Architecture](#architecture)
-      - [Pros](#pros)
-      - [Cons](#cons)
+  - [Pros](#pros)
+  - [Cons](#cons)
 - [Diagram](#diagram)
 - [Modules](#modules)
 - [Application Core](#application-core)
@@ -89,7 +89,7 @@ Patterns and principles presented here are **framework/language agnostic**. Ther
 This is an attempt to combine multiple architectural patterns and styles together, such as:
 
 - [Domain-Driven Design (DDD)](https://en.wikipedia.org/wiki/Domain-driven_design)
-- [Hexagonal (Ports and Adapters) Architecture](https://en.wikipedia.org/wiki/Hexagonal_architecture_(software))
+- [Hexagonal (Ports and Adapters) Architecture](<https://en.wikipedia.org/wiki/Hexagonal_architecture_(software)>)
 - [Secure by Design](https://www.manning.com/books/secure-by-design)
 - [Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 - [Onion Architecture](https://herbertograca.com/2017/09/21/onion-architecture/)
@@ -876,7 +876,7 @@ Contains `Controllers` and `Request`/`Response` DTOs (can also contain `Views`, 
 One controller per trigger type can be used to have a clearer separation. For example:
 
 - [create-user.http.controller.ts](src/modules/user/commands/create-user/create-user.http.controller.ts) for http requests ([NestJS Controllers](https://docs.nestjs.com/controllers)),
-- [create-user.cli.controller.ts](src/modules/user/commands/create-user/create-user.cli.controller.ts) for command line interface access ([NestJS Console](https://www.npmjs.com/package/nestjs-console))
+- [create-user.cli.controller.ts](src/modules/user/commands/create-user/create-user.cli.controller.ts) for a CLI command definition using [Commander](https://github.com/tj/commander.js), with Nest dependency injection. CLI startup and messaging transport remain unfinished; see [adapter compatibility and limits](docs/adapters.md).
 - [create-user.message.controller.ts](src/modules/user/commands/create-user/create-user.message.controller.ts) for external messages ([NestJS Microservices](https://docs.nestjs.com/microservices/basics)).
 - etc.
 

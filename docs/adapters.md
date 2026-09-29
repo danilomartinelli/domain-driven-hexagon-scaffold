@@ -1,0 +1,101 @@
+# Adapter compatibility and example limits
+
+Issue #6 upgrades the application to Nest 12 on **Bun 1.4.2**. Run the same
+individual install, database, start, and test commands in [the runtime guide](runtime.md).
+All adapters remain registered in `AppModule` / `UserModule`; no separate CLI
+entry point or microservice transport has been added.
+
+## Dependency selection
+
+Checked the npm registry's stable tags and published peer ranges on 2026-09-29,
+then checked every installed required peer of the selected Nest/Apollo packages.
+The versions below are pinned in `package.json` and resolved in `bun.lock`.
+These projects use stable major lines rather than a separate LTS release tag.
+
+| Integration                                                 | Selected version | Compatibility checked                                                                                   |
+| ----------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------- |
+| Nest common, core, platform-express, microservices, testing | 12.1.1           | Matching Nest `^12.0.0`; RxJS `^7.1.0`                                                                  |
+| Nest CQRS                                                   | 12.1.0           | Nest `^12.0.0`; RxJS `^7.2.0`                                                                           |
+| Nest event-emitter                                          | 12.0.1           | Nest `^11.0.0 \|\| ^12.0.0`                                                                             |
+| Nest Swagger/OpenAPI                                        | 12.0.2           | Nest `^12.0.0`; TypeScript `^5.5.0 \|\| ^6.0.0`                                                         |
+| Nest GraphQL / Apollo driver                                | 14.0.3           | Nest `^12.0.0`; driver requires Apollo Server `^5.0.0`                                                  |
+| Apollo Server                                               | 5.5.1            | GraphQL `^16.11.0`                                                                                      |
+| Express integration                                         | 1.1.2            | `@as-integrations/express5`: Express `^5.0.0`, Apollo `^4.0.0 \|\| ^5.0.0`; Nest resolves Express 5.2.1 |
+| GraphQL                                                     | 16.14.2          | Latest stable 16; GraphQL 17.0.2 is outside Apollo Server's peer range                                  |
+| Commander                                                   | 15.0.0           | No Nest peer dependency; the small local provider supplies Nest injection                               |
+| Validation / transformation                                 | 0.15.1 / 0.5.1   | Nest common and mapped-types peer ranges                                                                |
+| reflect-metadata / RxJS                                     | 0.2.2 / 7.8.2    | Shared Nest/GraphQL/CQRS peer ranges                                                                    |
+
+Nest and Apollo publish Node engine requirements; this repository deliberately
+runs their ESM packages on Bun 1.4.2. Application startup, schemas, database
+lifecycle and the existing native tests provide the runtime evidence, rather
+than treating Node engine metadata as a Bun support guarantee.
+
+The resolved tree no longer contains `apollo-server-core`,
+`apollo-server-express`, the old `apollo-server-*` packages,
+`subscriptions-transport-ws`, `graphql-playground-*`, `nestjs-console` or
+`nestjs-request-context`. No subscriptions were implemented by the application.
+`nestjs-console` 10 still only declares support through Nest 11; a local
+Commander definition avoids another Nest discovery/bootstrap wrapper for this
+unfinished example. Request context is now a small local AsyncLocalStorage
+middleware, with an explicit Express 5 route matcher.
+
+## Existing contracts
+
+- **REST:** `POST /v1/users` accepts email, country, postalCode and street and
+  returns `{ id }`; `GET /v1/users` returns the existing paginated response;
+  `DELETE /v1/users/:id` retains its response and error handling. Validation,
+  command/query delegation, repository ports and mappers are preserved.
+- **OpenAPI:** `/docs` and `/docs-json` still expose the same operations, request
+  and response schemas. Swagger 12 adds automatic controller tags and places
+  query examples within their parameter schemas; these are documentation changes.
+- **GraphQL:** `/graphql` generates the same code-first SDL: `create(input:
+CreateUserGqlRequestDto!)` and `findUsers(options: String!)`. The existing
+  `options` argument remains a string; this upgrade does not redesign that
+  educational example into a typed filter or JSON parser. The browser IDE is
+  now GraphiQL, supplied by Nest GraphQL 14.
+- **CLI:** the injectable `CreateUserCliController.createCommand()` returns a
+  Commander `new` command with subcommand
+  `user <email> <country> <postalCode> <street>`. Its async action returns
+  `createUser(...)`, which constructs the same `CreateUserCommand`, awaits
+  `CommandBus.execute`, unwraps the result and logs the ID. Nothing calls
+  `parseAsync()` or starts a CLI application. A future bootstrap still needs
+  application initialization, context setup and awaited cleanup.
+- **Messaging:** `@MessagePattern('user.create')` still accepts
+  `CreateUserRequestDto`, awaits the same command bus, unwraps the result and
+  returns `IdResponse`. There is no connected microservice, transport, or
+  message-context lifecycle. Framework registration is not end-to-end execution.
+
+CQRS is initialized with `CqrsModule.forRoot()`, and handlers supply their
+command/query type to the new conditional handler interfaces. Domain classes
+and bus payloads remain unchanged.
+
+## Request isolation and transaction participation
+
+The middleware enters a fresh `AsyncLocalStorage` store before each HTTP/GraphQL
+request. The existing context interceptor assigns the request ID. Repositories
+use the store's transaction connection when present and otherwise their shared
+Slonik pool. The middleware does not reuse a store with `enterWith()` or invent
+a global context for direct CLI/message calls.
+
+The user transaction still awaits aggregate publication and `emitAsync`, which
+awaits the wallet insert using the same connection. The wallet listener retains
+`async: true` and `promisify: true` and adds **`suppressErrors: false`**, because
+the updated Nest event wrapper otherwise catches listener rejections. A failed
+wallet insert must reject the enclosing transaction callback. Its existing
+`finally` clears the stored connection. The local database provider still awaits
+pool creation and shutdown.
+
+This is a review of transaction/error propagation, **not automated rollback
+proof**: the seven existing Gherkin cases do not force a wallet failure. No new
+scenario, adapter suite or testing boundary was added. See [execution evidence](validation/issue-6-adapters.md).
+
+Future objectives remain **Nx monorepo; correction of hexagonal coupling;
+completion of the CLI and messaging examples**. Strict developer tooling (#7)
+and the complete dependency/security remediation (#8) remain separate tickets.
+
+References: [Nest 12 migration guide](https://docs.nestjs.com/migration-guide),
+[Nest GraphQL installation](https://docs.nestjs.com/graphql/quick-start),
+[Apollo Server migration](https://www.apollographql.com/docs/apollo-server/migration),
+[Nest event error handling](https://docs.nestjs.com/techniques/events),
+[Commander command/action API](https://github.com/tj/commander.js).
