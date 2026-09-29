@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    ports:
+      - '127.0.0.1::5432'
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ${DDH_TEST_DATABASE:?Use the test database runner}
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U user -d "$${POSTGRES_DB}"']
+      interval: 1s
+      timeout: 3s
+      retries: 30

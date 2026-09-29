@@ -55,21 +55,27 @@ adds request correlation to API errors.
 
 ## Gherkin through the real application
 
-Prepare the disposable database using the workflow delivered in issue #4:
+With Docker running, provision and validate an isolated database in one command:
 
 ```sh
-bun run docker:tests
-bun run migration:up:tests
 bun run test:e2e
 ```
+
+The wrapper creates a unique Compose project with an ephemeral loopback port and
+tmpfs storage, applies migrations and always attempts owned-resource cleanup.
+Output and exit statuses are retained under `.context/test-runs/`. See
+[developer checks](developer-checks.md#isolated-database-checks) for lifecycle
+limits, failure handling and the complete gate.
 
 No seed command is required. Tests clear users and wallets before the run and
 after each case, including any seeded fixtures. The migration history is kept.
 Use only a disposable validation database, never development data.
 
-`test:e2e` explicitly selects `tests/user` and `tests/integration` and preloads
+`test:e2e` invokes `test:e2e:prepared`, which explicitly selects `tests/user` and `tests/integration` and preloads
 `tests/setup/preload.ts`; unit discovery never imports this setup.
-Bun sets `NODE_ENV=test` by default; an explicitly different value is rejected.
+The wrapper sets `NODE_ENV=test` and its owned database target. In manual
+`test:e2e:prepared` mode, Bun defaults to `NODE_ENV=test` and the preload rejects
+an explicitly different value.
 The preload loads `.env.test` and rejects database names without a standalone
 `test` or `tests` prefix/suffix, including shell-provided overrides, **before**
 importing the application or opening a pool. Bun's automatic env loading remains
@@ -84,18 +90,19 @@ which awaits pool shutdown. Setup failures after application creation also
 close the application.
 
 ```sh
-bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts # six cases
-bun test --preload ./tests/setup/preload.ts ./tests/user/delete-user/delete-user.test.ts # one case
+bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts # six cases
+bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/delete-user/delete-user.test.ts # one case
 bun run test:e2e # seven Gherkin cases plus four real-database regressions
 bun run test:watch # core only
 bun run test:cov # core only
 bun run test:debug # inspector pauses before execution
 ```
 
-Run one test process at a time against `ddh_tests`; shared table cleanup is not
-compatible with concurrent processes or Bun's `--concurrent`/`--randomize` flags.
-Migrations are explicit, not performed by a test hook. To stop and remove the
-disposable database, follow the [database cleanup instructions](database.md#seeds-and-cleanup).
+Separate `test:e2e` invocations have independent databases. Within one suite,
+shared table cleanup requires sequential cases. Migrations run explicitly in the
+wrapper before the test command. For manual `test:e2e:prepared` runs, prepare the
+database with `docker:tests` and `migration:up:tests`, run only one process against
+that target, and follow the [cleanup instructions](database.md#seeds-and-cleanup).
 
 ## Persistence and transaction review
 

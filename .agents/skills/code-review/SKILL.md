@@ -1,9 +1,9 @@
 ---
 name: code-review
-description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\"."
+description: 'Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo''s documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X".'
 ---
 
-Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
+Two-axis review of committed or staged changes against a fixed point:
 
 - **Standards**: does the code conform to this repo's documented coding standards?
 - **Spec**: does the code faithfully implement the originating issue / spec?
@@ -16,20 +16,41 @@ The issue tracker should have been provided to you. If `docs/agents/issue-tracke
 
 ### 1. Pin the fixed point
 
-Whatever the user said is the fixed point (a commit SHA, branch name, tag, `main`, `HEAD~5`, etc.). If they didn't specify one, ask for it.
+Use the fixed point supplied by the task, or its configured target branch. Ask
+only when neither is known. Resolve it to a commit SHA and capture the merge-base
+with `HEAD`; both reviewers receive the same resolved comparison.
 
-Capture the diff command once: `git diff <fixed-point>...HEAD` (three-dot, so the comparison is against the merge-base). Also note the list of commits via `git log <fixed-point>..HEAD --oneline`.
+Choose the review subject:
 
-Before going further, confirm the fixed point resolves (`git rev-parse <fixed-point>`) and the diff is non-empty. A bad ref or empty diff should fail here, not inside two parallel sub-agents.
+- **Committed changes** (branch/PR review): capture the `HEAD` SHA and use
+  `git diff <merge-base-sha> <head-sha>`.
+- **Staged changes** (implementation/pre-commit review): stage the intended files,
+  including new files, and run `bun --bun lint-staged` before the snapshot. Check
+  `git status --short` for intended files still unstaged or untracked. Capture
+  the immutable index tree with `git write-tree` and use
+  `git diff <merge-base-sha> <index-tree-sha>`. This includes branch commits since
+  the base plus the staged changes. Use `HEAD` as the fixed point when only the
+  pending commit is in scope.
+
+Record the chosen mode, both object IDs, exact diff command and
+`git log <fixed-point-sha>..HEAD --oneline`. Require a non-empty diff and pass
+these values to both reviewers. No preliminary commit is needed.
+
+Keep the reviewed files unchanged during review. If the worktree differs from
+the staged snapshot, read snapshot content with `git show <index-tree-sha>:<path>`
+and distinguish worktree test results from validation of that snapshot.
+After fixes, restage, rerun affected checks and review the updated snapshot.
+Before committing, verify `git write-tree` still matches the reviewed tree.
+If a hook changes the committed tree, review the resulting difference before
+publishing.
 
 ### 2. Identify the spec source
 
-Look for the originating spec, in this order:
-
-1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in `docs/agents/issue-tracker.md`.
-2. A path the user passed as an argument.
-3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
-4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report "no spec available".
+Use the explicit specification or user request for this task first. Otherwise,
+look for issue references in the reviewed commits and fetch only those issues
+using `docs/agents/issue-tracker.md`, then look for a matching spec file under
+`docs/`, `specs/`, or `.scratch/`. Ask if none is available; an explicitly absent
+spec is reported as "no spec available" on the Spec axis.
 
 ### 3. Identify the standards sources
 
@@ -40,7 +61,7 @@ On top of whatever the repo documents, the Standards axis always carries the **s
 - **The repo overrides.** A documented repo standard always wins; where it endorses something the baseline would flag, suppress the smell.
 - **Always a judgement call.** Each smell is a labelled heuristic ("possible Feature Envy"), never a hard violation. Like any standard here, skip anything tooling already enforces.
 
-Each smell reads *what it is* → *how to fix*; match it against the diff:
+Each smell reads _what it is_ → _how to fix_; match it against the diff:
 
 - **Mysterious Name**: a function, variable, or type whose name doesn't reveal what it does or holds. → rename it; if no honest name comes, the design's murky.
 - **Duplicated Code**: the same logic shape appears in more than one hunk or file in the change. → extract the shared shape, call it from both.
