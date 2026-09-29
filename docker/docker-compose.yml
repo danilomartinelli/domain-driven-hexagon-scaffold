@@ -1,34 +1,45 @@
-version: '3.9'
-
 services:
   postgres:
-    container_name: postgres-container
-    image: postgres:alpine
+    image: postgres:18.6-alpine
     ports:
-      - 5432:5432
+      - '127.0.0.1:5433:5432'
     environment:
-      POSTGRES_USER: 'user'
-      POSTGRES_PASSWORD: 'password'
-      POSTGRES_DB: 'ddh'
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ddh
     volumes:
-      - ddh-postgres:/var/lib/postgresql/data
-    networks:
-      - postgres
+      - ddh-postgres-18:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U user -d ddh']
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  postgres-test:
+    image: postgres:18.6-alpine
+    profiles: ['test']
+    ports:
+      - '127.0.0.1:5434:5432'
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ddh_tests
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U user -d ddh_tests']
+      interval: 2s
+      timeout: 5s
+      retries: 15
 
   pgadmin:
-    container_name: pgadmin_container
     image: dpage/pgadmin4
+    profiles: ['tools']
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@email.com
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - 5050:80
-    networks:
-      - postgres
-
-networks:
-  postgres:
-    driver: bridge
+      - '127.0.0.1:5050:80'
 
 volumes:
-  ddh-postgres:
+  ddh-postgres-18:

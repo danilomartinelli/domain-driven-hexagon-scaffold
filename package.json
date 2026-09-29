@@ -19,20 +19,20 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest -i --config jest-e2e.json",
-    "docker:env": "docker-compose --file docker/docker-compose.yml up --build",
-    "migration:create": "ts-node database/migrate create --name",
-    "migration:up": "ts-node database/migrate up",
-    "migration:up:tests": "NODE_ENV=test ts-node database/migrate up",
-    "migration:down": "ts-node database/migrate down",
-    "migration:down:tests": "NODE_ENV=test ts-node database/migrate down",
-    "migration:executed": "ts-node database/migrate executed",
-    "migration:executed:tests": "NODE_ENV=test ts-node database/migrate executed",
-    "migration:pending": "ts-node database/migrate pending",
-    "migration:pending:tests": "NODE_ENV=test ts-node database/migrate pending",
-    "seed:up": "ts-node database/seed",
+    "docker:env": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres",
     "depcruise": "depcruise",
     "deps:validate": "depcruise src --config .dependency-cruiser.js --output-type err-long",
-    "deps:graph": "depcruise src --include-only \"^src\" --config --output-type dot | dot -T svg > assets/dependency-graph.svg"
+    "deps:graph": "depcruise src --include-only \"^src\" --config --output-type dot | dot -T svg > assets/dependency-graph.svg",
+    "docker:tests": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres-test",
+    "migration:create": "bun database/migrate.mjs create",
+    "migration:up": "bun database/migrate.mjs up",
+    "migration:up:tests": "NODE_ENV=test bun database/migrate.mjs up",
+    "migration:down": "bun database/migrate.mjs down",
+    "migration:down:tests": "NODE_ENV=test bun database/migrate.mjs down",
+    "migration:status": "bun database/migrate.mjs status",
+    "migration:status:tests": "NODE_ENV=test bun database/migrate.mjs status",
+    "seed:up": "bun database/seed.mjs",
+    "seed:up:tests": "NODE_ENV=test bun database/seed.mjs"
   },
   "dependencies": {
     "@nestjs/apollo": "^10.1.3",
@@ -44,7 +44,6 @@
     "@nestjs/microservices": "^9.1.2",
     "@nestjs/platform-express": "^9.0.0",
     "@nestjs/swagger": "^6.1.2",
-    "@slonik/migrator": "^0.11.3",
     "apollo-server-core": "^3.10.2",
     "apollo-server-express": "^3.10.2",
     "class-transformer": "^0.5.1",
@@ -88,7 +87,9 @@
     "ts-loader": "^9.2.3",
     "ts-node": "^10.0.0",
     "tsconfig-paths": "4.1.0",
-    "typescript": "^4.7.4"
+    "typescript": "^4.7.4",
+    "node-pg-migrate": "9.0.0",
+    "pg": "8.23.0"
   },
   "jest": {
     "moduleFileExtensions": [
@@ -109,5 +110,9 @@
   },
   "volta": {
     "node": "20.1.0"
+  },
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": "1.4.2"
   }
 }

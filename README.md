@@ -12,6 +12,11 @@ The main emphasis of this project is to provide recommendations on how to design
 
 Code examples are written using [NodeJS](https://nodejs.org/en/), [TypeScript](https://www.typescriptlang.org/), [NestJS](https://docs.nestjs.com/) framework and [Slonik](https://github.com/gajus/slonik) for the database access.
 
+Install dependencies with **Bun 1.4.2** using `bun install --frozen-lockfile`.
+Database commands also execute directly under Bun. See the [database guide](docs/database.md)
+for local PostgreSQL, SQL migrations, seeds, and the recorded validation results.
+The application and test runtime upgrade is tracked separately in [issue #5](https://github.com/danilomartinelli/vibecoding-starter-js/issues/5).
+
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
 
 **Note**: code examples are adapted to TypeScript and frameworks mentioned above. <br/>

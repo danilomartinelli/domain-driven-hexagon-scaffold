@@ -1,0 +1,3 @@
+# Let the shared dotenv loader choose .env or .env.test after NODE_ENV is set.
+# Otherwise `bun run ...:tests` can pass development values to the child process.
+env = false
