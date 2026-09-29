@@ -5,6 +5,12 @@ date: 2026-09-29
 
 # Modernize with Bun while preserving the educational scope
 
+The subsequent [Nx migration decision](0002-adopt-nx-with-nest-and-bun.md)
+replaces the shared user/wallet transaction and the earlier limits on local
+quality orchestration, test coverage and messaging startup. It also brings the
+previously deferred domain decoupling into the Nx migration. The other
+modernization decisions remain applicable unless explicitly replaced there.
+
 This educational repository will be upgraded to maintained dependencies, addressing known vulnerabilities without preserving backward compatibility. We will adopt **Bun 1.4.2 as both the runtime and package manager**, keeping Nest, PostgreSQL, and Slonik up to date. The upgrade will preserve the repository's hexagonal architecture purpose and the examples' functional scope; conversion to Nx and cleanup of architectural coupling will be separate, future work.
 
 ## Decisions

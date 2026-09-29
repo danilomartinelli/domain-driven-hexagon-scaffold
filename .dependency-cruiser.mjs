@@ -27,9 +27,26 @@ const domainLayerPaths = [
   'value-object\\.ts$',
 ];
 
+// A closed set prevents indirect escapes through shared barrels as well.
+const corePaths = [
+  '^src/libs/(ddd|exceptions|types|decorators)/',
+  '^src/libs/guard\\.ts$',
+  '^src/libs/utils/(index|convert-props-to-object\\.util)\\.ts$',
+  '^src/modules/[^/]+/domain/',
+  '^src/modules/[^/]+/commands/.*\\.command\\.ts$',
+];
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 const config = {
   forbidden: [
+    {
+      name: 'core-is-context-independent',
+      comment:
+        'Domain, commands and shared primitives may only import the plain TypeScript core.',
+      severity: 'error',
+      from: { path: corePaths },
+      to: { pathNot: [...corePaths, '^node_modules/oxide\\.ts/'] },
+    },
     /* user defined rules */
     {
       name: 'no-domain-to-api-deps',
@@ -47,7 +64,6 @@ const config = {
       from: { path: domainLayerPaths },
       to: {
         path: applicationLayerPaths,
-        pathNot: ['AppRequestContext\\.ts'],
       },
     },
     {

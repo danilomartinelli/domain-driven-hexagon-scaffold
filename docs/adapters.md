@@ -102,7 +102,7 @@ use the store's transaction connection when present and otherwise their shared
 Slonik pool. The middleware does not reuse a store with `enterWith()` or invent
 a global context for direct CLI/message calls.
 
-The user transaction still awaits aggregate publication and `emitAsync`, which
+The user transaction awaits the adapter `publishDomainEvents` and `emitAsync`, which
 awaits the wallet insert using the same connection. The wallet listener retains
 `async: true` and `promisify: true` and adds **`suppressErrors: false`**, because
 the updated Nest event wrapper otherwise catches listener rejections. A failed
@@ -110,12 +110,21 @@ wallet insert must reject the enclosing transaction callback. Its existing
 `finally` clears the stored connection. The local database provider still awaits
 pool creation and shutdown.
 
-This is a review of transaction/error propagation, **not automated rollback
-proof**: the seven existing Gherkin cases do not force a wallet failure. No new
-scenario, adapter suite or testing boundary was added. See [execution evidence](validation/issue-6-adapters.md).
+Aggregates only record facts. Entity identity/time and command operation metadata
+are supplied explicitly by adapters; core exceptions do not consult request
+state. Dispatch supplies publication identity, timestamp and request correlation
+as a separate listener argument. This in-process publication remains awaited
+before commit; it is transitional and does not promise durable delivery.
 
-Future objectives remain **Nx monorepo; correction of hexagonal coupling;
-completion of the CLI and messaging examples**. See [developer checks](developer-checks.md)
+The seven existing Gherkin cases remain intact. A separate real-database suite
+now proves rollback under a forced Wallet write failure and successful recovery,
+as well as REST/GraphQL payload compatibility. See the
+[current execution evidence](validation/issue-16-core.md); the
+[Nest upgrade record](validation/issue-6-adapters.md) describes the earlier slice.
+
+Remaining work follows [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md):
+Nx, application-owned ports/transactions and independent services with durable
+messaging. CLI bootstrap remains outside that migration scope. See [developer checks](developer-checks.md)
 and the [combined upgrade validation](validation/issue-8-upgrade.md) for the final
 strict-tooling and dependency-remediation results.
 

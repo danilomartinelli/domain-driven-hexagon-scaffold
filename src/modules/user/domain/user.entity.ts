@@ -10,17 +10,20 @@ import {
 import { UserDeletedDomainEvent } from './events/user-deleted.domain-event';
 import { UserRoleChangedDomainEvent } from './events/user-role-changed.domain-event';
 import { UserAddressUpdatedDomainEvent } from './events/user-address-updated.domain-event';
-import { randomUUID } from 'crypto';
+import type { CreateEntityProps } from '@libs/ddd';
 
 export class UserEntity extends AggregateRoot<UserProps> {
   // Assigned by the Entity constructor through setId.
   protected readonly _id!: AggregateID;
 
-  static create(create: CreateUserProps): UserEntity {
-    const id = randomUUID();
+  static create(
+    create: CreateUserProps,
+    identity: Pick<CreateEntityProps<UserProps>, 'id' | 'createdAt'>,
+  ): UserEntity {
+    const { id } = identity;
     /* Setting a default role since we are not accepting it during creation. */
     const props: UserProps = { ...create, role: UserRoles.guest };
-    const user = new UserEntity({ id, props });
+    const user = new UserEntity({ ...identity, props });
     /* adding "UserCreated" Domain Event that will be published
     eventually so an event handler somewhere may receive it and do an
     appropriate action. Multiple events can be added if needed. */

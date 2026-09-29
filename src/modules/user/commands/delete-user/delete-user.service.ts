@@ -1,17 +1,10 @@
+import { DeleteUserCommand } from './delete-user.command';
 import { NotFoundException } from '@libs/exceptions';
 import type { UserRepositoryPort } from '@modules/user/database/user.repository.port';
 import { Inject } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
 import { Err, Ok, Result } from 'oxide.ts';
 import { USER_REPOSITORY } from '../../user.di-tokens';
-
-export class DeleteUserCommand {
-  readonly userId: string;
-
-  constructor(props: DeleteUserCommand) {
-    this.userId = props.userId;
-  }
-}
 
 @CommandHandler(DeleteUserCommand)
 export class DeleteUserService {

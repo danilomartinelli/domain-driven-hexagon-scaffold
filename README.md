@@ -18,14 +18,15 @@ lint, formatting and architecture.
 Database commands also execute directly under Bun. See the [database guide](docs/database.md)
 for local PostgreSQL, SQL migrations, seeds, and the recorded validation results.
 Run the application with `bun run start:dev` and the existing Gherkin cases with
-`bun test`. See the [runtime guide](docs/runtime.md) for setup, type checking,
-and the distinction between the seven application cases and transaction review.
+`bun run test:e2e`. `bun test` runs the infrastructure-free core suite. See the
+[runtime guide](docs/runtime.md) for setup, type checking, and the seven original
+Gherkin cases plus the real-database rollback regressions.
 The [dependency inventory](docs/dependencies.md) records compatible versions and
 security fixes; [combined upgrade evidence](docs/validation/issue-8-upgrade.md)
 records the clean installation and real application/database checks. Run
 `bun audit` separately to recheck the complete dependency tree.
-Next objectives remain an Nx monorepo, correction of hexagonal coupling, and
-completion of the CLI and messaging examples.
+Remaining migration work includes Nx, application-owned transactions and durable
+service integration, as defined in [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md).
 
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
 
@@ -441,7 +442,8 @@ Examples:
 
 - [user-created.domain-event.ts](src/modules/user/domain/events/user-created.domain-event.ts) - simple object that holds data related to published event.
 - [create-wallet-when-user-is-created.domain-event-handler.ts](src/modules/wallet/application/event-handlers/create-wallet-when-user-is-created.domain-event-handler.ts) - this is an example of Domain Event Handler that executes some actions when a domain event is raised (in this case, when user is created it also creates a wallet for that user).
-- [sql-repository.base.ts](src/libs/db/sql-repository.base.ts) - repository publishes all domain events for execution when it persists changes to an aggregate.
+- [publish-domain-events.ts](src/libs/application/publish-domain-events.ts) - the adapter dispatches recorded facts with publication identity and correlation metadata; aggregates do not publish.
+- [sql-repository.base.ts](src/libs/db/sql-repository.base.ts) - repositories temporarily invoke this adapter after persistence, awaiting handlers inside the existing shared transaction. Explicit application transactions and a durable outbox are later migration work.
 - [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - in a service we execute a global transaction to make sure all the changes done by Domain Events across the application are stored atomically (all or nothing).
 
 To have a better understanding on domain events and implementation read this:

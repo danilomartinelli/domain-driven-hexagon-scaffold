@@ -1,3 +1,5 @@
+import { RequestContextService } from '@libs/application/context/AppRequestContext';
+import { createCommandContext } from '@libs/application/command-context';
 import {
   Body,
   ConflictException as ConflictHttpException,
@@ -36,7 +38,14 @@ export class CreateUserHttpController {
   })
   @Post(routesV1.user.root)
   async create(@Body() body: CreateUserRequestDto): Promise<IdResponse> {
-    const command = new CreateUserCommand(body);
+    const { email, country, street, postalCode } = body;
+    const command = new CreateUserCommand({
+      email,
+      country,
+      street,
+      postalCode,
+      ...createCommandContext(RequestContextService.getRequestId()),
+    });
 
     const result: Result<AggregateID, UserAlreadyExistsError> =
       await this.commandBus.execute(command);

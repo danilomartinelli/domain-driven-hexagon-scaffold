@@ -1,3 +1,4 @@
+import { createCommandContext } from '@libs/application/command-context';
 import type { Result } from 'oxide.ts';
 import type { UserAlreadyExistsError } from '../../domain/user.errors';
 import { Controller } from '@nestjs/common';
@@ -13,7 +14,14 @@ export class CreateUserMessageController {
 
   @MessagePattern('user.create') // <- Subscribe to a microservice message
   async create(message: CreateUserRequestDto): Promise<IdResponse> {
-    const command = new CreateUserCommand(message);
+    const { email, country, street, postalCode } = message;
+    const command = new CreateUserCommand({
+      email,
+      country,
+      street,
+      postalCode,
+      ...createCommandContext(),
+    });
 
     const id = await this.commandBus.execute<
       CreateUserCommand,

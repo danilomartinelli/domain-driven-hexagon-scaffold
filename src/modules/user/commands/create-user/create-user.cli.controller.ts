@@ -1,3 +1,4 @@
+import { createCommandContext } from '@libs/application/command-context';
 import type { Result } from 'oxide.ts';
 import type { UserAlreadyExistsError } from '../../domain/user.errors';
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -36,6 +37,7 @@ export class CreateUserCliController {
     street: string,
   ): Promise<void> {
     const command = new CreateUserCommand({
+      ...createCommandContext(),
       email,
       country,
       postalCode,

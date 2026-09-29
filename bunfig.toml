@@ -3,5 +3,4 @@
 env = false
 
 [test]
-root = "./tests"
-preload = ["./tests/setup/preload.ts"]
+root = "./tests/unit"

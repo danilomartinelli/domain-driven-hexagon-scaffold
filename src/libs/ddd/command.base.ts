@@ -1,11 +1,9 @@
-import { RequestContextService } from '@libs/application/context/AppRequestContext';
 import { ArgumentNotProvidedException } from '../exceptions';
 import { Guard } from '../guard';
-import { randomUUID } from 'crypto';
 
-export type CommandProps<T> = Omit<T, 'id' | 'metadata'> & Partial<Command>;
+export type CommandProps<T> = Omit<T, 'id' | 'metadata'> & Command;
 
-type CommandMetadata = {
+export type CommandMetadata = {
   /** ID for correlation purposes (for commands that
    *  arrive from other microservices,logs correlation, etc). */
   readonly correlationId: string;
@@ -42,13 +40,7 @@ export class Command {
         'Command props should not be empty',
       );
     }
-    const ctx = RequestContextService.getContext();
-    this.id = props.id || randomUUID();
-    this.metadata = {
-      correlationId: props.metadata?.correlationId || ctx.requestId,
-      causationId: props.metadata?.causationId,
-      timestamp: props.metadata?.timestamp || Date.now(),
-      userId: props.metadata?.userId,
-    };
+    this.id = props.id;
+    this.metadata = { ...props.metadata };
   }
 }

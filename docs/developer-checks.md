@@ -4,14 +4,15 @@ Use **Bun 1.4.2** from the repository root and install the committed dependency
 set with `bun install --frozen-lockfile`. Each check is independent. No CI, Git
 hooks or aggregate validation command is installed.
 
-| Check        | Command                 | Scope                                                                                                             |
-| ------------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Types        | `bun run typecheck`     | Application, tests, database `.mjs` scripts, ESLint and architecture configs                                      |
-| Lint         | `bun run lint`          | Same code/configuration scope; errors and warnings fail                                                           |
-| Formatting   | `bun run format:check`  | Application/tests, database scripts, tool configs, package/TypeScript JSON, Docker/test YAML and `docs/` Markdown |
-| Architecture | `bun run deps:validate` | `src/`, including type-only imports and aliases                                                                   |
-| Behavior     | `bun test`              | The seven existing Gherkin cases with real Nest, HTTP and PostgreSQL                                              |
-| Dependencies | `bun audit`             | Complete locked tree, including development packages; no advisory ignores                                         |
+| Check         | Command                 | Scope                                                                                                             |
+| ------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Types         | `bun run typecheck`     | Application, tests, database `.mjs` scripts, ESLint and architecture configs                                      |
+| Lint          | `bun run lint`          | Same code/configuration scope; errors and warnings fail                                                           |
+| Formatting    | `bun run format:check`  | Application/tests, database scripts, tool configs, package/TypeScript JSON, Docker/test YAML and `docs/` Markdown |
+| Architecture  | `bun run deps:validate` | `src/`, including type-only imports and aliases                                                                   |
+| Core          | `bun test`              | Infrastructure-free User/Wallet domain, commands and exceptions                                                   |
+| Live behavior | `bun run test:e2e`      | Seven original Gherkin cases and four real PostgreSQL regressions                                                 |
+| Dependencies  | `bun audit`             | Complete locked tree, including development packages; no advisory ignores                                         |
 
 `bun run lint:fix` applies available lint fixes. `bun run format` writes Prettier
 formatting. Lint itself never rewrites files, and Prettier runs separately from
@@ -23,7 +24,7 @@ Before behavioral checks, prepare a **disposable** test database:
 ```sh
 bun run docker:tests
 bun run migration:up:tests
-bun test
+bun run test:e2e
 ```
 
 No seed is required. Run only one test process against each database because
@@ -68,19 +69,18 @@ populated by Nest, mappers or inherited constructors, without adding defaults
 that could change validation or responses.
 
 The lint preset is used without global rule overrides or ignored source files.
-Four local, explained directives retain constructs required by the examples:
-two empty Nest module classes, the public query marker base, and the wallet
-event constructor's specific input contract. The latter still does not populate
-its `userId` property; its optional declaration reflects that existing behavior.
-Completing examples is a separate objective. Unsafe file-wide suppressions in
+Three local, explained directives retain constructs required by the examples:
+two empty Nest module classes and the public query marker base. Wallet creation
+now records its `userId` as part of the domain fact. Unsafe file-wide suppressions in
 the conversion and decorator helpers have been removed.
 
 ## Architecture and deferred work
 
-`.dependency-cruiser.mjs` keeps the existing layer rules and exceptions: domain
-access to `AppRequestContext`, repository ports and concrete event publication,
-and the already-deferred circular-dependency rule. The check does not enforce
-new domain boundaries. Type-only adapter imports from development declarations
+`.dependency-cruiser.mjs` closes the import graph of shared DDD, exceptions,
+foundation helpers, User/Wallet domain and command inputs to plain core modules
+and `oxide.ts`. This includes type-only imports and paths through barrel exports.
+The domain request-context exception is removed. The broader application/service
+boundaries and circular-dependency cleanup remain later migration work. Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was
 removed: [AsyncLocalStorage is stable](https://nodejs.org/api/async_context.html#class-asynclocalstorage).
@@ -90,8 +90,13 @@ regenerates `assets/dependency-graph.svg` and requires Graphviz's `dot` executab
 Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
 name. Both commands use the same ESM architecture configuration.
 
-The future objectives remain an **Nx monorepo**, **correcting hexagonal coupling**,
-and **completing CLI and messaging examples**. See the
+Run every applicable check above, including the live suite, before declaring code
+ready. `bun test`, watch, coverage and debug defaults use only `tests/unit`; the
+E2E preload is opt-in via `test:e2e`. Aggregate Nx gates and independent service
+suites belong to later tickets in [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
+
+The remaining objectives are Nx, application-owned ports/transactions and durable
+service integration. See the
 [dependency inventory](dependencies.md) for version decisions and security overrides,
 and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for
 final validation. The [issue #7 record](validation/issue-7-checks.md) retains the
