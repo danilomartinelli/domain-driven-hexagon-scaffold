@@ -127,8 +127,10 @@ from the isolated Bun/Gherkin probes recorded during specification. See the
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the
 runtime alias hook and Nest's build toolchain have been removed. `@types/jest`
-remains for jest-cucumber's runner interface. The architecture analyzer and ESLint have also been updated; they do not require
-`tsconfig-paths` or the old ESLint cache dependency on `rimraf`.
+remains for jest-cucumber's runner interface. The architecture analyzer and ESLint have also been updated. `tsconfig-paths`
+remains only through dependency-cruiser's resolver plugin; it is not used to
+start the application or tests. The old ESLint cache dependency on `rimraf`
+has been removed.
 
 The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
 Strict lint/type settings and architecture tooling are documented in

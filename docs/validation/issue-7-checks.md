@@ -11,23 +11,24 @@ support matrix: TypeScript **6.0.3**, ESLint **10.11.0**, typescript-eslint
 was the registry latest, but is outside the supported parser/analyzer ranges.
 
 After enabling strict settings, typed lint and tooling coverage, the first run
-reported **29 TypeScript diagnostics** and **128 lint errors / 1 warning**.
+reported **28 TypeScript diagnostics** and **128 lint errors / 1 warning**.
 Corrections include populated DTO field declarations, mapper and query result
 contracts, unknown exception handling, awaited listener return types, typed
 migration-history rows and removal of obsolete APIs/file-wide suppressions.
 
-| Executed command                                      | Result                                                        |
-| ----------------------------------------------------- | ------------------------------------------------------------- |
-| `bun install --frozen-lockfile`                       | Passed, no dependency or lockfile changes; 484 packages       |
-| `bun run typecheck`                                   | Passed, zero project diagnostics, no emission                 |
-| `bun run lint`                                        | Passed, zero errors and warnings                              |
-| `bun run format:check`                                | Passed, no formatting differences                             |
-| `bun run deps:validate`                               | Passed, 109 modules / 299 dependencies, zero violations       |
-| `bun run depcruise --info`                            | Passed, TypeScript 6.0.3 support enabled                      |
-| `bun test tests/user/create-user/create-user.test.ts` | 6 passed, 0 failed                                            |
-| `bun test tests/user/delete-user/delete-user.test.ts` | 1 passed, 0 failed                                            |
-| `bun test`                                            | 7 passed, 0 failed, 13 assertions across the original 2 files |
-| `git diff --check`                                    | Passed                                                        |
+| Executed command                                      | Result                                                                            |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `bun install --frozen-lockfile`                       | Passed, no dependency or lockfile changes; 484 packages                           |
+| `bun run typecheck`                                   | Passed, zero project diagnostics, no emission                                     |
+| `bun run lint`                                        | Passed, zero errors and warnings                                                  |
+| `bun run format:check`                                | Passed, no formatting differences                                                 |
+| `bun run deps:validate`                               | Passed, 109 modules / 299 dependencies, zero violations                           |
+| `bun run deps:graph`                                  | Passed with Graphviz 16.1.0; generated SVG, original illustrative asset preserved |
+| `bun run depcruise --info`                            | Passed, TypeScript 6.0.3 support enabled                                          |
+| `bun test tests/user/create-user/create-user.test.ts` | 6 passed, 0 failed                                                                |
+| `bun test tests/user/delete-user/delete-user.test.ts` | 1 passed, 0 failed                                                                |
+| `bun test`                                            | 7 passed, 0 failed, 13 assertions across the original 2 files                     |
+| `git diff --check`                                    | Passed                                                                            |
 
 The feature files and case assertions are unchanged. No test scenarios, suites,
 mocks, hooks, CI or aggregate checking routine were added. The test context and
@@ -57,6 +58,11 @@ No shared development database or `.env` file was modified.
 - `migration:up:tests`: reapplied the baseline.
 - Final native `bun test`: passed all seven cases against that schema.
 
+The graph command initially selected an unrelated `dot` dotfiles helper.
+Graphviz 16.1.0 was installed locally and the command passed with
+`PATH="/opt/homebrew/bin:$PATH" bun run deps:graph`. The generated SVG is a local
+validation artifact; the existing illustrative asset was restored.
+
 ## Remaining work
 
 `bun audit` reported **one moderate advisory**:
@@ -68,3 +74,13 @@ remain in #8; this slice does not claim the parent's security acceptance.
 Nx conversion, correction of hexagonal coupling, and completion of CLI/messaging
 startup remain explicitly deferred by [ADR 0001](../adr/0001-modernize-with-bun.md).
 The current layer exceptions and unused examples remain in place.
+
+## Review
+
+The `code-review` skill reviewed the change against `origin/master` in separate
+Standards and Spec agents. Standards found no hard violations and one optional,
+pre-existing duplication in REST/GraphQL response mapping; extracting it is
+outside this tooling slice. Spec found no missing requirements, scope creep or
+incorrect implementations. The reviewer independently reran type, lint and
+architecture checks successfully. The two documentation corrections (28 initial
+type diagnostics and the retained transitive resolver dependency) are included.

@@ -86,7 +86,8 @@ removed: [AsyncLocalStorage is stable](https://nodejs.org/api/async_context.html
 
 `bun run depcruise --info` reports analyzer capabilities. `bun run deps:graph`
 regenerates `assets/dependency-graph.svg` and requires Graphviz's `dot` executable.
-Both use the same ESM architecture configuration.
+Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
+name. Both commands use the same ESM architecture configuration.
 
 The future objectives remain an **Nx monorepo**, **correcting hexagonal coupling**,
 and **completing CLI and messaging examples**. Whole-tree dependency remediation
