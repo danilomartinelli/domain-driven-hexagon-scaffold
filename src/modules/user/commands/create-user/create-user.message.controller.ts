@@ -1,3 +1,5 @@
+import type { Result } from 'oxide.ts';
+import type { UserAlreadyExistsError } from '../../domain/user.errors';
 import { Controller } from '@nestjs/common';
 import { MessagePattern } from '@nestjs/microservices';
 import { CommandBus } from '@nestjs/cqrs';
@@ -13,7 +15,10 @@ export class CreateUserMessageController {
   async create(message: CreateUserRequestDto): Promise<IdResponse> {
     const command = new CreateUserCommand(message);
 
-    const id = await this.commandBus.execute(command);
+    const id = await this.commandBus.execute<
+      CreateUserCommand,
+      Result<string, UserAlreadyExistsError>
+    >(command);
 
     return new IdResponse(id.unwrap());
   }

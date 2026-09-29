@@ -13,6 +13,8 @@ The main emphasis of this project is to provide recommendations on how to design
 Code examples run directly on [Bun](https://bun.com/) **1.4.2** using [TypeScript](https://www.typescriptlang.org/), [NestJS](https://docs.nestjs.com/) framework and [Slonik](https://github.com/gajus/slonik) for the database access.
 
 Install dependencies with **Bun 1.4.2** using `bun install --frozen-lockfile`.
+Run the individual [developer checks](docs/developer-checks.md) for strict types,
+lint, formatting and architecture.
 Database commands also execute directly under Bun. See the [database guide](docs/database.md)
 for local PostgreSQL, SQL migrations, seeds, and the recorded validation results.
 Run the application with `bun run start:dev` and the existing Gherkin cases with
@@ -1226,7 +1228,7 @@ For example:
   },
 ```
 
-Snippet of code above will prevent your domain layer to depend on the API layer or database layer. Example config: [.dependency-cruiser.js](.dependency-cruiser.js)
+Snippet of code above will prevent your domain layer to depend on the API layer or database layer. Example config: [.dependency-cruiser.mjs](.dependency-cruiser.mjs)
 
 You can also generate graphs like this:
 

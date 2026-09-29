@@ -1,3 +1,5 @@
+import type { Result } from 'oxide.ts';
+import type { UserAlreadyExistsError } from '../../domain/user.errors';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Command } from 'commander';
 import { CommandBus } from '@nestjs/cqrs';
@@ -40,7 +42,10 @@ export class CreateUserCliController {
       street,
     });
 
-    const result = await this.commandBus.execute(command);
+    const result = await this.commandBus.execute<
+      CreateUserCommand,
+      Result<string, UserAlreadyExistsError>
+    >(command);
 
     this.logger.log('User created:', result.unwrap());
   }

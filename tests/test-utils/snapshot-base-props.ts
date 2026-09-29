@@ -1,6 +1,6 @@
 import { expect } from 'bun:test';
 export const snapshotBaseProps = {
-  id: expect.any(String),
-  createdAt: expect.any(String),
-  updatedAt: expect.any(String),
+  id: expect.any(String) as unknown,
+  createdAt: expect.any(String) as unknown,
+  updatedAt: expect.any(String) as unknown,
 };

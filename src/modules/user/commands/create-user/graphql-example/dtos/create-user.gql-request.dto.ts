@@ -10,29 +10,30 @@ import {
 
 @ArgsType()
 @InputType()
+// Nest/class-transformer populates these fields before validation.
 export class CreateUserGqlRequestDto {
   @MaxLength(320)
   @MinLength(5)
   @IsEmail()
   @Field()
-  readonly email: string;
+  readonly email!: string;
 
   @MaxLength(50)
   @MinLength(4)
   @IsString()
   @Matches(/^[a-zA-Z ]*$/)
   @Field()
-  readonly country: string;
+  readonly country!: string;
 
   @MaxLength(10)
   @MinLength(4)
   @IsAlphanumeric()
   @Field()
-  readonly postalCode: string;
+  readonly postalCode!: string;
 
   @MaxLength(50)
   @MinLength(5)
   @Matches(/^[a-zA-Z ]*$/)
   @Field()
-  readonly street: string;
+  readonly street!: string;
 }

@@ -29,7 +29,9 @@ interfaces as runtime values, while injectable classes retain decorator metadata
 Module resolution uses `bundler`/`preserve`; alias paths are relative to the
 tsconfig. `useDefineForClassFields: false` retains the existing field assignment
 semantics, including inherited DTO properties initialized by base constructors.
-The remaining strictness and tooling modernization is owned by issue #7.
+Application, tests, database scripts and tool configurations are now checked with
+strict settings. See [developer checks](developer-checks.md) for the individual
+type, lint, format and architecture commands.
 
 ## Gherkin through the real application
 
@@ -125,13 +127,13 @@ from the isolated Bun/Gherkin probes recorded during specification. See the
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the
 runtime alias hook and Nest's build toolchain have been removed. `@types/jest`
-remains for jest-cucumber's runner interface. `tsconfig-paths` still exists only
-as a dependency of the retained architecture analyzer; `rimraf` remains within
-ESLint's cache dependency. Neither is used to start the application or tests.
+remains for jest-cucumber's runner interface. The architecture analyzer and ESLint have also been updated; they do not require
+`tsconfig-paths` or the old ESLint cache dependency on `rimraf`.
 
 The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
-Strict lint/type settings and architecture tooling remain in #7; complete
-dependency remediation and combined validation remain in #8. As required by
+Strict lint/type settings and architecture tooling are documented in
+[developer checks](developer-checks.md); complete dependency remediation and
+combined validation remain in #8. As required by
 [ADR 0001](adr/0001-modernize-with-bun.md), future goals
 remain: an Nx monorepo; removing the domain's context/framework/event-publication
 coupling; and completing startup and executable CLI/messaging examples.

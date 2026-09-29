@@ -14,6 +14,6 @@ export const databaseConfig = {
 
 export const postgresConnectionUri = `postgres://${encodeURIComponent(
   databaseConfig.username,
-)}:${encodeURIComponent(databaseConfig.password)}@${databaseConfig.host}:${
-  databaseConfig.port
-}/${encodeURIComponent(databaseConfig.database)}`;
+)}:${encodeURIComponent(databaseConfig.password)}@${databaseConfig.host}:${String(
+  databaseConfig.port,
+)}/${encodeURIComponent(databaseConfig.database)}`;

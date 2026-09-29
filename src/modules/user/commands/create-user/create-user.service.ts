@@ -34,7 +34,7 @@ export class CreateUserService implements ICommandHandler<CreateUserCommand> {
          that all domain events are processed atomically */
       await this.userRepo.transaction(async () => this.userRepo.insert(user));
       return Ok(user.id);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof ConflictException) {
         return Err(new UserAlreadyExistsError(error));
       }

@@ -1,5 +1,3 @@
-/** @type {import('dependency-cruiser').IConfiguration} */
-
 // https://github.com/Sairyss/domain-driven-hexagon#enforcing-architecture
 
 const apiLayerPaths = [
@@ -29,7 +27,8 @@ const domainLayerPaths = [
   'value-object\\.ts$',
 ];
 
-module.exports = {
+/** @type {import('dependency-cruiser').IConfiguration} */
+const config = {
   forbidden: [
     /* user defined rules */
     {
@@ -142,7 +141,7 @@ module.exports = {
           '^(node-inspect/lib/_inspect)$',
           '^(node-inspect/lib/internal/inspect_client)$',
           '^(node-inspect/lib/internal/inspect_repl)$',
-          '^(async_hooks)$',
+          // AsyncLocalStorage from node:async_hooks is stable and intentionally retained.
           '^(punycode)$',
           '^(domain)$',
           '^(constants)$',
@@ -247,6 +246,8 @@ module.exports = {
       },
       to: {
         dependencyTypes: ['npm-dev'],
+        // Type-only adapter contracts are supplied by @types packages, not runtime imports.
+        dependencyTypesNot: ['type-only'],
       },
     },
     {
@@ -407,7 +408,7 @@ module.exports = {
         If you have a 'conditionNames' attribute in your webpack config, that one will
         have precedence over the one specified here.
       */
-      conditionNames: ['import', 'require', 'node', 'default'],
+      conditionNames: ['bun', 'import', 'require', 'node', 'default'],
       /*
          The extensions, by default are the same as the ones dependency-cruiser
          can access (run `npx depcruise --info` to see which ones that are in
@@ -534,4 +535,6 @@ module.exports = {
     },
   },
 };
-// generated: dependency-cruiser@12.10.0 on 2023-02-27T15:40:08.936Z
+// Maintained for dependency-cruiser 18 and native Bun/ESM resolution.
+
+export default config;

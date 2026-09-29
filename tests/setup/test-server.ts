@@ -11,7 +11,7 @@ import request from 'supertest';
 let app: NestExpressApplication | undefined;
 let pool: DatabasePool | undefined;
 
-export function getHttpServer(): request.SuperTest<request.Test> {
+export function getHttpServer(): ReturnType<typeof request> {
   if (!app) throw new Error('Test application has not started.');
   return request(app.getHttpServer());
 }

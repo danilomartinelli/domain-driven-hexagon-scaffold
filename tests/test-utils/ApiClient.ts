@@ -9,16 +9,16 @@ export class ApiClient {
 
   async createUser(dto: CreateUserRequestDto): Promise<IdResponse> {
     const response = await getHttpServer().post(this.url).send(dto);
-    return response.body;
+    return response.body as IdResponse;
   }
 
-  async deleteUser(id: string): Promise<void> {
+  async deleteUser(id: string): Promise<unknown> {
     const response = await getHttpServer().delete(`${this.url}/${id}`);
-    return response.body;
+    return response.body as unknown;
   }
 
   async findAllUsers(): Promise<UserPaginatedResponseDto> {
     const response = await getHttpServer().get(this.url);
-    return response.body;
+    return response.body as UserPaginatedResponseDto;
   }
 }

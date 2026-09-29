@@ -30,7 +30,7 @@ export class WalletMapper implements Mapper<WalletEntity, WalletModel> {
     return entity;
   }
 
-  toResponse(): any {
+  toResponse(): never {
     throw new Error('Not implemented');
   }
 }

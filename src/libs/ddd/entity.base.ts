@@ -75,7 +75,7 @@ export abstract class Entity<EntityProps> {
    *  Checks if two entities are the same Entity by comparing ID field.
    * @param object Entity
    */
-  public equals(object?: Entity<EntityProps>): boolean {
+  public equals(object?: Entity<EntityProps> | null): boolean {
     if (object === null || object === undefined) {
       return false;
     }
@@ -138,12 +138,12 @@ export abstract class Entity<EntityProps> {
         'Entity props should not be empty',
       );
     }
-    if (typeof props !== 'object') {
+    if (typeof props !== 'object' || props === null) {
       throw new ArgumentInvalidException('Entity props should be an object');
     }
-    if (Object.keys(props as any).length > MAX_PROPS) {
+    if (Object.keys(props).length > MAX_PROPS) {
       throw new ArgumentOutOfRangeException(
-        `Entity props should not have more than ${MAX_PROPS} properties`,
+        `Entity props should not have more than ${String(MAX_PROPS)} properties`,
       );
     }
   }

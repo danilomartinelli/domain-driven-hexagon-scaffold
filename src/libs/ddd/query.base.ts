@@ -3,6 +3,7 @@ import type { OrderBy, PaginatedQueryParams } from './repository.port';
 /**
  * Base class for regular queries
  */
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Public marker base for query examples.
 export abstract class QueryBase {}
 
 /**

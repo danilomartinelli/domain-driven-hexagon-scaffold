@@ -17,7 +17,7 @@ export const walletSchema = z.object({
   userId: z.string().min(1).max(255),
 });
 
-export type WalletModel = z.TypeOf<typeof walletSchema>;
+export type WalletModel = z.output<typeof walletSchema>;
 
 @Injectable()
 export class WalletRepository

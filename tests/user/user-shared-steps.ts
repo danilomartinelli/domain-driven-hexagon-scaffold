@@ -26,9 +26,9 @@ export const iSendARequestToCreateAUser = (
   ctx: TestContext<CreateUserTestContext>,
 ): void => {
   when('I send a request to create a user', async () => {
-    const response = await new ApiClient().createUser(
-      ctx.context.createUserDto,
-    );
+    const dto = ctx.context.createUserDto;
+    if (!dto) throw new Error('User profile data has not been provided.');
+    const response = await new ApiClient().createUser(dto);
     ctx.latestResponse = response;
   });
 };

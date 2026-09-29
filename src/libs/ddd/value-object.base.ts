@@ -31,7 +31,7 @@ export abstract class ValueObject<T> {
    *  Check if two Value Objects are equal. Checks structural equality.
    * @param vo ValueObject
    */
-  public equals(vo?: ValueObject<T>): boolean {
+  public equals(vo?: ValueObject<T> | null): boolean {
     if (vo === null || vo === undefined) {
       return false;
     }
@@ -48,7 +48,8 @@ export abstract class ValueObject<T> {
 
     const propsCopy = convertPropsToObject(this.props);
 
-    return Object.freeze(propsCopy);
+    // The domain-primitive branch above handles the wrapped alternatives.
+    return Object.freeze(propsCopy) as T;
   }
 
   private checkIfEmpty(props: ValueObjectProps<T>): void {

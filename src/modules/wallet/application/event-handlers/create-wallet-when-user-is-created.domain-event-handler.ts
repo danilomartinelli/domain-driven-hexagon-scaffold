@@ -18,7 +18,7 @@ export class CreateWalletWhenUserIsCreatedDomainEventHandler {
     promisify: true,
     suppressErrors: false, // Let wallet failures reject the user transaction.
   })
-  async handle(event: UserCreatedDomainEvent): Promise<any> {
+  async handle(event: UserCreatedDomainEvent): Promise<void> {
     const wallet = WalletEntity.create({
       userId: event.aggregateId,
     });

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types */
 import { Entity } from '../ddd/entity.base';
 import { ValueObject } from '../ddd/value-object.base';
 
@@ -15,7 +14,7 @@ function isEntity(obj: unknown): obj is Entity<unknown> {
   );
 }
 
-function convertToPlainObject(item: any): any {
+function convertToPlainObject(item: unknown): unknown {
   if (ValueObject.isValueObject(item)) {
     return item.unpack();
   }
@@ -30,17 +29,19 @@ function convertToPlainObject(item: any): any {
  * Useful for testing and debugging.
  * @param props
  */
-export function convertPropsToObject(props: any): any {
+export function convertPropsToObject<T>(props: T): T {
   const propsCopy = structuredClone(props);
 
-  // eslint-disable-next-line guard-for-in
   for (const prop in propsCopy) {
-    if (Array.isArray(propsCopy[prop])) {
-      propsCopy[prop] = (propsCopy[prop] as Array<unknown>).map((item) => {
-        return convertToPlainObject(item);
-      });
-    }
-    propsCopy[prop] = convertToPlainObject(propsCopy[prop]);
+    const value: unknown = propsCopy[prop];
+    const converted: unknown = Array.isArray(value)
+      ? value.map((item: unknown) => convertToPlainObject(item))
+      : value;
+    // This utility preserves the existing clone/unpack contract for callers.
+    propsCopy[prop] = convertToPlainObject(converted) as T[Extract<
+      keyof T,
+      string
+    >];
   }
 
   return propsCopy;

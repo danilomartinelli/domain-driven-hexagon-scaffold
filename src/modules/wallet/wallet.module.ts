@@ -19,4 +19,5 @@ const repositories: Provider[] = [
   controllers: [],
   providers: [Logger, ...eventHandlers, ...mappers, ...repositories],
 })
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest requires a decorated module class.
 export class WalletModule {}

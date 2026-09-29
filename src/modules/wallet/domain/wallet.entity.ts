@@ -14,7 +14,8 @@ export interface WalletProps extends CreateWalletProps {
 }
 
 export class WalletEntity extends AggregateRoot<WalletProps> {
-  protected readonly _id: AggregateID;
+  // Assigned by the Entity constructor through setId.
+  protected readonly _id!: AggregateID;
 
   static create(create: CreateWalletProps): WalletEntity {
     const id = randomUUID();
