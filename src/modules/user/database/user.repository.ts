@@ -1,6 +1,7 @@
-import { InjectPool } from 'nestjs-slonik';
-import { DatabasePool, sql } from 'slonik';
-import { UserRepositoryPort } from './user.repository.port';
+import { Inject } from '@nestjs/common';
+import { DATABASE_POOL } from '@libs/db/database.module';
+import { type DatabasePool, sql } from 'slonik';
+import type { UserRepositoryPort } from './user.repository.port';
 import { z } from 'zod';
 import { UserMapper } from '../user.mapper';
 import { UserRoles } from '../domain/user.types';
@@ -16,8 +17,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
  */
 export const userSchema = z.object({
   id: z.string().uuid(),
-  createdAt: z.preprocess((val: any) => new Date(val), z.date()),
-  updatedAt: z.preprocess((val: any) => new Date(val), z.date()),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
   email: z.string().email(),
   country: z.string().min(1).max(255),
   postalCode: z.string().min(1).max(20),
@@ -40,7 +41,7 @@ export class UserRepository
   protected schema = userSchema;
 
   constructor(
-    @InjectPool()
+    @Inject(DATABASE_POOL)
     pool: DatabasePool,
     mapper: UserMapper,
     eventEmitter: EventEmitter2,

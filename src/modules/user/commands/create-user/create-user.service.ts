@@ -1,10 +1,10 @@
-import { UserRepositoryPort } from '@modules/user/database/user.repository.port';
+import type { UserRepositoryPort } from '@modules/user/database/user.repository.port';
 import { Address } from '@modules/user/domain/value-objects/address.value-object';
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
 import { Err, Ok, Result } from 'oxide.ts';
 import { CreateUserCommand } from './create-user.command';
 import { UserAlreadyExistsError } from '@modules/user/domain/user.errors';
-import { AggregateID } from '@libs/ddd';
+import type { AggregateID } from '@libs/ddd';
 import { UserEntity } from '@modules/user/domain/user.entity';
 import { ConflictException } from '@libs/exceptions';
 import { Inject } from '@nestjs/common';

@@ -1,34 +1,30 @@
 import { RequestContextService } from '@libs/application/context/AppRequestContext';
-import { AggregateRoot, PaginatedQueryParams, Paginated } from '@libs/ddd';
-import { Mapper } from '@libs/ddd';
-import { RepositoryPort } from '@libs/ddd';
+import { AggregateRoot, type PaginatedQueryParams, Paginated } from '@libs/ddd';
+import type { Mapper } from '@libs/ddd';
+import type { RepositoryPort } from '@libs/ddd';
 import { ConflictException } from '@libs/exceptions';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { None, Option, Some } from 'oxide.ts';
-import {
+import { sql, UniqueIntegrityConstraintViolationError } from 'slonik';
+import type {
   DatabasePool,
   DatabaseTransactionConnection,
   IdentifierSqlToken,
-  MixedRow,
   PrimitiveValueExpression,
-  QueryResult,
-  QueryResultRow,
-  sql,
-  SqlSqlToken,
-  UniqueIntegrityConstraintViolationError,
+  QuerySqlToken,
+  ValueExpression,
 } from 'slonik';
-import { ZodTypeAny, TypeOf, ZodObject } from 'zod';
-import { LoggerPort } from '../ports/logger.port';
-import { ObjectLiteral } from '../types';
+import type { ZodType } from 'zod';
+import type { LoggerPort } from '../ports/logger.port';
 
 export abstract class SqlRepositoryBase<
   Aggregate extends AggregateRoot<any>,
-  DbModel extends ObjectLiteral,
+  DbModel extends Record<string, PrimitiveValueExpression | Date>,
 > implements RepositoryPort<Aggregate>
 {
   protected abstract tableName: string;
 
-  protected abstract schema: ZodObject<any>;
+  protected abstract schema: ZodType<DbModel>;
 
   protected constructor(
     private readonly _pool: DatabasePool,
@@ -78,7 +74,7 @@ export abstract class SqlRepositoryBase<
 
   async delete(entity: Aggregate): Promise<boolean> {
     entity.validate();
-    const query = sql`DELETE FROM ${sql.identifier([
+    const query = sql.unsafe`DELETE FROM ${sql.identifier([
       this.tableName,
     ])} WHERE id = ${entity.id}`;
 
@@ -111,9 +107,7 @@ export abstract class SqlRepositoryBase<
     } catch (error) {
       if (error instanceof UniqueIntegrityConstraintViolationError) {
         this.logger.debug(
-          `[${RequestContextService.getRequestId()}] ${
-            (error.originalError as any).detail
-          }`,
+          `[${RequestContextService.getRequestId()}] ${error.detail}`,
         );
         throw new ConflictException('Record already exists', error);
       }
@@ -127,20 +121,10 @@ export abstract class SqlRepositoryBase<
    * and does some debug logging.
    * For read queries use `this.pool` directly
    */
-  protected async writeQuery<T>(
-    sql: SqlSqlToken<
-      T extends MixedRow ? T : Record<string, PrimitiveValueExpression>
-    >,
+  protected async writeQuery(
+    query: QuerySqlToken,
     entity: Aggregate | Aggregate[],
-  ): Promise<
-    QueryResult<
-      T extends MixedRow
-        ? T extends ZodTypeAny
-          ? TypeOf<ZodTypeAny & MixedRow & T>
-          : T
-        : T
-    >
-  > {
+  ): Promise<void> {
     const entities = Array.isArray(entity) ? entity : [entity];
     entities.forEach((entity) => entity.validate());
     const entityIds = entities.map((e) => e.id);
@@ -151,14 +135,13 @@ export abstract class SqlRepositoryBase<
       } entities to "${this.tableName}" table: ${entityIds}`,
     );
 
-    const result = await this.pool.query(sql);
+    await this.pool.query(query);
 
     await Promise.all(
       entities.map((entity) =>
         entity.publishEvents(this.logger, this.eventEmitter),
       ),
     );
-    return result;
   }
 
   /**
@@ -168,12 +151,10 @@ export abstract class SqlRepositoryBase<
    * Passing object with { name: string, email: string } will generate
    * a query: INSERT INTO "table" (name, email) VALUES ($1, $2)
    */
-  protected generateInsertQuery(
-    models: DbModel[],
-  ): SqlSqlToken<QueryResultRow> {
+  protected generateInsertQuery(models: DbModel[]): QuerySqlToken {
     // TODO: generate query from an entire array to insert multiple records at once
     const entries = Object.entries(models[0]);
-    const values: any = [];
+    const values: ValueExpression[] = [];
     const propertyNames: IdentifierSqlToken[] = [];
 
     entries.forEach((entry) => {
@@ -187,15 +168,14 @@ export abstract class SqlRepositoryBase<
       }
     });
 
-    const query = sql`INSERT INTO ${sql.identifier([
+    const query = sql.unsafe`INSERT INTO ${sql.identifier([
       this.tableName,
-    ])} (${sql.join(propertyNames, sql`, `)}) VALUES (${sql.join(
+    ])} (${sql.join(propertyNames, sql.fragment`, `)}) VALUES (${sql.join(
       values,
-      sql`, `,
+      sql.fragment`, `,
     )})`;
 
-    const parsedQuery = query;
-    return parsedQuery;
+    return query;
   }
 
   /**

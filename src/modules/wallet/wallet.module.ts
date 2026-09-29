@@ -1,4 +1,4 @@
-import { Logger, Module, Provider } from '@nestjs/common';
+import { Logger, Module, type Provider } from '@nestjs/common';
 import { CreateWalletWhenUserIsCreatedDomainEventHandler } from './application/event-handlers/create-wallet-when-user-is-created.domain-event-handler';
 import { WalletRepository } from './database/wallet.repository';
 import { WALLET_REPOSITORY } from './wallet.di-tokens';

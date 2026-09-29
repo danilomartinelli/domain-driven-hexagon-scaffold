@@ -1,4 +1,4 @@
-import { DomainEvent, DomainEventProps } from '@libs/ddd';
+import { DomainEvent, type DomainEventProps } from '@libs/ddd';
 
 export class UserCreatedDomainEvent extends DomainEvent {
   readonly email: string;

@@ -1,10 +1,13 @@
-import { AggregateRoot, AggregateID } from '@libs/ddd';
+import { AggregateRoot, type AggregateID } from '@libs/ddd';
 import { UserCreatedDomainEvent } from './events/user-created.domain-event';
-import { Address, AddressProps } from './value-objects/address.value-object';
 import {
-  CreateUserProps,
-  UpdateUserAddressProps,
-  UserProps,
+  Address,
+  type AddressProps,
+} from './value-objects/address.value-object';
+import {
+  type CreateUserProps,
+  type UpdateUserAddressProps,
+  type UserProps,
   UserRoles,
 } from './user.types';
 import { UserDeletedDomainEvent } from './events/user-deleted.domain-event';
