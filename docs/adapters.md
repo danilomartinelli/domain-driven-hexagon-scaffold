@@ -53,7 +53,11 @@ middleware, with an explicit Express 5 route matcher.
 CreateUserGqlRequestDto!)` and `findUsers(options: String!)`. The existing
   `options` argument remains a string; this upgrade does not redesign that
   educational example into a typed filter or JSON parser. The browser IDE is
-  now GraphiQL, supplied by Nest GraphQL 14.
+  now GraphiQL, supplied by Nest GraphQL 14. GraphQL retains its wildcard CORS
+  policy through explicit `cors()` middleware in `AppModule`, before Apollo:
+  responses include `Access-Control-Allow-Origin: *`, and `OPTIONS /graphql`
+  preflights return 204. REST does not enable CORS. Error payloads and accepted
+  HTTP request formats have the migration differences described below.
 - **CLI:** the injectable `CreateUserCliController.createCommand()` returns a
   Commander `new` command with subcommand
   `user <email> <country> <postalCode> <street>`. Its async action returns
@@ -69,6 +73,26 @@ CreateUserGqlRequestDto!)` and `findUsers(options: String!)`. The existing
 CQRS is initialized with `CqrsModule.forRoot()`, and handlers supply their
 command/query type to the new conditional handler interfaces. Domain classes
 and bus payloads remain unchanged.
+
+## GraphQL client migration
+
+The unchanged SDL does not imply identical error payloads or HTTP transport
+defaults. In line with [ADR 0001](adr/0001-modernize-with-bun.md), this upgrade
+keeps the current Nest/Apollo error formatting, CSRF protection and batching
+defaults; it does not install a legacy `formatError` compatibility layer.
+
+| Case                                                                                | Previous behavior                                                                | Current behavior and client action                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Input rejected by the global `ValidationPipe`                                       | `extensions.code: "BAD_USER_INPUT"`; validation details in `extensions.response` | `extensions.code: "BAD_REQUEST"`; details in `extensions.originalError`. Read `statusCode`, `message`, `error`, `correlationId` and `subErrors` there. These resolver errors still use HTTP 200 with GraphQL `errors` and `data: null`.   |
+| Unhandled resolver error, including duplicate email                                 | Development responses exposed `extensions.exception.correlationId`               | Apollo no longer includes `extensions.exception`. Duplicate email still returns `INTERNAL_SERVER_ERROR`; clients cannot rely on a correlation ID in that error response. The validation correlation ID described above remains available. |
+| GET query without a non-simple `Content-Type` or preflight header                   | Accepted with the former default CSRF setting                                    | HTTP 400. Send a non-empty `apollo-require-preflight` or `x-apollo-operation-name` header, or use a JSON POST with `Content-Type: application/json`.                                                                                      |
+| `text/plain` or `application/x-www-form-urlencoded` POST without a preflight header | Accepted by the previous integration                                             | HTTP 400 from CSRF prevention. Send a JSON object with `Content-Type: application/json`.                                                                                                                                                  |
+| Array of operations in one JSON POST                                                | HTTP operation batching accepted                                                 | HTTP 400: `Operation batching disabled.` Send one operation object per HTTP request.                                                                                                                                                      |
+
+A normal JSON POST remains supported. Restoring CORS lets a browser on another
+origin complete its preflight; it does not disable Apollo's CSRF checks or enable
+HTTP batching. See [Apollo's CORS/CSRF guide](https://www.apollographql.com/docs/apollo-server/security/cors)
+and [migration from Apollo Server 3](https://www.apollographql.com/docs/apollo-server/migration-from-v3).
 
 ## Request isolation and transaction participation
 

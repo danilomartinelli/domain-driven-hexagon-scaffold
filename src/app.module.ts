@@ -14,6 +14,7 @@ import { ContextInterceptor } from './libs/application/context/ContextIntercepto
 import { ExceptionInterceptor } from '@libs/application/interceptors/exception.interceptor';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
+import cors from 'cors';
 
 const interceptors = [
   {
@@ -46,5 +47,7 @@ const interceptors = [
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestContextMiddleware).forRoutes('{*path}');
+    // Apollo's Express integration no longer installs GraphQL CORS itself.
+    consumer.apply(cors()).forRoutes('graphql');
   }
 }

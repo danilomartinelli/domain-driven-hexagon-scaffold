@@ -86,3 +86,53 @@ propagation were reviewed in [the adapter guide](../adapters.md#request-isolatio
 No new validation script, suite, CI, hook, deployment or production migration
 was introduced. Future objectives remain **Nx monorepo; correction of hexagonal
 coupling; completion of the CLI and messaging examples**.
+
+## PR #11 review follow-up: GraphQL HTTP compatibility
+
+On 2026-09-29, reproduced the attached review findings on `ed73c8e` using the
+full `AppModule`, its global validation pipe, real HTTP requests and an owned
+disposable PostgreSQL 18.6 instance. The Compose project was
+`ddh-issue6-review`, service `postgres-test`, at `localhost:5434/ddh_tests`;
+the existing `bun run migration:up:tests` prepared its schema.
+
+The temporary reproduction scripts and before/after logs live in the ignored
+`.context/review/` directory. They are review probes, not additions to the
+seven-case automated suite, as required by issue #6.
+
+```sh
+NODE_ENV=test bun .context/review/cors-minimal.ts
+NODE_ENV=test bun .context/review/graphql-contract-probe.ts
+```
+
+Before the fix, the minimized preflight failed with `400 !== 204` and no
+`Access-Control-Allow-Origin`. The full probe also found missing CORS headers
+on successful JSON POSTs and validation-error responses: four failed checks.
+Repeating the preflight alone reproduced the same failure without a mutation
+or validation pipe.
+
+The cause was the removal of automatic CORS setup in Apollo's Express
+integration. `AppModule` now registers `cors()` for `graphql` before Apollo;
+`cors` 2.8.6 is a direct dependency, with `@types/cors` 2.8.19 for static checks.
+Both original probes then passed. The full probe checked:
+
+- Preflight HTTP 204, wildcard origin, allowed POST and requested headers;
+  wildcard origin also present on GraphQL success and validation errors.
+- REST listing still returns HTTP 200 without CORS; REST and the unrelated
+  `/graphql-other` route do not acquire CORS on preflight.
+- Real GraphQL user creation and deletion, validation details under
+  `BAD_REQUEST` / `originalError`, and duplicate-email errors without the
+  legacy `exception` extension.
+- CSRF rejection of GET without a qualifying header, successful GET with
+  either supported preflight header, rejection of plain-text/form POSTs without
+  that header, and rejection of batched operation arrays.
+
+The error payload and request-format changes are retained and explicitly
+documented in [GraphQL client migration](../adapters.md#graphql-client-migration),
+including the client adjustments. No legacy formatter or weaker CSRF setting
+was added.
+
+After the fix, `bun test` again reported **7 pass, 0 fail, 13 assertions** with
+real PostgreSQL. Typecheck, ESLint, Prettier, frozen installation and
+`git diff --check` passed. The probes await `app.close()`; the owned disposable
+database was removed after validation. These are local results; no remote CI,
+deployment or production migration was performed.
