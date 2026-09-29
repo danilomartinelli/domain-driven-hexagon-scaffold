@@ -1,18 +1,25 @@
-import { RequestContext } from 'nestjs-request-context';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { DatabaseTransactionConnection } from 'slonik';
 
 /**
  * Setting some isolated context for each request.
  */
 
-export class AppRequestContext extends RequestContext {
+export class AppRequestContext {
   requestId: string;
   transactionConnection?: DatabaseTransactionConnection; // For global transactions
 }
 
 export class RequestContextService {
+  private static readonly storage = new AsyncLocalStorage<AppRequestContext>();
+
+  static run<T>(callback: () => T): T {
+    return this.storage.run(new AppRequestContext(), callback);
+  }
+
   static getContext(): AppRequestContext {
-    const ctx: AppRequestContext = RequestContext.currentContext.req;
+    const ctx = this.storage.getStore();
+    if (!ctx) throw new Error('Request context has not been initialized.');
     return ctx;
   }
 

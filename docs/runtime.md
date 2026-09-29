@@ -19,6 +19,9 @@ the complete application on source changes. `bun run start` runs once;
 runs the same source. Deployments need the source and runtime dependencies, not
 an emitted JavaScript build. CLI and messaging controllers remain registered
 examples; they still have no CLI bootstrap or messaging transport.
+See [adapter compatibility](adapters.md) for the Nest/Apollo versions, CLI
+command definition, and the limits of each example. The existing start scripts
+continue to execute the full application directly under Bun.
 
 `bun run typecheck` runs TypeScript **6.0.3** with `noEmit`. Native execution is
 not type checking. Type-only imports are explicit so Bun does not try to load
@@ -102,12 +105,14 @@ HTTP request -> isolated AsyncLocalStorage context
 ```
 
 Both repositories' `pool` accessor prefers the request's transaction connection
-over the injected pool. The retained `nestjs-request-context` middleware creates
-a distinct AsyncLocalStorage store for each HTTP request, also covering HTTP
-GraphQL requests. The asynchronous wallet listener returns the insertion promise.
-The retained Nest event-emitter **1.4.2** invokes that listener without swallowing
-its rejection; `emitAsync`, aggregate publication, repository insertion and the
-transaction callback all await it. The repository rethrows failures (mapping
+over the injected pool. The local `RequestContextMiddleware` starts a distinct
+`AsyncLocalStorage.run()` store for each HTTP request, including GraphQL, using
+Express 5's named wildcard route. There is no shared fallback store outside a
+request. The asynchronous wallet listener returns the insertion promise.
+Nest event-emitter **12.0.1** suppresses listener errors by default, so the wallet
+listener explicitly sets `suppressErrors: false`. `emitAsync`, aggregate
+publication, repository insertion and the transaction callback all await it.
+The repository rethrows failures (mapping
 uniqueness errors to the existing conflict type), so commit cannot precede the
 wallet write. This is implementation review of the existing top-level workflow,
 not a general redesign of context or transaction ownership.
@@ -115,7 +120,8 @@ not a general redesign of context or transaction ownership.
 **The seven cases do not prove atomic rollback.** They contain no forced wallet
 failure or rollback assertion. They are the application's actual cases, distinct
 from the isolated Bun/Gherkin probes recorded during specification. See the
-[execution record](validation/issue-5-runtime.md).
+[original execution record](validation/issue-5-runtime.md) and the
+[Nest upgrade record](validation/issue-6-adapters.md).
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the
 runtime alias hook and Nest's build toolchain have been removed. `@types/jest`
@@ -123,8 +129,10 @@ remains for jest-cucumber's runner interface. `tsconfig-paths` still exists only
 as a dependency of the retained architecture analyzer; `rimraf` remains within
 ESLint's cache dependency. Neither is used to start the application or tests.
 
-Framework, lint, architecture tooling and security cleanup continue in the later
-tickets. As required by [ADR 0001](adr/0001-modernize-with-bun.md), future goals
+The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
+Strict lint/type settings and architecture tooling remain in #7; complete
+dependency remediation and combined validation remain in #8. As required by
+[ADR 0001](adr/0001-modernize-with-bun.md), future goals
 remain: an Nx monorepo; removing the domain's context/framework/event-publication
 coupling; and completing startup and executable CLI/messaging examples.
 

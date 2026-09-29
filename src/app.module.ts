@@ -1,15 +1,20 @@
-import { Module } from '@nestjs/common';
+import {
+  Module,
+  type MiddlewareConsumer,
+  type NestModule,
+} from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { DatabaseModule } from '@libs/db/database.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { UserModule } from '@modules/user/user.module';
 import { WalletModule } from '@modules/wallet/wallet.module';
-import { RequestContextModule } from 'nestjs-request-context';
+import { RequestContextMiddleware } from './libs/application/context/RequestContextMiddleware';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ContextInterceptor } from './libs/application/context/ContextInterceptor';
 import { ExceptionInterceptor } from '@libs/application/interceptors/exception.interceptor';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
+import cors from 'cors';
 
 const interceptors = [
   {
@@ -25,9 +30,8 @@ const interceptors = [
 @Module({
   imports: [
     EventEmitterModule.forRoot(),
-    RequestContextModule,
     DatabaseModule,
-    CqrsModule,
+    CqrsModule.forRoot(),
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: true,
@@ -40,4 +44,10 @@ const interceptors = [
   controllers: [],
   providers: [...interceptors],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestContextMiddleware).forRoutes('{*path}');
+    // Apollo's Express integration no longer installs GraphQL CORS itself.
+    consumer.apply(cors()).forRoutes('graphql');
+  }
+}
