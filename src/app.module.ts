@@ -4,14 +4,14 @@ import {
   type NestModule,
 } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
-import { DatabaseModule } from '@libs/db/database.module';
+import { DatabaseModule } from '@src/infrastructure/database.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { UserModule } from '@modules/user/user.module';
 import { WalletModule } from '@modules/wallet/wallet.module';
-import { RequestContextMiddleware } from './libs/application/context/RequestContextMiddleware';
+import { RequestContextMiddleware } from '@starter/nest-support/context';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ContextInterceptor } from './libs/application/context/ContextInterceptor';
-import { ExceptionInterceptor } from '@libs/application/interceptors/exception.interceptor';
+import { ContextInterceptor } from '@starter/nest-support/context';
+import { ExceptionInterceptor } from '@starter/nest-support/http';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import cors from 'cors';

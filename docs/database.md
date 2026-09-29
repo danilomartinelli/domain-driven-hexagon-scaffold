@@ -167,6 +167,6 @@ manual workflow. Current hooks and automated local validation are documented in
 [developer checks](developer-checks.md).
 
 The broader modernization remains governed by [ADR 0001](adr/0001-modernize-with-bun.md).
-Future objectives remain: an Nx monorepo; correcting hexagonal coupling between
-domain, request context/framework and concrete event publication; and completing
-startup/executable examples for CLI and messaging.
+The [Nx baseline](nx-workspace.md) now orchestrates these commands. Independent
+User/Wallet databases, application-owned transactions and durable messaging
+remain future slices; the current shared database and transaction are retained.

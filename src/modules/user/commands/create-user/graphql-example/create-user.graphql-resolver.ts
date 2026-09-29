@@ -1,11 +1,11 @@
-import { RequestContextService } from '@libs/application/context/AppRequestContext';
-import { createCommandContext } from '@libs/application/command-context';
+import { RequestContextService } from '@starter/nest-support/context';
+import { createCommandContext } from '@starter/nest-support/commands';
 import { Args, Mutation, Resolver } from '@nestjs/graphql';
 import { CommandBus } from '@nestjs/cqrs';
 import { CreateUserCommand } from '../create-user.command';
 import { CreateUserGqlRequestDto } from './dtos/create-user.gql-request.dto';
 import { IdGqlResponse } from './dtos/id.gql-response.dto';
-import type { AggregateID } from '@src/libs/ddd';
+import type { AggregateID } from '@starter/core/domain';
 import { UserAlreadyExistsError } from '@src/modules/user/domain/user.errors';
 import { Result } from 'oxide.ts';
 

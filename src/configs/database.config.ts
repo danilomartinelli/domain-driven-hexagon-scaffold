@@ -1,5 +1,5 @@
 import { get } from 'env-var';
-import '../libs/utils/dotenv';
+import './load-env';
 
 // https://github.com/Sairyss/backend-best-practices#configuration
 

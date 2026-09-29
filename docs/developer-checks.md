@@ -10,18 +10,18 @@ is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files and verification of changed links/commands.
 
-| Check             | Command                   | Scope                                                                                                         |
-| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                  |
-| Full gate         | `bun run check:full`      | Fast gate, runner lifecycle tests and provisioned application E2E                                             |
-| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                     |
-| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                       |
-| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                      |
-| Architecture      | `bun run lint:boundaries` | `src/`, `tests/` and `scripts/`, including type-only imports and aliases; `deps:validate` is an alias         |
-| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                      |
-| Live behavior     | `bun run test:e2e`        | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up |
-| Runner lifecycle  | `bun run test:tooling`    | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                |
-| Dependencies      | `bun audit`               | Complete locked tree; no advisory ignores                                                                     |
+| Check             | Command                   | Scope                                                                                                              |
+| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                       |
+| Full gate         | `bun run check:full`      | Fast gate, runner lifecycle tests and provisioned application E2E                                                  |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                          |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                            |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                           |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                           |
+| Live behavior     | `bun run test:e2e`        | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up      |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                     |
+| Dependencies      | `bun audit`               | Complete locked tree; no advisory ignores                                                                          |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -33,6 +33,16 @@ Run `bun --bun lint-staged` before capturing a staged review snapshot. If a hook
 changes the committed tree, review the resulting difference before publishing.
 `bun run prepare` reinstalls hooks when needed. The hook needs Bun on the Git
 process's `PATH`; it invokes the installed local tools without downloading them.
+
+## Nx orchestration
+
+Package scripts delegate to Nx targets; see [the workspace guide](nx-workspace.md)
+for all ten projects, private exports, absent suites and cache inputs. Shared
+quality settings live in `tooling/config`, with native root entry points for
+editors. The compile-time fixture is `src/type-tests/final.decorator.ts`.
+`test:unit` runs the existing application, core primitive and example suites.
+`test:debug` opens the application unit suite; package inspector targets are
+`core:test-debug` and `example:test-debug`. Live targets always execute.
 
 ## Isolated database checks
 
@@ -115,8 +125,8 @@ and `oxide.ts`. This includes type-only imports and paths through barrel exports
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/README.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
-fixtures, and dependency cycles are errors throughout the checked graph. The
-existing `src/modules` layout stays in place until the planned Nx migration.
+fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; private technical
+packages now live under `src/packages`.
 Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was
@@ -129,11 +139,12 @@ name. Both commands use the same ESM architecture configuration.
 
 Run every applicable check above, including the live suite, before declaring code
 ready. `bun run test`, `test:unit`, `test:watch`, `test:cov` and `test:debug` include
-`tests/unit` and colocated tests under `src/packages`. Bare `bun test` retains its
-`tests/unit` default. The E2E preload is opt-in via the live commands. Nx orchestration and independent
-service suites belong to later tickets in [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
+`src/tests` and colocated tests under `src/packages`. Bare `bun test` retains its
+`src/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline;
+independent service and contract/distribution suites belong to later tickets in
+[the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
 
-The remaining objectives are Nx, application-owned ports/transactions and durable
+The remaining objectives are independent applications, application-owned ports/transactions and durable
 service integration. See the
 [dependency inventory](dependencies.md) for version decisions and security overrides,
 and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for

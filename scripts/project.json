@@ -1,0 +1,48 @@
+{
+  "name": "test-runner",
+  "projectType": "library",
+  "tags": ["scope:tooling"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint scripts --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project scripts/tsconfig.json",
+        "cwd": "."
+      }
+    },
+    "test-live": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests",
+        "cwd": "."
+      }
+    },
+    "with-database": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts --",
+        "cwd": "."
+      }
+    },
+    "lint-fix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --bun eslint scripts --max-warnings 0 --fix",
+        "cwd": "."
+      }
+    }
+  },
+  "implicitDependencies": ["database", "infrastructure"]
+}

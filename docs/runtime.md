@@ -20,8 +20,8 @@ runs the same source. Deployments need the source and runtime dependencies, not
 an emitted JavaScript build. CLI and messaging controllers remain registered
 examples; they still have no CLI bootstrap or messaging transport.
 See [adapter compatibility](adapters.md) for the Nest/Apollo versions, CLI
-command definition, and the limits of each example. The existing start scripts
-continue to execute the full application directly under Bun.
+command definition, and the limits of each example. The start scripts invoke Nx targets that execute the full application under Bun.
+See [the Nx baseline](nx-workspace.md) for projects, commands and cache policy.
 
 The shared dotenv 18 loader selects `.env.test` only when `NODE_ENV=test`,
 otherwise `.env`; shell-provided values take precedence. Its new startup banner
@@ -41,8 +41,8 @@ type, lint, format and architecture commands.
 
 ## Infrastructure-free core
 
-`bun run test:unit` (also `bun run test`) discovers `tests/unit` and colocated
-package tests under `src/packages`. Bare `bun test` discovers only `tests/unit`. Neither has a
+`bun run test:unit` (also `bun run test`) discovers `src/tests` and colocated
+the `core` and `example` package tests under `src/packages`. Bare `bun test` discovers only `src/tests`. Neither has a
 preload, app bootstrap, dotenv loader, Nest, database or broker. These native
 Bun tests cover User roles and address invariants, Wallet balances, commands,
 recorded events and serializable exceptions through their public interfaces.

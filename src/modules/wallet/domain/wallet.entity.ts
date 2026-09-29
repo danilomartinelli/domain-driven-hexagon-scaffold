@@ -1,9 +1,9 @@
-import { type AggregateID, AggregateRoot } from '@libs/ddd';
-import { ArgumentOutOfRangeException } from '@libs/exceptions';
+import { type AggregateID, AggregateRoot } from '@starter/core/domain';
+import { ArgumentOutOfRangeException } from '@starter/core/errors';
 import { Err, Ok, Result } from 'oxide.ts';
 import { WalletCreatedDomainEvent } from './events/wallet-created.domain-event';
 import { WalletNotEnoughBalanceError } from './wallet.errors';
-import type { CreateEntityProps } from '@libs/ddd';
+import type { CreateEntityProps } from '@starter/core/domain';
 
 export interface CreateWalletProps {
   userId: AggregateID;

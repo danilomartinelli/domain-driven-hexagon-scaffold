@@ -1,0 +1,17 @@
+{
+  "name": "@starter/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./eslint": "./eslint.mjs",
+    "./prettier": "./prettier.mjs",
+    "./typescript": "./typescript.json"
+  },
+  "dependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
+    "typescript-eslint": "8.71.0",
+    "prettier": "3.9.9"
+  }
+}

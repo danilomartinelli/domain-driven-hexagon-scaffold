@@ -6,42 +6,43 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "format": "bun --bun prettier --write \"{src,tests,scripts}/**/*.ts\" \"database/*.mjs\" \"package.json\" \"tsconfig.json\" \".prettierrc\" \"eslint.config.mjs\" \".dependency-cruiser.mjs\" \"docker/*.yml\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"src/packages/README.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\"",
-    "start": "bun src/main.ts",
-    "start:dev": "bun --watch src/main.ts",
-    "start:debug": "bun --inspect --watch src/main.ts",
-    "start:prod": "NODE_ENV=production bun src/main.ts",
-    "lint": "bun --bun eslint src tests scripts database eslint.config.mjs .dependency-cruiser.mjs --max-warnings 0",
+    "nx": "NX_LOAD_DOT_ENV_FILES=false NX_DAEMON=false bun ./node_modules/.bin/nx",
+    "format": "bun run nx run workspace:format",
+    "format:check": "bun run nx run workspace:format-check",
+    "start": "bun run nx run legacy-app:serve",
+    "start:dev": "bun run nx run legacy-app:watch",
+    "start:debug": "bun run nx run legacy-app:debug",
+    "start:prod": "bun run nx run legacy-app:serve-production",
+    "lint": "bun run nx run-many --target=lint",
+    "lint:fix": "bun run nx run-many --target=lint-fix",
+    "typecheck": "bun run nx run-many --target=typecheck",
     "test": "bun run test:unit",
-    "test:watch": "bun test --watch ./tests/unit ./src/packages",
-    "test:cov": "bun test --coverage ./tests/unit ./src/packages",
-    "test:debug": "bun --inspect-brk test ./tests/unit ./src/packages",
-    "test:unit": "bun test ./tests/unit ./src/packages",
-    "test:e2e": "bun scripts/with-test-database.ts -- bun run test:e2e:prepared",
-    "docker:env": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres",
+    "test:unit": "bun run nx run-many --target=test",
+    "test:watch": "bun run nx run-many --target=test-watch",
+    "test:cov": "bun run nx run-many --target=test-coverage",
+    "test:debug": "bun run nx run legacy-app:test-debug",
+    "test:e2e": "bun run nx run e2e:e2e",
+    "test:e2e:prepared": "bun run nx run e2e:e2e-prepared",
+    "test:tooling": "bun run nx run test-runner:test-live",
+    "docker:env": "bun run nx run infrastructure:up",
+    "docker:tests": "bun run nx run infrastructure:up-test",
     "depcruise": "bun ./node_modules/.bin/depcruise",
     "deps:validate": "bun run lint:boundaries",
     "deps:graph": "bun ./node_modules/.bin/depcruise src --include-only \"^src\" --config .dependency-cruiser.mjs --output-type dot | dot -T svg > assets/dependency-graph.svg",
-    "docker:tests": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres-test",
-    "migration:create": "bun database/migrate.mjs create",
-    "migration:up": "bun database/migrate.mjs up",
-    "migration:up:tests": "NODE_ENV=test bun database/migrate.mjs up",
-    "migration:down": "bun database/migrate.mjs down",
-    "migration:down:tests": "NODE_ENV=test bun database/migrate.mjs down",
-    "migration:status": "bun database/migrate.mjs status",
-    "migration:status:tests": "NODE_ENV=test bun database/migrate.mjs status",
-    "seed:up": "bun database/seed.mjs",
-    "seed:up:tests": "NODE_ENV=test bun database/seed.mjs",
-    "typecheck": "bun --bun tsc --noEmit",
-    "lint:fix": "bun --bun eslint src tests scripts database eslint.config.mjs .dependency-cruiser.mjs --max-warnings 0 --fix",
-    "format:check": "bun --bun prettier --check \"{src,tests,scripts}/**/*.ts\" \"database/*.mjs\" \"package.json\" \"tsconfig.json\" \".prettierrc\" \"eslint.config.mjs\" \".dependency-cruiser.mjs\" \"docker/*.yml\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"src/packages/README.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\"",
+    "lint:boundaries": "bun run nx run workspace:boundaries",
     "prepare": "husky",
-    "test:e2e:prepared": "bun test --preload ./tests/setup/preload.ts ./tests/user ./tests/integration",
-    "test:tooling": "bun test ./tests/tooling",
     "check:code": "bun run lint && bun run typecheck && bun run lint:boundaries && bun run test:unit",
     "check": "bun run format:check && bun run check:code",
     "check:full": "bun run check && bun run test:tooling && bun run test:e2e",
-    "lint:boundaries": "bun ./node_modules/.bin/depcruise src tests scripts --config .dependency-cruiser.mjs --output-type err-long"
+    "migration:create": "bun run nx run database:migration-create",
+    "migration:up": "bun run nx run database:migration-up",
+    "migration:up:tests": "bun run nx run database:migration-up --configuration=test",
+    "migration:down": "bun run nx run database:migration-down",
+    "migration:down:tests": "bun run nx run database:migration-down --configuration=test",
+    "migration:status": "bun run nx run database:migration-status",
+    "migration:status:tests": "bun run nx run database:migration-status --configuration=test",
+    "seed:up": "bun run nx run database:seed",
+    "seed:up:tests": "bun run nx run database:seed --configuration=test"
   },
   "dependencies": {
     "@nestjs/apollo": "14.0.3",
@@ -67,7 +68,9 @@
     "@apollo/server": "5.5.1",
     "@as-integrations/express5": "1.1.2",
     "commander": "15.0.0",
-    "cors": "2.8.6"
+    "cors": "2.8.6",
+    "@starter/core": "workspace:*",
+    "@starter/nest-support": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -85,19 +88,29 @@
     "jest-cucumber": "4.5.0",
     "lint-staged": "17.6.0",
     "node-pg-migrate": "9.0.0",
+    "nx": "23.2.1",
     "pg": "8.23.0",
     "prettier": "3.9.9",
     "supertest": "7.3.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.71.0"
+    "typescript-eslint": "8.71.0",
+    "@starter/config": "workspace:*"
   },
   "overrides": {
     "glob": "13.0.6",
     "reflect-metadata": "0.2.2",
-    "uuid": "14.0.2"
+    "uuid": "14.0.2",
+    "smol-toml": "1.9.0"
   },
   "packageManager": "bun@1.4.2",
   "engines": {
     "bun": "1.4.2"
+  },
+  "workspaces": [
+    "src/packages/*",
+    "tooling/config"
+  ],
+  "nx": {
+    "includedScripts": []
   }
 }

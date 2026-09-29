@@ -1,4 +1,7 @@
-import type { PaginatedQueryParams, RepositoryPort } from '@libs/ddd';
+import type {
+  PaginatedQueryParams,
+  RepositoryPort,
+} from '@starter/core/domain';
 import { UserEntity } from '../domain/user.entity';
 
 export interface FindUsersParams extends PaginatedQueryParams {

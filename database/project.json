@@ -1,0 +1,99 @@
+{
+  "name": "database",
+  "projectType": "library",
+  "tags": ["scope:tooling"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint database --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project database/tsconfig.json",
+        "cwd": "."
+      }
+    },
+    "migration-create": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun database/migrate.mjs create",
+        "cwd": "."
+      }
+    },
+    "migration-up": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun database/migrate.mjs up",
+        "cwd": "."
+      },
+      "configurations": {
+        "test": {
+          "env": {
+            "NODE_ENV": "test"
+          }
+        }
+      }
+    },
+    "migration-down": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun database/migrate.mjs down",
+        "cwd": "."
+      },
+      "configurations": {
+        "test": {
+          "env": {
+            "NODE_ENV": "test"
+          }
+        }
+      }
+    },
+    "migration-status": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun database/migrate.mjs status",
+        "cwd": "."
+      },
+      "configurations": {
+        "test": {
+          "env": {
+            "NODE_ENV": "test"
+          }
+        }
+      }
+    },
+    "seed": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun database/seed.mjs",
+        "cwd": "."
+      },
+      "configurations": {
+        "test": {
+          "env": {
+            "NODE_ENV": "test"
+          }
+        }
+      }
+    },
+    "lint-fix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --bun eslint database --max-warnings 0 --fix",
+        "cwd": "."
+      }
+    }
+  }
+}

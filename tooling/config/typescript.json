@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "module": "preserve",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2022",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "types": ["bun"],
+    "esModuleInterop": true,
+    "verbatimModuleSyntax": true,
+    "useDefineForClassFields": false,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowJs": true,
+    "checkJs": true,
+    "allowImportingTsExtensions": true
+  }
+}

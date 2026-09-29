@@ -1,4 +1,4 @@
-import { Command, type CommandProps } from '@libs/ddd';
+import { Command, type CommandProps } from '@starter/core/domain';
 
 export class DeleteUserCommand extends Command {
   readonly userId: string;

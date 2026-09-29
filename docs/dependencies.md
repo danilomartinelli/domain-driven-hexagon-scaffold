@@ -1,7 +1,8 @@
 # Dependency inventory and maintenance
 
-Reviewed against npm registry metadata on September 29, 2026 for issue #8.
-All 24 application and 18 development dependencies below have a consumer.
+Application/tool dependencies were reviewed against npm registry metadata on
+September 29, 2026 for issue #8, with Nx additions rechecked for issue #17.
+The dependencies below have a consumer.
 Versions already upgraded in #4–#7 were rechecked alongside the remaining
 helpers. Direct versions are pinned; `bun.lock` records the complete resolution.
 Use **Bun 1.4.2**, including for package installation, application execution,
@@ -129,3 +130,16 @@ The [combined execution record](validation/issue-8-upgrade.md) records actual
 results. Next objectives remain **Nx monorepo; correction of hexagonal coupling;
 completion of CLI and messaging examples**, as required by
 [ADR 0001](adr/0001-modernize-with-bun.md).
+
+## Nx baseline additions
+
+Nx 23.2.1 is pinned as the only Nx package; `@nx/nest` 23.2.1 excludes Nest 12
+from its peer range, so repository-owned run-command targets preserve the
+application versions. Private `@starter/core`, `@starter/nest-support`,
+`@starter/example` and `@starter/config` packages use explicit exports and
+workspace links. See [the workspace guide](nx-workspace.md).
+
+Nx brings `smol-toml` 1.6.1, affected by
+[GHSA-7w5x-hrqm-74c2](https://github.com/advisories/GHSA-7w5x-hrqm-74c2).
+The root override pins stable **1.9.0**, beyond the advisory's first fixed
+version 1.7.1. No advisory is ignored. Re-run `bun audit` after dependency changes.
