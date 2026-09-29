@@ -84,3 +84,25 @@ outside this tooling slice. Spec found no missing requirements, scope creep or
 incorrect implementations. The reviewer independently reran type, lint and
 architecture checks successfully. The two documentation corrections (28 initial
 type diagnostics and the retained transitive resolver dependency) are included.
+
+### `@final` static-member regression
+
+The local PR review identified a confirmed regression: decorating a class with
+`static create` produced TS1270 because the decorator returned only a constructor
+signature, discarding the class's static members. `final` now accepts and returns
+the complete constructor type `T`; the wrapper still inherits the original class
+and rejects subclass instantiation.
+
+The compile-only fixture `tests/types/final.decorator.ts` exercises decorator
+syntax, a static factory and field, a required constructor argument, and instance
+properties. With the fixture added before the fix, `bun run typecheck` failed
+with TS1270 naming the missing `kind` and `create` members; it passes after the
+fix. The fixture uses the existing typecheck command and adds no runtime suite
+or Gherkin scenario.
+
+Type, lint, formatting and architecture checks passed. The original minimal
+compiler reproduction passed after the fix, as did focused runtime assertions
+for static factory calls, static fields, constructor arguments and subclass
+rejection. All seven existing Gherkin cases passed with 13 assertions against
+an isolated PostgreSQL 18.6 container and a freshly migrated `ddh_final_tests`
+database. The owned container was removed afterward.
