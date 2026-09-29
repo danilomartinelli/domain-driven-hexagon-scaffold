@@ -26,9 +26,11 @@ export class FindUsersHttpController {
     @Query() queryParams: PaginatedQueryRequestDto,
   ): Promise<UserPaginatedResponseDto> {
     const query = new FindUsersQuery({
-      ...request,
-      limit: queryParams?.limit,
-      page: queryParams?.page,
+      country: request.country,
+      postalCode: request.postalCode,
+      street: request.street,
+      limit: queryParams.limit,
+      page: queryParams.page,
     });
     const result: Result<
       Paginated<UserModel>,
@@ -39,14 +41,21 @@ export class FindUsersHttpController {
 
     // Whitelisting returned properties
     return new UserPaginatedResponseDto({
-      ...paginated,
-      data: paginated.data.map((user) => ({
-        ...new ResponseBase(user),
-        email: user.email,
-        country: user.country,
-        street: user.street,
-        postalCode: user.postalCode,
-      })),
+      count: paginated.count,
+      limit: paginated.limit,
+      page: paginated.page,
+      data: paginated.data.map((user) => {
+        const base = new ResponseBase(user);
+        return {
+          id: base.id,
+          createdAt: base.createdAt,
+          updatedAt: base.updatedAt,
+          email: user.email,
+          country: user.country,
+          street: user.street,
+          postalCode: user.postalCode,
+        };
+      }),
     });
   }
 }

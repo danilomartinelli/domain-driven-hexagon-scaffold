@@ -45,10 +45,10 @@ export class Command {
     const ctx = RequestContextService.getContext();
     this.id = props.id || randomUUID();
     this.metadata = {
-      correlationId: props?.metadata?.correlationId || ctx.requestId,
-      causationId: props?.metadata?.causationId,
-      timestamp: props?.metadata?.timestamp || Date.now(),
-      userId: props?.metadata?.userId,
+      correlationId: props.metadata?.correlationId || ctx.requestId,
+      causationId: props.metadata?.causationId,
+      timestamp: props.metadata?.timestamp || Date.now(),
+      userId: props.metadata?.userId,
     };
   }
 }

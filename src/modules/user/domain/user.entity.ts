@@ -1,9 +1,6 @@
 import { AggregateRoot, type AggregateID } from '@libs/ddd';
 import { UserCreatedDomainEvent } from './events/user-created.domain-event';
-import {
-  Address,
-  type AddressProps,
-} from './value-objects/address.value-object';
+import { Address } from './value-objects/address.value-object';
 import {
   type CreateUserProps,
   type UpdateUserAddressProps,
@@ -16,7 +13,8 @@ import { UserAddressUpdatedDomainEvent } from './events/user-address-updated.dom
 import { randomUUID } from 'crypto';
 
 export class UserEntity extends AggregateRoot<UserProps> {
-  protected readonly _id: AggregateID;
+  // Assigned by the Entity constructor through setId.
+  protected readonly _id!: AggregateID;
 
   static create(create: CreateUserProps): UserEntity {
     const id = randomUUID();
@@ -78,10 +76,9 @@ export class UserEntity extends AggregateRoot<UserProps> {
    for example setting email from outside by doing something
    like user.email = otherEmail */
   updateAddress(props: UpdateUserAddressProps): void {
-    const newAddress = new Address({
-      ...this.props.address,
-      ...props,
-    } as AddressProps);
+    const newAddress = new Address(
+      Object.assign({}, this.props.address, props),
+    );
 
     this.props.address = newAddress;
 

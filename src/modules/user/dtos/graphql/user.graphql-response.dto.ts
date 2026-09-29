@@ -2,29 +2,30 @@ import { ResponseBase } from '@libs/api/response.base';
 import { Field, ObjectType } from '@nestjs/graphql';
 
 @ObjectType()
+// Response mappers populate the fields; no runtime defaults are introduced.
 export class UserGraphqlResponseDto extends ResponseBase {
   @Field({
     description: "User's identifier",
   })
-  id: string;
+  id!: string;
 
   @Field({
     description: "User's email address",
   })
-  email: string;
+  email!: string;
 
   @Field({
     description: "User's country of residence",
   })
-  country: string;
+  country!: string;
 
   @Field({
     description: 'Postal code',
   })
-  postalCode: string;
+  postalCode!: string;
 
   @Field({
     description: 'Street where the user is registered',
   })
-  street: string;
+  street!: string;
 }

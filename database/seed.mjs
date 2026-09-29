@@ -1,3 +1,5 @@
+import process from 'node:process';
+import console from 'node:console';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import { postgresConnectionUri } from '../src/configs/database.config.ts';
@@ -27,7 +29,7 @@ async function seed() {
   }
 }
 
-seed().catch((error) => {
+seed().catch((/** @type {unknown} */ error) => {
   console.error(error);
   process.exitCode = 1;
 });

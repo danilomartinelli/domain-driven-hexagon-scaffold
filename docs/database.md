@@ -20,8 +20,8 @@ entry points run directly under Bun, independently of the application's TypeScri
 toolchain and Slonik. Node, `ts-node`, and `jiti` are not used to execute these
 commands or SQL migrations. `jiti` remains an accepted transitive dependency of
 the migrator. The application and Gherkin cases also run directly under Bun;
-see the [runtime guide](runtime.md). Framework and remaining dependency/tooling
-upgrades follow separately.
+see the [runtime guide](runtime.md). The database scripts are included in the strict type and lint checks described
+in [developer checks](developer-checks.md).
 
 ## PostgreSQL and connections
 

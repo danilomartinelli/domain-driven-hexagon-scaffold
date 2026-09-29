@@ -18,10 +18,9 @@ import type { ZodType } from 'zod';
 import type { LoggerPort } from '../ports/logger.port';
 
 export abstract class SqlRepositoryBase<
-  Aggregate extends AggregateRoot<any>,
-  DbModel extends Record<string, PrimitiveValueExpression | Date>,
-> implements RepositoryPort<Aggregate>
-{
+  Aggregate extends AggregateRoot<unknown>,
+  DbModel extends Record<string, PrimitiveValueExpression | Date | undefined>,
+> implements RepositoryPort<Aggregate> {
   protected abstract tableName: string;
 
   protected abstract schema: ZodType<DbModel>;
@@ -49,7 +48,7 @@ export abstract class SqlRepositoryBase<
 
     const result = await this.pool.query(query);
 
-    return result.rows.map(this.mapper.toDomain);
+    return result.rows.map((record) => this.mapper.toDomain(record));
   }
 
   async findAllPaginated(
@@ -63,7 +62,7 @@ export abstract class SqlRepositoryBase<
 
     const result = await this.pool.query(query);
 
-    const entities = result.rows.map(this.mapper.toDomain);
+    const entities = result.rows.map((record) => this.mapper.toDomain(record));
     return new Paginated({
       data: entities,
       count: result.rowCount,
@@ -98,7 +97,7 @@ export abstract class SqlRepositoryBase<
   async insert(entity: Aggregate | Aggregate[]): Promise<void> {
     const entities = Array.isArray(entity) ? entity : [entity];
 
-    const records = entities.map(this.mapper.toPersistence);
+    const records = entities.map((item) => this.mapper.toPersistence(item));
 
     const query = this.generateInsertQuery(records);
 
@@ -107,7 +106,7 @@ export abstract class SqlRepositoryBase<
     } catch (error) {
       if (error instanceof UniqueIntegrityConstraintViolationError) {
         this.logger.debug(
-          `[${RequestContextService.getRequestId()}] ${error.detail}`,
+          `[${RequestContextService.getRequestId()}] ${String(error.detail)}`,
         );
         throw new ConflictException('Record already exists', error);
       }
@@ -126,13 +125,15 @@ export abstract class SqlRepositoryBase<
     entity: Aggregate | Aggregate[],
   ): Promise<void> {
     const entities = Array.isArray(entity) ? entity : [entity];
-    entities.forEach((entity) => entity.validate());
+    entities.forEach((entity) => {
+      entity.validate();
+    });
     const entityIds = entities.map((e) => e.id);
 
     this.logger.debug(
-      `[${RequestContextService.getRequestId()}] writing ${
-        entities.length
-      } entities to "${this.tableName}" table: ${entityIds}`,
+      `[${RequestContextService.getRequestId()}] writing ${String(
+        entities.length,
+      )} entities to "${this.tableName}" table: ${entityIds.join(',')}`,
     );
 
     await this.pool.query(query);

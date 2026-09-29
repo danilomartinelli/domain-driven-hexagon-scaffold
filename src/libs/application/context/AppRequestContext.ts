@@ -6,46 +6,47 @@ import type { DatabaseTransactionConnection } from 'slonik';
  */
 
 export class AppRequestContext {
-  requestId: string;
+  // Set by ContextInterceptor before commands and events are constructed.
+  requestId!: string;
   transactionConnection?: DatabaseTransactionConnection; // For global transactions
 }
 
-export class RequestContextService {
-  private static readonly storage = new AsyncLocalStorage<AppRequestContext>();
+const storage = new AsyncLocalStorage<AppRequestContext>();
 
-  static run<T>(callback: () => T): T {
-    return this.storage.run(new AppRequestContext(), callback);
-  }
+export const RequestContextService = {
+  run<T>(callback: () => T): T {
+    return storage.run(new AppRequestContext(), callback);
+  },
 
-  static getContext(): AppRequestContext {
-    const ctx = this.storage.getStore();
+  getContext(): AppRequestContext {
+    const ctx = storage.getStore();
     if (!ctx) throw new Error('Request context has not been initialized.');
     return ctx;
-  }
+  },
 
-  static setRequestId(id: string): void {
+  setRequestId(id: string): void {
     const ctx = this.getContext();
     ctx.requestId = id;
-  }
+  },
 
-  static getRequestId(): string {
+  getRequestId(): string {
     return this.getContext().requestId;
-  }
+  },
 
-  static getTransactionConnection(): DatabaseTransactionConnection | undefined {
+  getTransactionConnection(): DatabaseTransactionConnection | undefined {
     const ctx = this.getContext();
     return ctx.transactionConnection;
-  }
+  },
 
-  static setTransactionConnection(
+  setTransactionConnection(
     transactionConnection?: DatabaseTransactionConnection,
   ): void {
     const ctx = this.getContext();
     ctx.transactionConnection = transactionConnection;
-  }
+  },
 
-  static cleanTransactionConnection(): void {
+  cleanTransactionConnection(): void {
     const ctx = this.getContext();
     ctx.transactionConnection = undefined;
-  }
-}
+  },
+};

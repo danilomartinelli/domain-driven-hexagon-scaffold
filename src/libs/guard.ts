@@ -1,8 +1,8 @@
-export class Guard {
+export const Guard = {
   /**
    * Checks if value is empty. Accepts strings, numbers, booleans, objects and arrays.
    */
-  static isEmpty(value: unknown): boolean {
+  isEmpty(value: unknown): boolean {
     if (typeof value === 'number' || typeof value === 'boolean') {
       return false;
     }
@@ -28,12 +28,12 @@ export class Guard {
     }
 
     return false;
-  }
+  },
 
   /**
    * Checks length range of a provided number/string/array
    */
-  static lengthIsBetween(
+  lengthIsBetween(
     value: number | string | Array<unknown>,
     min: number,
     max: number,
@@ -44,12 +44,10 @@ export class Guard {
       );
     }
     const valueLength =
-      typeof value === 'number'
-        ? Number(value).toString().length
-        : value.length;
+      typeof value === 'number' ? value.toString().length : value.length;
     if (valueLength >= min && valueLength <= max) {
       return true;
     }
     return false;
-  }
-}
+  },
+};

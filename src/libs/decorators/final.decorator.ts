@@ -1,18 +1,15 @@
-/* eslint-disable @typescript-eslint/ban-types */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-/**
- * Prevents other classes extending a class marked by this decorator.
- */
-export function final<T extends { new (...args: any[]): object }>(
+/** Prevents extending a class marked by this decorator. */
+export function final<T extends new (...args: never[]) => object>(
   target: T,
 ): T {
-  return class Final extends target {
-    constructor(...args: any[]) {
+  const Base: new (...args: never[]) => object = target;
+  // The subclass preserves the constructor signature and inherits static members.
+  return class Final extends Base {
+    constructor(...args: never[]) {
       if (new.target !== Final) {
         throw new Error(`Cannot extend a final class "${target.name}"`);
       }
       super(...args);
     }
-  };
+  } as unknown as T;
 }

@@ -11,6 +11,10 @@ import { ExceptionBase } from '@libs/exceptions';
 import { RequestContextService } from '../context/AppRequestContext';
 import { ApiErrorResponse } from '@src/libs/api/api-error.response';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 export class ExceptionInterceptor implements NestInterceptor {
   private readonly logger: Logger = new Logger(ExceptionInterceptor.name);
 
@@ -19,28 +23,39 @@ export class ExceptionInterceptor implements NestInterceptor {
     next: CallHandler,
   ): Observable<ExceptionBase> {
     return next.handle().pipe(
-      catchError((err) => {
+      catchError((error: unknown) => {
+        if (!isRecord(error)) return throwError(() => error);
+        let err = error;
         // Logging for debugging purposes
-        if (err.status >= 400 && err.status < 500) {
+        if (
+          typeof err.status === 'number' &&
+          err.status >= 400 &&
+          err.status < 500
+        ) {
           this.logger.debug(
-            `[${RequestContextService.getRequestId()}] ${err.message}`,
+            `[${RequestContextService.getRequestId()}] ${String(err.message)}`,
           );
 
-          const isClassValidatorError =
-            Array.isArray(err?.response?.message) &&
-            typeof err?.response?.error === 'string' &&
-            err.status === 400;
+          const response = err.response;
           // Transforming class-validator errors to a different format
-          if (isClassValidatorError) {
+          if (
+            isRecord(response) &&
+            Array.isArray(response.message) &&
+            response.message.every(
+              (message: unknown) => typeof message === 'string',
+            ) &&
+            typeof response.error === 'string' &&
+            err.status === 400
+          ) {
             err = new BadRequestException(
               new ApiErrorResponse({
                 statusCode: err.status,
                 message: 'Validation error',
-                error: err?.response?.error,
-                subErrors: err?.response?.message,
+                error: response.error,
+                subErrors: response.message,
                 correlationId: RequestContextService.getRequestId(),
               }),
-            );
+            ) as unknown as Record<string, unknown>;
           }
         }
 
@@ -49,11 +64,11 @@ export class ExceptionInterceptor implements NestInterceptor {
           err.correlationId = RequestContextService.getRequestId();
         }
 
-        if (err.response) {
+        if (isRecord(err.response)) {
           err.response.correlationId = err.correlationId;
         }
 
-        return throwError(err);
+        return throwError(() => err);
       }),
     );
   }

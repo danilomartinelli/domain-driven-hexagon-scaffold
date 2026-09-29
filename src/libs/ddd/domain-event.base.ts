@@ -45,10 +45,10 @@ export abstract class DomainEvent {
     this.aggregateId = props.aggregateId;
     this.metadata = {
       correlationId:
-        props?.metadata?.correlationId || RequestContextService.getRequestId(),
-      causationId: props?.metadata?.causationId,
-      timestamp: props?.metadata?.timestamp || Date.now(),
-      userId: props?.metadata?.userId,
+        props.metadata?.correlationId || RequestContextService.getRequestId(),
+      causationId: props.metadata?.causationId,
+      timestamp: props.metadata?.timestamp || Date.now(),
+      userId: props.metadata?.userId,
     };
   }
 }

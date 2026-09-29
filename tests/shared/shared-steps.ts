@@ -14,7 +14,7 @@ export const iReceiveAnErrorWithStatusCode = (
 ): void => {
   then(
     /^I receive an error "(.*)" with status code (\d+)$/,
-    async (errorMessage: string, statusCode: string) => {
+    (errorMessage: string, statusCode: string) => {
       const apiError = ctx.latestResponse as ApiErrorResponse;
       expect(apiError.statusCode).toBe(parseInt(statusCode));
       expect(apiError.error).toBe(errorMessage);

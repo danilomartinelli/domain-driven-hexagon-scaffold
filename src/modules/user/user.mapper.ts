@@ -13,9 +13,11 @@ import { Injectable } from '@nestjs/common';
  */
 
 @Injectable()
-export class UserMapper
-  implements Mapper<UserEntity, UserModel, UserResponseDto>
-{
+export class UserMapper implements Mapper<
+  UserEntity,
+  UserModel,
+  UserResponseDto
+> {
   toPersistence(entity: UserEntity): UserModel {
     const copy = entity.getProps();
     const record: UserModel = {

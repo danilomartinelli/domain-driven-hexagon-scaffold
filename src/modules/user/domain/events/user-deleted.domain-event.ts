@@ -1,7 +1,3 @@
-import { DomainEvent, type DomainEventProps } from '@libs/ddd';
+import { DomainEvent } from '@libs/ddd';
 
-export class UserDeletedDomainEvent extends DomainEvent {
-  constructor(props: DomainEventProps<UserDeletedDomainEvent>) {
-    super(props);
-  }
-}
+export class UserDeletedDomainEvent extends DomainEvent {}

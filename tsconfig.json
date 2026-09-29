@@ -5,14 +5,8 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "strictPropertyInitialization": false,
     "target": "ES2022",
     "skipLibCheck": true,
-    "strictNullChecks": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false,
     "paths": {
       "@src/*": ["./src/*"],
       "@modules/*": ["./src/modules/*"],
@@ -25,7 +19,18 @@
     "types": ["bun"],
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,
-    "useDefineForClassFields": false
+    "useDefineForClassFields": false,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowJs": true,
+    "checkJs": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "database/**/*.mjs",
+    "eslint.config.mjs",
+    ".dependency-cruiser.mjs"
+  ]
 }

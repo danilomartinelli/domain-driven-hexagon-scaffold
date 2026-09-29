@@ -1,3 +1,5 @@
+import process from 'node:process';
+import console from 'node:console';
 import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { Migration, runner } from 'node-pg-migrate';
@@ -16,15 +18,17 @@ async function run() {
     );
     return;
   }
-  if (!['up', 'down', 'status'].includes(command) || name) {
+  if (
+    (command !== 'up' && command !== 'down' && command !== 'status') ||
+    name
+  ) {
     throw new Error(
       'Usage: bun database/migrate.mjs create <name> | up | down | status',
     );
   }
 
-  const { postgresConnectionUri } = await import(
-    '../src/configs/database.config.ts'
-  );
+  const { postgresConnectionUri } =
+    await import('../src/configs/database.config.ts');
   if (command !== 'status') {
     await runner({
       databaseUrl: postgresConnectionUri,
@@ -45,14 +49,19 @@ async function run() {
   const client = new pg.Client({ connectionString: postgresConnectionUri });
   try {
     await client.connect();
+    /** @type {import('pg').QueryResult<{ history: string | null }>} */
     const { rows } = await client.query(
       "SELECT to_regclass('public.pgmigrations') AS history",
     );
-    const applied = rows[0].history
-      ? (
-          await client.query('SELECT name FROM public.pgmigrations ORDER BY id')
-        ).rows.map((row) => row.name)
-      : [];
+    /** @type {string[]} */
+    let applied = [];
+    if (rows[0].history) {
+      /** @type {import('pg').QueryResult<{ name: string }>} */
+      const history = await client.query(
+        'SELECT name FROM public.pgmigrations ORDER BY id',
+      );
+      applied = history.rows.map((row) => row.name);
+    }
     const files = (await readdir(migrationsDir))
       .filter((file) => file.endsWith('.sql'))
       .sort()
@@ -72,7 +81,7 @@ async function run() {
   }
 }
 
-run().catch((error) => {
+run().catch((/** @type {unknown} */ error) => {
   console.error(error);
   process.exitCode = 1;
 });

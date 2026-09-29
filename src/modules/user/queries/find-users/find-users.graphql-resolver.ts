@@ -24,14 +24,21 @@ export class FindUsersGraphqlResolver {
 
     const paginated = result.unwrap();
     const response = new UserPaginatedGraphqlResponseDto({
-      ...paginated,
-      data: paginated.data.map((user) => ({
-        ...new ResponseBase(user),
-        email: user.email,
-        country: user.country,
-        street: user.street,
-        postalCode: user.postalCode,
-      })),
+      count: paginated.count,
+      limit: paginated.limit,
+      page: paginated.page,
+      data: paginated.data.map((user) => {
+        const base = new ResponseBase(user);
+        return {
+          id: base.id,
+          createdAt: base.createdAt,
+          updatedAt: base.updatedAt,
+          email: user.email,
+          country: user.country,
+          street: user.street,
+          postalCode: user.postalCode,
+        };
+      }),
     });
     return response;
   }
