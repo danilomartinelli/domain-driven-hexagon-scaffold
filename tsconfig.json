@@ -29,6 +29,7 @@
   "include": [
     "src/**/*.ts",
     "tests/**/*.ts",
+    "scripts/**/*.ts",
     "database/**/*.mjs",
     "eslint.config.mjs",
     ".dependency-cruiser.mjs"

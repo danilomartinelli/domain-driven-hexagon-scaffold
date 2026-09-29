@@ -7,6 +7,7 @@ import { UserAlreadyExistsError } from '@modules/user/domain/user.errors';
 import type { AggregateID } from '@libs/ddd';
 import { UserEntity } from '@modules/user/domain/user.entity';
 import { ConflictException } from '@libs/exceptions';
+import { randomUUID } from 'node:crypto';
 import { Inject } from '@nestjs/common';
 import { USER_REPOSITORY } from '../../user.di-tokens';
 
@@ -20,14 +21,17 @@ export class CreateUserService implements ICommandHandler<CreateUserCommand> {
   async execute(
     command: CreateUserCommand,
   ): Promise<Result<AggregateID, UserAlreadyExistsError>> {
-    const user = UserEntity.create({
-      email: command.email,
-      address: new Address({
-        country: command.country,
-        postalCode: command.postalCode,
-        street: command.street,
-      }),
-    });
+    const user = UserEntity.create(
+      {
+        email: command.email,
+        address: new Address({
+          country: command.country,
+          postalCode: command.postalCode,
+          street: command.street,
+        }),
+      },
+      { id: randomUUID(), createdAt: new Date() },
+    );
 
     try {
       /* Wrapping operation in a transaction to make sure

@@ -1,9 +1,6 @@
-import { RequestContextService } from '@libs/application/context/AppRequestContext';
-
 export interface SerializedException {
   message: string;
   code: string;
-  correlationId: string;
   stack?: string;
   cause?: string;
   metadata?: unknown;
@@ -26,8 +23,6 @@ export interface SerializedException {
 export abstract class ExceptionBase extends Error {
   abstract code: string;
 
-  public readonly correlationId: string;
-
   /**
    * @param {string} message
    * @param {ObjectLiteral} [metadata={}]
@@ -43,8 +38,6 @@ export abstract class ExceptionBase extends Error {
   ) {
     super(message);
     Error.captureStackTrace(this, this.constructor);
-    const ctx = RequestContextService.getContext();
-    this.correlationId = ctx.requestId;
   }
 
   /**
@@ -59,7 +52,6 @@ export abstract class ExceptionBase extends Error {
       message: this.message,
       code: this.code,
       stack: this.stack,
-      correlationId: this.correlationId,
       cause: JSON.stringify(this.cause),
       metadata: this.metadata,
     };

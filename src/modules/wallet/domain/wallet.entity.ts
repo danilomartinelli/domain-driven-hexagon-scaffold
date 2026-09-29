@@ -3,7 +3,7 @@ import { ArgumentOutOfRangeException } from '@libs/exceptions';
 import { Err, Ok, Result } from 'oxide.ts';
 import { WalletCreatedDomainEvent } from './events/wallet-created.domain-event';
 import { WalletNotEnoughBalanceError } from './wallet.errors';
-import { randomUUID } from 'crypto';
+import type { CreateEntityProps } from '@libs/ddd';
 
 export interface CreateWalletProps {
   userId: AggregateID;
@@ -17,10 +17,13 @@ export class WalletEntity extends AggregateRoot<WalletProps> {
   // Assigned by the Entity constructor through setId.
   protected readonly _id!: AggregateID;
 
-  static create(create: CreateWalletProps): WalletEntity {
-    const id = randomUUID();
+  static create(
+    create: CreateWalletProps,
+    identity: Pick<CreateEntityProps<WalletProps>, 'id' | 'createdAt'>,
+  ): WalletEntity {
+    const { id } = identity;
     const props: WalletProps = { ...create, balance: 0 };
-    const wallet = new WalletEntity({ id, props });
+    const wallet = new WalletEntity({ ...identity, props });
 
     wallet.addEvent(
       new WalletCreatedDomainEvent({ aggregateId: id, userId: create.userId }),

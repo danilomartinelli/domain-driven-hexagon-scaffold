@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { UserCreatedDomainEvent } from '@modules/user/domain/events/user-created.domain-event';
 import type { WalletRepositoryPort } from '@modules/wallet/database/wallet.repository.port';
 import { WalletEntity } from '../../domain/wallet.entity';
@@ -19,9 +20,12 @@ export class CreateWalletWhenUserIsCreatedDomainEventHandler {
     suppressErrors: false, // Let wallet failures reject the user transaction.
   })
   async handle(event: UserCreatedDomainEvent): Promise<void> {
-    const wallet = WalletEntity.create({
-      userId: event.aggregateId,
-    });
+    const wallet = WalletEntity.create(
+      {
+        userId: event.aggregateId,
+      },
+      { id: randomUUID(), createdAt: new Date() },
+    );
     return this.walletRepo.insert(wallet);
   }
 }

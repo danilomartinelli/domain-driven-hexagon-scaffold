@@ -1,3 +1,4 @@
+import { publishDomainEvents } from '@libs/application/publish-domain-events';
 import { RequestContextService } from '@libs/application/context/AppRequestContext';
 import { AggregateRoot, type PaginatedQueryParams, Paginated } from '@libs/ddd';
 import type { Mapper } from '@libs/ddd';
@@ -85,7 +86,12 @@ export abstract class SqlRepositoryBase<
 
     const result = await this.pool.query(query);
 
-    await entity.publishEvents(this.logger, this.eventEmitter);
+    await publishDomainEvents(
+      entity,
+      RequestContextService.getRequestId(),
+      this.logger,
+      this.eventEmitter,
+    );
 
     return result.rowCount > 0;
   }
@@ -140,7 +146,12 @@ export abstract class SqlRepositoryBase<
 
     await Promise.all(
       entities.map((entity) =>
-        entity.publishEvents(this.logger, this.eventEmitter),
+        publishDomainEvents(
+          entity,
+          RequestContextService.getRequestId(),
+          this.logger,
+          this.eventEmitter,
+        ),
       ),
     );
   }

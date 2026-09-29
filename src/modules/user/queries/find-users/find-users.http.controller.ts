@@ -8,7 +8,7 @@ import { FindUsersQuery } from './find-users.query-handler';
 import { Paginated } from '@src/libs/ddd';
 import { UserPaginatedResponseDto } from '../../dtos/user.paginated.response.dto';
 import { PaginatedQueryRequestDto } from '@src/libs/api/paginated-query.request.dto';
-import type { UserModel } from '../../database/user.repository';
+import type { UserModel } from '../../database/user.schema';
 import { ResponseBase } from '@src/libs/api/response.base';
 
 @Controller(routesV1.version)

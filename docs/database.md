@@ -121,6 +121,19 @@ batch. Concurrent execution fails while the migrator's advisory lock is held.
 The commands await completion, release connections and exit nonzero on failure.
 The runner options follow the [version 9 API](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/docs/src/api.md).
 
+## Automated test databases
+
+`bun run test:e2e` provisions its own PostgreSQL from
+`docker/docker-compose.test.yml`, applies the same migrations and removes the
+run's container/network afterward. It assigns a unique project, database and
+loopback port, uses tmpfs instead of a persistent volume, and supplies its own
+`DB_*` target. Logs and exit codes remain under `.context/test-runs/`.
+
+The `docker:tests`, `migration:*:tests` and seed commands documented here remain
+manual tools. Use `test:e2e:prepared` when intentionally testing against that
+already prepared disposable target. See [developer checks](developer-checks.md#isolated-database-checks)
+for the automated lifecycle and targeted commands.
+
 ## Seeds and cleanup
 
 Run migrations before seeds. Seeds no longer apply migrations implicitly: they
@@ -149,8 +162,9 @@ docker compose -p ddh -f docker/docker-compose.yml rm --stop --force postgres-te
 
 See [the combined issue #8 record](validation/issue-8-upgrade.md) for the database
 workflow rerun on the final dependencies, and [the issue #4 operational record](validation/issue-4-database.md)
-for the original migration replacement. No new test suite, scenario, hook, CI workflow, or aggregate validation
-command was added. No production database was migrated.
+for the original migration replacement. Those records describe the earlier
+manual workflow. Current hooks and automated local validation are documented in
+[developer checks](developer-checks.md).
 
 The broader modernization remains governed by [ADR 0001](adr/0001-modernize-with-bun.md).
 Future objectives remain: an Nx monorepo; correcting hexagonal coupling between

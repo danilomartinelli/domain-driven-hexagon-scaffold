@@ -1,34 +1,68 @@
 # Developer checks
 
-Use **Bun 1.4.2** from the repository root and install the committed dependency
-set with `bun install --frozen-lockfile`. Each check is independent. No CI, Git
-hooks or aggregate validation command is installed.
+Use **Bun 1.4.2** and install with `bun install --frozen-lockfile`. The `prepare`
+script installs Husky for this checkout. Git commits run lint-staged with the
+existing Prettier configuration, then `check:code` (lint, types, architecture and
+core/package tests). The hook runs without Docker. A failure blocks the commit.
 
-| Check        | Command                 | Scope                                                                                                             |
-| ------------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Types        | `bun run typecheck`     | Application, tests, database `.mjs` scripts, ESLint and architecture configs                                      |
-| Lint         | `bun run lint`          | Same code/configuration scope; errors and warnings fail                                                           |
-| Formatting   | `bun run format:check`  | Application/tests, database scripts, tool configs, package/TypeScript JSON, Docker/test YAML and `docs/` Markdown |
-| Architecture | `bun run deps:validate` | `src/`, including type-only imports and aliases                                                                   |
-| Behavior     | `bun test`              | The seven existing Gherkin cases with real Nest, HTTP and PostgreSQL                                              |
-| Dependencies | `bun audit`             | Complete locked tree, including development packages; no advisory ignores                                         |
+Before declaring code changes ready, run `bun run check:full`. Its current scope
+is the suites below; future service, contract and distribution suites are added
+with their migration slices. Documentation-only changes require formatting of
+the affected files and verification of changed links/commands.
 
-`bun run lint:fix` applies available lint fixes. `bun run format` writes Prettier
-formatting. Lint itself never rewrites files, and Prettier runs separately from
-ESLint. The long conceptual README and vendored agent skills are outside the
-formatting command's scope.
+| Check             | Command                   | Scope                                                                                                         |
+| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                  |
+| Full gate         | `bun run check:full`      | Fast gate, runner lifecycle tests and provisioned application E2E                                             |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                     |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                       |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                      |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/` and `scripts/`, including type-only imports and aliases; `deps:validate` is an alias         |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                      |
+| Live behavior     | `bun run test:e2e`        | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                |
+| Dependencies      | `bun audit`               | Complete locked tree; no advisory ignores                                                                     |
 
-Before behavioral checks, prepare a **disposable** test database:
+`bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
+supported staged files, including docs/skills, with `--ignore-unknown`; the
+full-repository formatting command keeps the long README and vendored skills
+outside its scope. For changed skills, use
+`bun --bun prettier --check .agents/skills/<name>/SKILL.md`.
+
+Run `bun --bun lint-staged` before capturing a staged review snapshot. If a hook
+changes the committed tree, review the resulting difference before publishing.
+`bun run prepare` reinstalls hooks when needed. The hook needs Bun on the Git
+process's `PATH`; it invokes the installed local tools without downloading them.
+
+## Isolated database checks
+
+Start Docker and run `bun run test:e2e`; no manual database setup or environment
+file is needed. Each invocation uses a unique Compose project, database name,
+loopback port and tmpfs storage. It supplies its own `DB_*` values even when the
+shell contains development settings. Existing environment files and volumes are
+untouched. Separate wrapper invocations can run concurrently; cases within one
+application suite share a database and run sequentially.
+
+The wrapper writes subprocess output directly to the terminal and
+`.context/test-runs/<project>/run.log`. `result.json` records command, cleanup and
+final exit codes. It preserves failures after logging and cleanup; cleanup
+failure turns a successful run into a failure. SIGINT/SIGTERM trigger bounded
+child termination and cleanup, returning 130/143. Startup and migrations are
+bounded to 60 seconds each, the command to five minutes, and cleanup to 30 seconds
+(with five seconds for forced termination). Forced process/daemon termination
+can still prevent cleanup; the retained project name identifies the owned
+resources for inspection.
+
+Focused runs use the same provisioning:
 
 ```sh
-bun run docker:tests
-bun run migration:up:tests
-bun test
+bun run test:e2e --test-name-pattern 'Wallet persistence failure'
+bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts
 ```
 
-No seed is required. Run only one test process against each database because
-setup and teardown truncate application tables. See [runtime](runtime.md) and
-[database](database.md) for environment overrides, cleanup and individual test files.
+`bun run test:e2e:prepared` remains available for an already provisioned disposable
+database. Only this manual mode uses caller-supplied `DB_*` values and requires
+explicit migration/cleanup. See [runtime](runtime.md) and [database](database.md).
 
 ## Compatible tooling
 
@@ -68,19 +102,22 @@ populated by Nest, mappers or inherited constructors, without adding defaults
 that could change validation or responses.
 
 The lint preset is used without global rule overrides or ignored source files.
-Four local, explained directives retain constructs required by the examples:
-two empty Nest module classes, the public query marker base, and the wallet
-event constructor's specific input contract. The latter still does not populate
-its `userId` property; its optional declaration reflects that existing behavior.
-Completing examples is a separate objective. Unsafe file-wide suppressions in
+Three local, explained directives retain constructs required by the examples:
+two empty Nest module classes and the public query marker base. Wallet creation
+now records its `userId` as part of the domain fact. Unsafe file-wide suppressions in
 the conversion and decorator helpers have been removed.
 
 ## Architecture and deferred work
 
-`.dependency-cruiser.mjs` keeps the existing layer rules and exceptions: domain
-access to `AppRequestContext`, repository ports and concrete event publication,
-and the already-deferred circular-dependency rule. The check does not enforce
-new domain boundaries. Type-only adapter imports from development declarations
+`.dependency-cruiser.mjs` closes the import graph of shared DDD, exceptions,
+foundation helpers, User/Wallet domain and command inputs to plain core modules
+and `oxide.ts`. This includes type-only imports and paths through barrel exports.
+The domain request-context exception is removed. New packages follow
+[the deep-module convention](../src/packages/README.md): root files are public
+entry points, all subfolders are private, tests use entry points and their own
+fixtures, and dependency cycles are errors throughout the checked graph. The
+existing `src/modules` layout stays in place until the planned Nx migration.
+Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was
 removed: [AsyncLocalStorage is stable](https://nodejs.org/api/async_context.html#class-asynclocalstorage).
@@ -90,8 +127,14 @@ regenerates `assets/dependency-graph.svg` and requires Graphviz's `dot` executab
 Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
 name. Both commands use the same ESM architecture configuration.
 
-The future objectives remain an **Nx monorepo**, **correcting hexagonal coupling**,
-and **completing CLI and messaging examples**. See the
+Run every applicable check above, including the live suite, before declaring code
+ready. `bun run test`, `test:unit`, `test:watch`, `test:cov` and `test:debug` include
+`tests/unit` and colocated tests under `src/packages`. Bare `bun test` retains its
+`tests/unit` default. The E2E preload is opt-in via the live commands. Nx orchestration and independent
+service suites belong to later tickets in [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
+
+The remaining objectives are Nx, application-owned ports/transactions and durable
+service integration. See the
 [dependency inventory](dependencies.md) for version decisions and security overrides,
 and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for
 final validation. The [issue #7 record](validation/issue-7-checks.md) retains the

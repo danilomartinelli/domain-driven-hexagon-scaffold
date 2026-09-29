@@ -39,22 +39,44 @@ Application, tests, database scripts and tool configurations are now checked wit
 strict settings. See [developer checks](developer-checks.md) for the individual
 type, lint, format and architecture commands.
 
+## Infrastructure-free core
+
+`bun run test:unit` (also `bun run test`) discovers `tests/unit` and colocated
+package tests under `src/packages`. Bare `bun test` discovers only `tests/unit`. Neither has a
+preload, app bootstrap, dotenv loader, Nest, database or broker. These native
+Bun tests cover User roles and address invariants, Wallet balances, commands,
+recorded events and serializable exceptions through their public interfaces.
+
+Entity creation receives identity and creation time as explicit values. Commands
+receive operation identity and tracing metadata from transport adapters. Domain
+events contain facts; dispatch identity, correlation and publication time live in
+the adapter's `DomainEventPublication`, passed as the listener's second argument.
+Core exceptions keep their code, cause and metadata; the exception interceptor
+adds request correlation to API errors.
+
 ## Gherkin through the real application
 
-Prepare the disposable database using the workflow delivered in issue #4:
+With Docker running, provision and validate an isolated database in one command:
 
 ```sh
-bun run docker:tests
-bun run migration:up:tests
-bun test
+bun run test:e2e
 ```
+
+The wrapper creates a unique Compose project with an ephemeral loopback port and
+tmpfs storage, applies migrations and always attempts owned-resource cleanup.
+Output and exit statuses are retained under `.context/test-runs/`. See
+[developer checks](developer-checks.md#isolated-database-checks) for lifecycle
+limits, failure handling and the complete gate.
 
 No seed command is required. Tests clear users and wallets before the run and
 after each case, including any seeded fixtures. The migration history is kept.
 Use only a disposable validation database, never development data.
 
-`bunfig.toml` discovers the renamed `*.test.ts` files and preloads the test setup.
-Bun sets `NODE_ENV=test` by default; an explicitly different value is rejected.
+`test:e2e` invokes `test:e2e:prepared`, which explicitly selects `tests/user` and `tests/integration` and preloads
+`tests/setup/preload.ts`; unit discovery never imports this setup.
+The wrapper sets `NODE_ENV=test` and its owned database target. In manual
+`test:e2e:prepared` mode, Bun defaults to `NODE_ENV=test` and the preload rejects
+an explicitly different value.
 The preload loads `.env.test` and rejects database names without a standalone
 `test` or `tests` prefix/suffix, including shell-provided overrides, **before**
 importing the application or opening a pool. Bun's automatic env loading remains
@@ -69,18 +91,19 @@ which awaits pool shutdown. Setup failures after application creation also
 close the application.
 
 ```sh
-bun test tests/user/create-user/create-user.test.ts # six cases
-bun test tests/user/delete-user/delete-user.test.ts # one case
-bun run test:e2e # same seven cases
-bun run test:watch
-bun run test:cov
+bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts # six cases
+bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/delete-user/delete-user.test.ts # one case
+bun run test:e2e # seven Gherkin cases plus four real-database regressions
+bun run test:watch # core only
+bun run test:cov # core only
 bun run test:debug # inspector pauses before execution
 ```
 
-Run one test process at a time against `ddh_tests`; shared table cleanup is not
-compatible with concurrent processes or Bun's `--concurrent`/`--randomize` flags.
-Migrations are explicit, not performed by a test hook. To stop and remove the
-disposable database, follow the [database cleanup instructions](database.md#seeds-and-cleanup).
+Separate `test:e2e` invocations have independent databases. Within one suite,
+shared table cleanup requires sequential cases. Migrations run explicitly in the
+wrapper before the test command. For manual `test:e2e:prepared` runs, prepare the
+database with `docker:tests` and `migration:up:tests`, run only one process against
+that target, and follow the [cleanup instructions](database.md#seeds-and-cleanup).
 
 ## Persistence and transaction review
 
@@ -105,7 +128,7 @@ HTTP request -> isolated AsyncLocalStorage context
   CreateUserService -> userRepo.transaction(connection)
     context.transactionConnection = connection
     userRepo.insert -> connection.query
-      await publishEvents -> await eventEmitter.emitAsync
+      await publishDomainEvents adapter -> await eventEmitter.emitAsync
         wallet handler -> walletRepo.insert -> same connection.query
     callback resolves -> Slonik commits
     callback rejects -> Slonik rolls back
@@ -118,18 +141,21 @@ over the injected pool. The local `RequestContextMiddleware` starts a distinct
 Express 5's named wildcard route. There is no shared fallback store outside a
 request. The asynchronous wallet listener returns the insertion promise.
 Nest event-emitter **12.0.1** suppresses listener errors by default, so the wallet
-listener explicitly sets `suppressErrors: false`. `emitAsync`, aggregate
+listener explicitly sets `suppressErrors: false`. `emitAsync`, adapter
 publication, repository insertion and the transaction callback all await it.
 The repository rethrows failures (mapping
 uniqueness errors to the existing conflict type), so commit cannot precede the
-wallet write. This is implementation review of the existing top-level workflow,
-not a general redesign of context or transaction ownership.
+wallet write. The repositories still invoke dispatch and use ambient transaction state as
+transitional adapter orchestration. Explicit application transactions and a durable
+outbox are later migration slices; this step does not provide durable messaging.
 
-**The seven cases do not prove atomic rollback.** They contain no forced wallet
-failure or rollback assertion. They are the application's actual cases, distinct
-from the isolated Bun/Gherkin probes recorded during specification. See the
-[original execution record](validation/issue-5-runtime.md) and the
-[Nest upgrade record](validation/issue-6-adapters.md).
+The seven original Gherkin cases remain unchanged. The separate integration
+suite forces a real Wallet constraint failure and verifies that neither row
+persists, then retries successfully. It also checks zero-balance creation,
+Wallet survival after User deletion, GraphQL response shape and REST error
+correlation. See the [core-decoupling execution record](validation/issue-16-core.md).
+The [original runtime](validation/issue-5-runtime.md) and
+[Nest upgrade](validation/issue-6-adapters.md) records are historical evidence.
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the
 runtime alias hook and Nest's build toolchain have been removed. `@types/jest`
@@ -142,10 +168,10 @@ The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
 Strict lint/type settings and architecture tooling are documented in
 [developer checks](developer-checks.md). The [dependency inventory](dependencies.md)
 and [combined validation record](validation/issue-8-upgrade.md) cover the completed
-remediation, clean frozen install and real application checks. As required by
-[ADR 0001](adr/0001-modernize-with-bun.md), future goals
-remain: an Nx monorepo; removing the domain's context/framework/event-publication
-coupling; and completing startup and executable CLI/messaging examples.
+remediation, clean frozen install and real application checks. The remaining Nx/service separation and application-core decoupling follow
+[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md). Domain primitives are now
+context-independent; command handlers and repository orchestration are still
+Nest/Slonik adapters. CLI bootstrap remains outside the migration scope.
 
 References: [Slonik runtime validation](https://github.com/gajus/slonik#runtime-validation),
 [jest-cucumber runner injection](https://github.com/bencompton/jest-cucumber/blob/main/docs/AdditionalConfiguration.md#configure-test-runner),

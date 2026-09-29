@@ -3,7 +3,13 @@ import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig({
-  files: ['src/**/*.ts', 'tests/**/*.ts', 'database/**/*.mjs', '*.mjs'],
+  files: [
+    'src/**/*.ts',
+    'tests/**/*.ts',
+    'scripts/**/*.ts',
+    'database/**/*.mjs',
+    '*.mjs',
+  ],
   extends: [js.configs.recommended, tseslint.configs.strictTypeChecked],
   languageOptions: {
     parserOptions: {

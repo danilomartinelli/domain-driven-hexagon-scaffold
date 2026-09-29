@@ -16,6 +16,12 @@ export function getHttpServer(): ReturnType<typeof request> {
   return request(app.getHttpServer());
 }
 
+/** Only available after the guarded E2E preload starts the disposable database. */
+export function getTestDatabase(): DatabasePool {
+  if (!pool) throw new Error('Test database has not started.');
+  return pool;
+}
+
 async function cleanDatabase(): Promise<void> {
   await pool?.query(sql.unsafe`TRUNCATE "users", "wallets"`);
 }

@@ -5,11 +5,17 @@ Issues and specs for this repo live in [GitHub Issues](https://github.com/danilo
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body-file <path>`. Write the exact Markdown body to a temporary file, preserving real newlines, and pass it with `--body-file`.
-- **Read an issue**: `gh issue view <number> --comments`. For structured output, use `gh issue view <number> --json number,title,body,labels,comments` and filter with `--jq` as needed.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **Read the selected issue**: `gh issue view <number> --json number,title,body,labels`. Fetch `gh issue view <number> --comments` when discussion or decisions are relevant.
+- **List issue summaries**: `gh issue list --state open --limit 30 --json number,title,labels --jq '.[] | {number, title, labels: [.labels[].name]}'`. Narrow with `--label` or `--search` before fetching individual bodies.
 - **Comment on an issue**: `gh issue comment <number> --body-file <path>`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
+
+Keep exploration output bounded: list identifiers first, then read selected
+records. If a result is truncated, narrow the query or read a saved result in
+ranges before relying on it. For source navigation, use `rg --files` or
+`rg -n '<symbol>' <directory>`, followed by the relevant line range. Read a whole
+file when the question requires its complete contract.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
@@ -20,7 +26,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 
 - **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
+- **List external PR summaries**: `gh pr list --state open --limit 30 --json number,title,labels,author`. For selected PRs, fetch the association with `gh api repos/<owner>/<repo>/pulls/<number> --jq .author_association`; keep `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE`. Read bodies/comments only for those candidates.
 - **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
 
 GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.

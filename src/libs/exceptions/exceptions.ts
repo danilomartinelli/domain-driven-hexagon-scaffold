@@ -5,7 +5,7 @@ import {
   CONFLICT,
   INTERNAL_SERVER_ERROR,
   NOT_FOUND,
-} from '.';
+} from './exception.codes';
 import { ExceptionBase } from './exception.base';
 
 /**

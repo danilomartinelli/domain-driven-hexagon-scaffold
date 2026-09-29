@@ -17,7 +17,7 @@ export interface BaseEntityProps {
 export interface CreateEntityProps<T> {
   id: AggregateID;
   props: T;
-  createdAt?: Date;
+  createdAt: Date;
   updatedAt?: Date;
 }
 
@@ -30,9 +30,8 @@ export abstract class Entity<EntityProps> {
   }: CreateEntityProps<EntityProps>) {
     this.setId(id);
     this.validateProps(props);
-    const now = new Date();
-    this._createdAt = createdAt || now;
-    this._updatedAt = updatedAt || now;
+    this._createdAt = createdAt;
+    this._updatedAt = updatedAt ?? createdAt;
     this.props = props;
     this.validate();
   }

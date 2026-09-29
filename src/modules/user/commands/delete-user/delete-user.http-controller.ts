@@ -1,3 +1,5 @@
+import { createCommandContext } from '@libs/application/command-context';
+import { RequestContextService } from '@libs/application/context/AppRequestContext';
 import {
   Controller,
   Delete,
@@ -7,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { routesV1 } from '@config/app.routes';
 import { CommandBus } from '@nestjs/cqrs';
-import { DeleteUserCommand } from './delete-user.service';
+import { DeleteUserCommand } from './delete-user.command';
 import { match, Result } from 'oxide.ts';
 import { NotFoundException } from '@libs/exceptions';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -29,7 +31,10 @@ export class DeleteUserHttpController {
   })
   @Delete(routesV1.user.delete)
   async deleteUser(@Param('id') id: string): Promise<void> {
-    const command = new DeleteUserCommand({ userId: id });
+    const command = new DeleteUserCommand({
+      userId: id,
+      ...createCommandContext(RequestContextService.getRequestId()),
+    });
     const result: Result<boolean, NotFoundException> =
       await this.commandBus.execute(command);
 

@@ -1,3 +1,5 @@
+import { RequestContextService } from '@libs/application/context/AppRequestContext';
+import { createCommandContext } from '@libs/application/command-context';
 import { Args, Mutation, Resolver } from '@nestjs/graphql';
 import { CommandBus } from '@nestjs/cqrs';
 import { CreateUserCommand } from '../create-user.command';
@@ -16,7 +18,14 @@ export class CreateUserGraphqlResolver {
   async create(
     @Args('input') input: CreateUserGqlRequestDto,
   ): Promise<IdGqlResponse> {
-    const command = new CreateUserCommand(input);
+    const { email, country, street, postalCode } = input;
+    const command = new CreateUserCommand({
+      email,
+      country,
+      street,
+      postalCode,
+      ...createCommandContext(RequestContextService.getRequestId()),
+    });
 
     const id: Result<AggregateID, UserAlreadyExistsError> =
       await this.commandBus.execute(command);
