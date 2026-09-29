@@ -3,8 +3,9 @@
 Executed on 2026-09-29 for [issue #4](https://github.com/danilomartinelli/vibecoding-starter-js/issues/4),
 using Bun 1.4.2, node-pg-migrate 9.0.0, pg 8.23.0, Docker Compose, and
 `postgres:18.6-alpine` on arm64. The server reported PostgreSQL 18.6.
-All writes targeted the disposable `ddh_tests` database on `localhost:5434`,
-service `ddh-postgres-test-1`. No development or production database was migrated.
+Initial verification writes targeted the disposable `ddh_tests` database on
+`localhost:5434`, service `ddh-postgres-test-1`. The review follow-up below used
+separate disposable containers. No development or production database was migrated.
 
 These were manual operational checks. Temporary probe migrations were removed
 after rollback. No test suite, scenario, CI, hook or aggregate validation routine
@@ -105,3 +106,40 @@ evidence, not additional database test runs.
 After verification, the disposable validation container was stopped and removed
 with the documented service-specific cleanup command. Other project containers
 and development volumes were left intact.
+
+## PR #9 review follow-up
+
+Reproduced and corrected both local review findings on 2026-09-29. The attached
+GitHub review summary contained no additional finding.
+
+- **Premature readiness:** workspace-only probes in `.context/debug/pr9/`
+  instantiated each service from the real Compose configuration in a separate
+  project, using ephemeral host ports and tmpfs instead of development storage.
+  A temporary init SQL file ran `SELECT pg_sleep(6)` to make the startup race
+  deterministic; the configured healthcheck interval remained unchanged.
+  `python3 .context/debug/pr9/healthcheck.py postgres-test` and the equivalent
+  `postgres` invocation both failed before the fix: `up --wait` exited 0,
+  the socket probe exited 0, the TCP probe exited 2, and the immediately following
+  `migration:up:tests` exited 1 with `Connection terminated unexpectedly`.
+  The image's entrypoint confirmed that its temporary server starts with
+  `listen_addresses=''`. Changing only the probe to `-h 127.0.0.1` made it wait
+  for the final server. After updating both Compose healthchecks, both original
+  probe invocations passed: socket and TCP probes exited 0, and the baseline
+  applied immediately after `up --wait`.
+- **Existing environment files:** `python3 .context/debug/pr9/env-port.py`
+  loaded the old `.env.example` as `.env` in an isolated working directory,
+  without shell `DB_*` overrides, through the actual shared connection config.
+  Both runs failed the expected development-port check, resolving
+  `localhost:5432/ddh`. Changing only `DB_PORT` to `5433` made the same check pass,
+  resolving `localhost:5433/ddh`. The setup guide now explicitly requires this
+  edit for existing Compose users before running the app, migrations, or seeds.
+  The workspace's environment files were not edited.
+- **Workflow after the fix:** the `postgres-test` probe with `--workflow` passed
+  immediate baseline application, status, rollback, reapplication, and seeds.
+  SQL inspection found one persisted user/wallet pair with balance 0. The
+  existing Nest + HTTP + PostgreSQL suite passed: **2 suites, 7 tests**.
+
+Compose configuration validation, scoped Prettier, and `git diff --check` passed.
+Both probe projects and their disposable containers/networks were removed.
+Diagnostic scripts remain only in the gitignored `.context/debug/pr9/` directory;
+no permanent test suite, scenario, CI, hook, or aggregate validation routine was added.

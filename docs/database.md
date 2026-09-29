@@ -10,6 +10,11 @@ bun install --frozen-lockfile
 cp .env.example .env # first setup only; preserve an existing .env
 ```
 
+If you already have a `.env` for the bundled Compose database, keep your other
+settings and change its `DB_PORT` from `5432` to `5433` before running the
+application, migrations, or seeds. Connection URIs now honor `DB_PORT`; the old
+value targets port `5432` instead of the development service published on `5433`.
+
 Migrations use stable `node-pg-migrate` **9.0.0** with `pg` **8.23.0**. The `.mjs`
 entry points run directly under Bun, independently of the application's TypeScript
 toolchain and Slonik. Node, `ts-node`, and `jiti` are not used to execute these
@@ -32,10 +37,11 @@ follow the [official image's layout](https://hub.docker.com/_/postgres).
 | Validation  | `bun run docker:tests` | `postgres-test` | `localhost:5434/ddh_tests` | Separate container, temporary memory-backed data |
 
 Both services use the local example credentials `user` / `password`, bind only to
-loopback, and wait for a health check. Starting or stopping the validation service
-does not operate on development data. Stopping the validation container discards
-its data; rerun the baseline after starting it again. The new development volume
-also avoids attaching a legacy PostgreSQL data directory to the new major version.
+loopback, and wait for a TCP health check. This skips the socket-only temporary
+server used during first-time initialization. Starting or stopping the validation
+service does not operate on development data. Stopping the validation container
+discards its data; rerun the baseline after starting it again. The new development
+volume also avoids attaching a legacy PostgreSQL data directory to the new major version.
 No conversion of an existing database or migration history is provided.
 
 The shared connection settings read `.env` for development and `.env.test` when

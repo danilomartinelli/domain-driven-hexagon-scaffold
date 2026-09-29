@@ -10,7 +10,7 @@ services:
     volumes:
       - ddh-postgres-18:/var/lib/postgresql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U user -d ddh']
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U user -d ddh']
       interval: 2s
       timeout: 5s
       retries: 15
@@ -27,7 +27,7 @@ services:
     tmpfs:
       - /var/lib/postgresql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U user -d ddh_tests']
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U user -d ddh_tests']
       interval: 2s
       timeout: 5s
       retries: 15
