@@ -17,6 +17,21 @@ ranges before relying on it. For source navigation, use `rg --files` or
 `rg -n '<symbol>' <directory>`, followed by the relevant line range. Read a whole
 file when the question requires its complete contract.
 
+For bounded source searches, use the repository helper:
+
+```sh
+bun run search -- --files scripts
+bun run search -- 'assertTestEnvironment' database tests
+bun run search --max-bytes=8000 -- 'invocation' node_modules/nx/dist/src/tasks-runner
+```
+
+The helper previews long matching lines at 240 columns and caps combined output
+at 16,000 UTF-8 bytes (including status text), with a 10-second deadline.
+`--max-bytes=<n>` and `--timeout-ms=<n>` before `--` change those bounds.
+Exit 125 marks incomplete output; exit 124 marks timeout. Narrow the path/pattern
+and retry. Complete results retain ripgrep's 0/1/2 exit codes. Use the Git inventory
+commands directly when a workflow requires every path, rather than a search preview.
+
 For a child issue, read the child first. Save a long parent body under `.context/`
 (`gh issue view <parent> --json body --jq .body > .context/parent-<parent>.md`),
 locate its headings with `rg -n '^##'`, and read the referenced acceptance criteria

@@ -2,21 +2,19 @@ import process from 'node:process';
 import console from 'node:console';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
-import { postgresConnectionUri } from '../src/configs/database.config.ts';
+import { databaseTarget } from './target.ts';
 
 async function seed() {
-  const client = new pg.Client({ connectionString: postgresConnectionUri });
+  const { app, connection } = databaseTarget();
+  const client = new pg.Client(connection);
   try {
     await client.connect();
     await client.query('BEGIN');
     try {
-      for (const file of ['users.seed.sql', 'wallets.seed.sql']) {
-        const sql = await readFile(
-          new URL(`./seeds/${file}`, import.meta.url),
-          'utf8',
-        );
+      for (const file of app.seeds) {
+        const sql = await readFile(file, 'utf8');
         await client.query(sql);
-        console.log(`Loaded ${file}`);
+        console.log(`Loaded ${file.pathname}`);
       }
       await client.query('COMMIT');
     } catch (error) {

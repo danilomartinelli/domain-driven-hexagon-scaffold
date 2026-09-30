@@ -32,7 +32,7 @@
     "lint:boundaries": "bun run nx run workspace:boundaries",
     "prepare": "husky",
     "check:code": "bun run check:workspace && bun run lint && bun run typecheck && bun run lint:boundaries && bun run test:unit",
-    "check": "bun run check:code && bun run format:check",
+    "check": "bun run check:code && bun run check:docs && bun run format:check",
     "check:full": "bun run check && bun run audit:changed && bun run test:tooling && bun run test:e2e",
     "migration:create": "bun run nx run database:migration-create",
     "migration:up": "bun run nx run database:migration-up",
@@ -43,8 +43,13 @@
     "migration:status:tests": "bun run nx run database:migration-status --configuration=test",
     "seed:up": "bun run nx run database:seed",
     "seed:up:tests": "bun run nx run database:seed --configuration=test",
-    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/dependency-audit.test.ts",
-    "audit:changed": "bun scripts/audit-changed.ts"
+    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts ./scripts/tests/cleanup.test.ts ./scripts/tests/docs.test.ts ./scripts/tests/search.test.ts",
+    "audit:changed": "bun scripts/audit-changed.ts",
+    "env:prepare": "bun --no-env-file scripts/environment-cli.ts prepare",
+    "env:exec": "bun --no-env-file scripts/environment-cli.ts exec",
+    "env:down": "bun --no-env-file scripts/environment-cli.ts down",
+    "check:docs": "bun scripts/check-docs.ts",
+    "search": "bun scripts/search.ts"
   },
   "dependencies": {
     "@nestjs/apollo": "14.0.3",
@@ -77,6 +82,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@nestjs/testing": "12.1.1",
+    "@starter/config": "workspace:*",
     "@types/bun": "1.4.2",
     "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
@@ -85,7 +91,9 @@
     "@types/pg": "8.23.1",
     "@types/supertest": "7.2.1",
     "dependency-cruiser": "18.4.0",
+    "entities": "8.1.0",
     "eslint": "10.11.0",
+    "github-slugger": "2.0.0",
     "husky": "9.1.7",
     "jest-cucumber": "4.5.0",
     "lint-staged": "17.6.0",
@@ -95,10 +103,10 @@
     "prettier": "3.9.9",
     "supertest": "7.3.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.71.0",
-    "@starter/config": "workspace:*"
+    "typescript-eslint": "8.71.0"
   },
   "overrides": {
+    "brace-expansion": "5.0.12",
     "glob": "13.0.6",
     "reflect-metadata": "0.2.2",
     "uuid": "14.0.2",

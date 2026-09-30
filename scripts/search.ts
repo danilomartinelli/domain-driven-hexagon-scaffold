@@ -1,0 +1,82 @@
+import { runCommand } from './lib/command';
+
+/** Keep complete leading lines within the UTF-8 byte budget. */
+function clip(text: string, bytes: number): string {
+  if (Buffer.byteLength(text) <= bytes) return text;
+  const prefix = new TextDecoder().decode(
+    Buffer.from(text).subarray(0, bytes),
+    {
+      stream: true,
+    },
+  );
+  return prefix.slice(0, prefix.lastIndexOf('\n') + 1);
+}
+
+async function main(): Promise<number> {
+  const args = process.argv.slice(2);
+  const separator = args.indexOf('--');
+  const options = separator === -1 ? [] : args.slice(0, separator);
+  const query = separator === -1 ? args : args.slice(separator + 1);
+  let maxBytes = 16_000;
+  let timeout = 10_000;
+  for (const option of options) {
+    const match = /^--(max-bytes|timeout-ms)=(\d+)$/.exec(option);
+    if (!match) throw new Error(`Unknown search option: ${option}`);
+    const value = Number(match[2]);
+    if (match[1] === 'max-bytes') maxBytes = value;
+    else timeout = value;
+  }
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 256 || maxBytes > 1_048_576)
+    throw new Error('max-bytes must be 256..1048576');
+  if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 60_000)
+    throw new Error('timeout-ms must be 1..60000');
+  if (!query.length)
+    throw new Error(
+      'Usage: bun run search [--max-bytes=16000] [--timeout-ms=10000] -- <rg arguments>',
+    );
+  const result = await runCommand(
+    [
+      'rg',
+      '--no-config',
+      '--line-number',
+      '--color=never',
+      '--max-columns=240',
+      '--max-columns-preview',
+      ...query,
+    ],
+    {
+      cwd: process.cwd(),
+      timeout,
+      maxOutput: maxBytes,
+      outputRetention: 'head',
+    },
+  );
+  // Reserve room for the status message inside the combined stream budget.
+  const budget = maxBytes - 160;
+  const stdout = clip(result.stdout, budget);
+  const stderr = clip(result.stderr, budget - Buffer.byteLength(stdout));
+  const truncated =
+    result.code === 125 || stdout !== result.stdout || stderr !== result.stderr;
+  process.stdout.write(stdout);
+  process.stderr.write(stderr);
+  if (result.timedOut) {
+    console.error(
+      '\n[search:timeout] Search exceeded its deadline; results are incomplete. Narrow the query.',
+    );
+    return 124;
+  }
+  if (truncated) {
+    console.error(
+      '\n[search:truncated] Output exceeded the byte budget; results are incomplete. Narrow the query.',
+    );
+    return 125;
+  }
+  return result.code;
+}
+
+try {
+  process.exitCode = await main();
+} catch (error) {
+  console.error(String(error));
+  process.exitCode = 2;
+}

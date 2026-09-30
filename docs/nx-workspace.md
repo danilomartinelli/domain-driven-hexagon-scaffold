@@ -89,8 +89,15 @@ bun run check:full
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                               |
 | `seed:up`                                                                | `database:seed`                                                                      |
 | `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                          |
+| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                             |
 | `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                        |
 | `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                                     |
+
+The environment CLI carries its argument array into its uncached Nx target through
+a dedicated process variable, preserving the command after `--` without shell
+re-parsing. Each independent CLI invocation starts its own Nx invocation chain, so concurrent
+configurations are not misidentified as recursive calls to the same target.
+All provisioning still executes in Nx. See [database workflows](database.md).
 
 Arguments continue through the command chain, for example
 `bun run test:e2e --test-name-pattern 'Wallet persistence failure'` and

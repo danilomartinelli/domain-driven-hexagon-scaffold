@@ -1,3 +1,4 @@
 bun --bun lint-staged
 bun run check:code
+bun run check:docs --staged
 bun run audit:changed --staged
