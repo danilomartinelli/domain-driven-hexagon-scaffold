@@ -1,26 +1,18 @@
+import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
+import {
+  DeleteUser,
+  type DeleteUserResult,
+} from '../../application/delete-user';
 import { DeleteUserCommand } from './delete-user.command';
-import { NotFoundException } from '@starter/core/errors';
-import type { UserRepositoryPort } from '@modules/user/database/user.repository.port';
-import { Inject } from '@nestjs/common';
-import { CommandHandler } from '@nestjs/cqrs';
-import { Err, Ok, Result } from 'oxide.ts';
-import { USER_REPOSITORY } from '../../user.di-tokens';
 
 @CommandHandler(DeleteUserCommand)
-export class DeleteUserService {
-  constructor(
-    @Inject(USER_REPOSITORY)
-    private readonly userRepo: UserRepositoryPort,
-  ) {}
+export class DeleteUserService implements ICommandHandler<DeleteUserCommand> {
+  constructor(private readonly deleteUser: DeleteUser) {}
 
-  async execute(
-    command: DeleteUserCommand,
-  ): Promise<Result<boolean, NotFoundException>> {
-    const found = await this.userRepo.findOneById(command.userId);
-    if (found.isNone()) return Err(new NotFoundException());
-    const user = found.unwrap();
-    user.delete();
-    const result = await this.userRepo.delete(user);
-    return Ok(result);
+  execute(command: DeleteUserCommand): Promise<DeleteUserResult> {
+    return this.deleteUser.execute(
+      { userId: command.userId },
+      { ...command.metadata, causationId: command.id },
+    );
   }
 }

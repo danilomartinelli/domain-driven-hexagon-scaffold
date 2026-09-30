@@ -1,4 +1,5 @@
 import { runCommand } from './lib/command';
+import { readRanges } from './lib/read-ranges';
 
 /** Keep complete leading lines within the UTF-8 byte budget. */
 function clip(text: string, bytes: number): string {
@@ -19,7 +20,12 @@ async function main(): Promise<number> {
   const query = separator === -1 ? args : args.slice(separator + 1);
   let maxBytes = 16_000;
   let timeout = 10_000;
+  let read = false;
   for (const option of options) {
+    if (option === '--read') {
+      read = true;
+      continue;
+    }
     const match = /^--(max-bytes|timeout-ms)=(\d+)$/.exec(option);
     if (!match) throw new Error(`Unknown search option: ${option}`);
     const value = Number(match[2]);
@@ -32,25 +38,30 @@ async function main(): Promise<number> {
     throw new Error('timeout-ms must be 1..60000');
   if (!query.length)
     throw new Error(
-      'Usage: bun run search [--max-bytes=16000] [--timeout-ms=10000] -- <rg arguments>',
+      read
+        ? 'Usage: bun scripts/search.ts --read [--max-bytes=16000] [--timeout-ms=10000] -- <file> <first-line> <last-line> ...'
+        : 'Usage: bun run search [--max-bytes=16000] [--timeout-ms=10000] -- <rg arguments>',
     );
-  const result = await runCommand(
-    [
-      'rg',
-      '--no-config',
-      '--line-number',
-      '--color=never',
-      '--max-columns=240',
-      '--max-columns-preview',
-      ...query,
-    ],
-    {
-      cwd: process.cwd(),
-      timeout,
-      maxOutput: maxBytes,
-      outputRetention: 'head',
-    },
-  );
+  const limits = {
+    cwd: process.cwd(),
+    timeout,
+    maxOutput: maxBytes,
+    outputRetention: 'head' as const,
+  };
+  const result = read
+    ? await readRanges(query, limits)
+    : await runCommand(
+        [
+          'rg',
+          '--no-config',
+          '--line-number',
+          '--color=never',
+          '--max-columns=240',
+          '--max-columns-preview',
+          ...query,
+        ],
+        limits,
+      );
   // Reserve room for the status message inside the combined stream budget.
   const budget = maxBytes - 160;
   const stdout = clip(result.stdout, budget);

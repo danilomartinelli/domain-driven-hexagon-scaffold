@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { DatabaseTransactionConnection } from 'slonik';
 
 /**
  * Setting some isolated context for each request.
@@ -8,7 +7,6 @@ import type { DatabaseTransactionConnection } from 'slonik';
 export class AppRequestContext {
   // Set by ContextInterceptor before commands and events are constructed.
   requestId!: string;
-  transactionConnection?: DatabaseTransactionConnection; // For global transactions
 }
 
 const storage = new AsyncLocalStorage<AppRequestContext>();
@@ -31,22 +29,5 @@ export const RequestContextService = {
 
   getRequestId(): string {
     return this.getContext().requestId;
-  },
-
-  getTransactionConnection(): DatabaseTransactionConnection | undefined {
-    const ctx = this.getContext();
-    return ctx.transactionConnection;
-  },
-
-  setTransactionConnection(
-    transactionConnection?: DatabaseTransactionConnection,
-  ): void {
-    const ctx = this.getContext();
-    ctx.transactionConnection = transactionConnection;
-  },
-
-  cleanTransactionConnection(): void {
-    const ctx = this.getContext();
-    ctx.transactionConnection = undefined;
   },
 };

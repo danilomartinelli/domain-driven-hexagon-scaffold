@@ -1,35 +1,29 @@
-import type { AggregateRoot } from '@starter/core/domain';
+import type { CommandMetadata, DomainEvent } from '@starter/core/domain';
 import type { LoggerPort } from '@starter/core/logger';
 import type { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'node:crypto';
 
-export interface DomainEventPublication {
+export interface DomainEventPublication extends CommandMetadata {
   id: string;
-  correlationId: string;
-  timestamp: number;
 }
 
-/** Transitional in-process dispatch, awaited inside the repository transaction.
- * This is not a durable outbox; the aggregate only records facts.
+/** Transitional in-process dispatch explicitly requested by an application adapter.
+ * This is not a durable outbox; repositories and aggregates never publish.
  */
 export async function publishDomainEvents(
-  aggregate: AggregateRoot<unknown>,
-  correlationId: string,
+  events: readonly DomainEvent[],
+  metadata: CommandMetadata,
   logger: LoggerPort,
   eventEmitter: EventEmitter2,
 ): Promise<void> {
-  await Promise.all(
-    aggregate.domainEvents.map(async (event) => {
-      const publication: DomainEventPublication = {
-        id: randomUUID(),
-        correlationId,
-        timestamp: Date.now(),
-      };
-      logger.debug(
-        `[${correlationId}] "${event.constructor.name}" event ${publication.id} published for aggregate ${aggregate.constructor.name} : ${aggregate.id}`,
-      );
-      await eventEmitter.emitAsync(event.constructor.name, event, publication);
-    }),
-  );
-  aggregate.clearEvents();
+  for (const event of events) {
+    const publication: DomainEventPublication = {
+      ...metadata,
+      id: randomUUID(),
+    };
+    logger.debug(
+      `[${metadata.correlationId}] "${event.constructor.name}" event ${publication.id} for aggregate ${event.aggregateId}`,
+    );
+    await eventEmitter.emitAsync(event.constructor.name, event, publication);
+  }
 }

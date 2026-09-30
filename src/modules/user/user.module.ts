@@ -1,5 +1,4 @@
 import { Logger, Module, type Provider } from '@nestjs/common';
-import { UserRepository } from './database/user.repository';
 import { CreateUserHttpController } from './commands/create-user/create-user.http.controller';
 import { DeleteUserHttpController } from './commands/delete-user/delete-user.http-controller';
 import { CreateUserCliController } from './commands/create-user/create-user.cli.controller';
@@ -11,8 +10,11 @@ import { DeleteUserService } from './commands/delete-user/delete-user.service';
 import { FindUsersQueryHandler } from './queries/find-users/find-users.query-handler';
 import { UserMapper } from './user.mapper';
 import { CqrsModule } from '@nestjs/cqrs';
-import { USER_REPOSITORY } from './user.di-tokens';
 import { FindUsersGraphqlResolver } from './queries/find-users/find-users.graphql-resolver';
+import { CreateUser } from './application/create-user';
+import { DeleteUser } from './application/delete-user';
+import { SlonikUserWriteTransaction } from '@src/infrastructure/user-write-transaction';
+import { WalletModule } from '../wallet/wallet.module';
 
 const httpControllers = [
   CreateUserHttpController,
@@ -35,17 +37,25 @@ const queryHandlers: Provider[] = [FindUsersQueryHandler];
 
 const mappers: Provider[] = [UserMapper];
 
-const repositories: Provider[] = [
-  { provide: USER_REPOSITORY, useClass: UserRepository },
-];
-
 @Module({
-  imports: [CqrsModule],
+  imports: [CqrsModule, WalletModule],
   controllers: [...httpControllers, ...messageControllers],
   providers: [
     Logger,
+    SlonikUserWriteTransaction,
+    {
+      provide: CreateUser,
+      useFactory: (transaction: SlonikUserWriteTransaction) =>
+        new CreateUser(transaction),
+      inject: [SlonikUserWriteTransaction],
+    },
+    {
+      provide: DeleteUser,
+      useFactory: (transaction: SlonikUserWriteTransaction) =>
+        new DeleteUser(transaction),
+      inject: [SlonikUserWriteTransaction],
+    },
     ...cliControllers,
-    ...repositories,
     ...graphqlResolvers,
     ...commandHandlers,
     ...queryHandlers,

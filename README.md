@@ -27,7 +27,7 @@ records the clean installation and real application/database checks. Run
 `bun audit` separately to recheck the complete dependency tree.
 The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the transitional application,
 private technical packages and regressions. Remaining migration work includes
-independent services, application-owned transactions and durable
+independent services, application-owned read ports and durable
 service integration, as defined in [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md).
 
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
@@ -443,10 +443,13 @@ There are multiple ways on implementing an event bus for Domain Events, for exam
 Examples:
 
 - [user-created.domain-event.ts](src/modules/user/domain/events/user-created.domain-event.ts) - simple object that holds data related to published event.
-- [create-wallet-when-user-is-created.domain-event-handler.ts](src/modules/wallet/application/event-handlers/create-wallet-when-user-is-created.domain-event-handler.ts) - this is an example of Domain Event Handler that executes some actions when a domain event is raised (in this case, when user is created it also creates a wallet for that user).
-- [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - the adapter dispatches recorded facts with publication identity and correlation metadata; aggregates do not publish.
-- [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts) - repositories temporarily invoke this adapter after persistence, awaiting handlers inside the existing shared transaction. Explicit application transactions and a durable outbox are later migration work.
-- [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - in a service we execute a global transaction to make sure all the changes done by Domain Events across the application are stored atomically (all or nothing).
+- [create-user.ts](src/modules/user/application/create-user.ts) and [delete-user.ts](src/modules/user/application/delete-user.ts) - plain use cases request an atomic scope and explicitly record resulting facts through application-owned ports.
+- [user-write-transaction.ts](src/infrastructure/user-write-transaction.ts) - the Slonik adapter owns the connection and temporarily coordinates Wallet creation and in-process dispatch. Replace this bridge with an outbox at the asynchronous cutover.
+- [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - dispatches facts with identity and explicit operation metadata; aggregates and repositories do not publish.
+- [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts) - repository insert/delete persist only, using the connection supplied by the transaction adapter.
+- [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - Nest CQRS input adapter maps the command and metadata into the plain use case.
+
+See the [current write path and remaining transition](docs/runtime.md#persistence-and-transaction-review).
 
 To have a better understanding on domain events and implementation read this:
 

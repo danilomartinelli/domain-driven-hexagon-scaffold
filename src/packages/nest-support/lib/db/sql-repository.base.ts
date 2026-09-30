@@ -1,5 +1,3 @@
-import { publishDomainEvents } from '../application/publish-domain-events';
-import { RequestContextService } from '../application/context/AppRequestContext';
 import {
   AggregateRoot,
   type PaginatedQueryParams,
@@ -8,7 +6,6 @@ import {
 import type { Mapper } from '@starter/core/domain';
 import type { RepositoryPort } from '@starter/core/domain';
 import { ConflictException } from '@starter/core/errors';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { None, Option, Some } from 'oxide.ts';
 import { sql, UniqueIntegrityConstraintViolationError } from 'slonik';
 import type {
@@ -31,9 +28,8 @@ export abstract class SqlRepositoryBase<
   protected abstract schema: ZodType<DbModel>;
 
   protected constructor(
-    private readonly _pool: DatabasePool,
+    protected readonly pool: DatabasePool | DatabaseTransactionConnection,
     protected readonly mapper: Mapper<Aggregate, DbModel>,
-    protected readonly eventEmitter: EventEmitter2,
     protected readonly logger: LoggerPort,
   ) {}
 
@@ -82,27 +78,15 @@ export abstract class SqlRepositoryBase<
       this.tableName,
     ])} WHERE id = ${entity.id}`;
 
-    this.logger.debug(
-      `[${RequestContextService.getRequestId()}] deleting entities ${
-        entity.id
-      } from ${this.tableName}`,
-    );
+    this.logger.debug(`deleting entities ${entity.id} from ${this.tableName}`);
 
     const result = await this.pool.query(query);
-
-    await publishDomainEvents(
-      entity,
-      RequestContextService.getRequestId(),
-      this.logger,
-      this.eventEmitter,
-    );
 
     return result.rowCount > 0;
   }
 
   /**
    * Inserts an entity to a database
-   * (also publishes domain events and waits for completion)
    */
   async insert(entity: Aggregate | Aggregate[]): Promise<void> {
     const entities = Array.isArray(entity) ? entity : [entity];
@@ -115,9 +99,7 @@ export abstract class SqlRepositoryBase<
       await this.writeQuery(query, entities);
     } catch (error) {
       if (error instanceof UniqueIntegrityConstraintViolationError) {
-        this.logger.debug(
-          `[${RequestContextService.getRequestId()}] ${String(error.detail)}`,
-        );
+        this.logger.debug(String(error.detail));
         throw new ConflictException('Record already exists', error);
       }
       throw error;
@@ -126,8 +108,7 @@ export abstract class SqlRepositoryBase<
 
   /**
    * Utility method for write queries when you need to mutate an entity.
-   * Executes entity validation, publishes events,
-   * and does some debug logging.
+   * Executes entity validation and debug logging; persistence never publishes events.
    * For read queries use `this.pool` directly
    */
   protected async writeQuery(
@@ -141,23 +122,12 @@ export abstract class SqlRepositoryBase<
     const entityIds = entities.map((e) => e.id);
 
     this.logger.debug(
-      `[${RequestContextService.getRequestId()}] writing ${String(
+      `writing ${String(
         entities.length,
       )} entities to "${this.tableName}" table: ${entityIds.join(',')}`,
     );
 
     await this.pool.query(query);
-
-    await Promise.all(
-      entities.map((entity) =>
-        publishDomainEvents(
-          entity,
-          RequestContextService.getRequestId(),
-          this.logger,
-          this.eventEmitter,
-        ),
-      ),
-    );
   }
 
   /**
@@ -192,46 +162,5 @@ export abstract class SqlRepositoryBase<
     )})`;
 
     return query;
-  }
-
-  /**
-   * start a global transaction to save
-   * results of all event handlers in one operation
-   */
-  public async transaction<T>(handler: () => Promise<T>): Promise<T> {
-    return this.pool.transaction(async (connection) => {
-      this.logger.debug(
-        `[${RequestContextService.getRequestId()}] transaction started`,
-      );
-      if (!RequestContextService.getTransactionConnection()) {
-        RequestContextService.setTransactionConnection(connection);
-      }
-
-      try {
-        const result = await handler();
-        this.logger.debug(
-          `[${RequestContextService.getRequestId()}] transaction committed`,
-        );
-        return result;
-      } catch (e) {
-        this.logger.debug(
-          `[${RequestContextService.getRequestId()}] transaction aborted`,
-        );
-        throw e;
-      } finally {
-        RequestContextService.cleanTransactionConnection();
-      }
-    });
-  }
-
-  /**
-   * Get database pool.
-   * If global request transaction is started,
-   * returns a transaction pool.
-   */
-  protected get pool(): DatabasePool | DatabaseTransactionConnection {
-    return (
-      RequestContextService.getContext().transactionConnection ?? this._pool
-    );
   }
 }

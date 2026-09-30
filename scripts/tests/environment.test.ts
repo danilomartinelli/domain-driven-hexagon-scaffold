@@ -224,7 +224,19 @@ test('prepared regression runs reject foreign targets and preserve development a
       const regression = await succeeded(
         first('exec', ['--', process.execPath, 'run', 'test:e2e:prepared']),
       );
-      expect(regression.stderr + regression.stdout).toContain('11 pass');
+      // The regression suite grows; require both Gherkin and database coverage.
+      const output = Bun.stripANSI(regression.stderr + regression.stdout);
+      for (const file of [
+        'tests/user/create-user/create-user.test.ts',
+        'tests/user/delete-user/delete-user.test.ts',
+        'tests/integration/user-wallet.test.ts',
+        'tests/integration/user-writes.test.ts',
+      ]) {
+        expect(output).toContain(`\n${file}:\n`);
+      }
+      expect(output).toMatch(/^\s*0 fail\s*$/m);
+      const passed = /(\d+) pass/.exec(output);
+      expect(Number(passed?.[1] ?? 0)).toBeGreaterThanOrEqual(7);
       await succeeded(first('down'));
       await succeeded(
         sibling('exec', ['--', process.execPath, '-e', seedProbe]),

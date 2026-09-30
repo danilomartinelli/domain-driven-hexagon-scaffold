@@ -32,6 +32,7 @@ const corePaths = [
   '^src/packages/core/(?!tests/)',
   '^src/modules/[^/]+/domain/',
   '^src/modules/[^/]+/commands/.*\\.command\\.ts$',
+  '^src/modules/user/application/',
 ];
 
 // Root files are entry points; every package subfolder is private.
@@ -83,7 +84,7 @@ const config = {
     {
       name: 'core-is-context-independent',
       comment:
-        'Domain, commands and shared primitives may only import the plain TypeScript core.',
+        'Domain, commands, User use cases and shared primitives may only import the plain TypeScript core.',
       severity: 'error',
       from: { path: corePaths },
       to: {

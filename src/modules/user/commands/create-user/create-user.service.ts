@@ -1,48 +1,26 @@
-import type { UserRepositoryPort } from '@modules/user/database/user.repository.port';
-import { Address } from '@modules/user/domain/value-objects/address.value-object';
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
-import { Err, Ok, Result } from 'oxide.ts';
-import { CreateUserCommand } from './create-user.command';
-import { UserAlreadyExistsError } from '@modules/user/domain/user.errors';
-import type { AggregateID } from '@starter/core/domain';
-import { UserEntity } from '@modules/user/domain/user.entity';
-import { ConflictException } from '@starter/core/errors';
 import { randomUUID } from 'node:crypto';
-import { Inject } from '@nestjs/common';
-import { USER_REPOSITORY } from '../../user.di-tokens';
+import {
+  CreateUser,
+  type CreateUserResult,
+} from '../../application/create-user';
+import { CreateUserCommand } from './create-user.command';
 
 @CommandHandler(CreateUserCommand)
 export class CreateUserService implements ICommandHandler<CreateUserCommand> {
-  constructor(
-    @Inject(USER_REPOSITORY)
-    protected readonly userRepo: UserRepositoryPort,
-  ) {}
+  constructor(private readonly createUser: CreateUser) {}
 
-  async execute(
-    command: CreateUserCommand,
-  ): Promise<Result<AggregateID, UserAlreadyExistsError>> {
-    const user = UserEntity.create(
+  execute(command: CreateUserCommand): Promise<CreateUserResult> {
+    return this.createUser.execute(
       {
+        id: randomUUID(),
+        createdAt: new Date(),
         email: command.email,
-        address: new Address({
-          country: command.country,
-          postalCode: command.postalCode,
-          street: command.street,
-        }),
+        country: command.country,
+        postalCode: command.postalCode,
+        street: command.street,
       },
-      { id: randomUUID(), createdAt: new Date() },
+      { ...command.metadata, causationId: command.id },
     );
-
-    try {
-      /* Wrapping operation in a transaction to make sure
-         that all domain events are processed atomically */
-      await this.userRepo.transaction(async () => this.userRepo.insert(user));
-      return Ok(user.id);
-    } catch (error: unknown) {
-      if (error instanceof ConflictException) {
-        return Err(new UserAlreadyExistsError(error));
-      }
-      throw error;
-    }
   }
 }
