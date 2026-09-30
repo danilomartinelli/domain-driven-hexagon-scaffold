@@ -17,6 +17,18 @@ ranges before relying on it. For source navigation, use `rg --files` or
 `rg -n '<symbol>' <directory>`, followed by the relevant line range. Read a whole
 file when the question requires its complete contract.
 
+For a child issue, read the child first. Save a long parent body under `.context/`
+(`gh issue view <parent> --json body --jq .body > .context/parent-<parent>.md`),
+locate its headings with `rg -n '^##'`, and read the referenced acceptance criteria
+and relevant decision ranges. Expand to other sections only when they affect the
+selected work.
+
+Batch independent bounded reads; keep large issue bodies, source files and
+registry manifests in separate outputs.
+For registry metadata, select only fields needed for the decision (version,
+engines and peer dependencies); save a full response under `.context/` when the
+CLI cannot select fields.
+
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
 ## Pull requests as a triage surface

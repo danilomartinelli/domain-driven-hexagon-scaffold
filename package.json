@@ -31,9 +31,9 @@
     "deps:graph": "bun ./node_modules/.bin/depcruise src --include-only \"^src\" --config .dependency-cruiser.mjs --output-type dot | dot -T svg > assets/dependency-graph.svg",
     "lint:boundaries": "bun run nx run workspace:boundaries",
     "prepare": "husky",
-    "check:code": "bun run lint && bun run typecheck && bun run lint:boundaries && bun run test:unit",
-    "check": "bun run format:check && bun run check:code",
-    "check:full": "bun run check && bun run test:tooling && bun run test:e2e",
+    "check:code": "bun run check:workspace && bun run lint && bun run typecheck && bun run lint:boundaries && bun run test:unit",
+    "check": "bun run check:code && bun run format:check",
+    "check:full": "bun run check && bun run audit:changed && bun run test:tooling && bun run test:e2e",
     "migration:create": "bun run nx run database:migration-create",
     "migration:up": "bun run nx run database:migration-up",
     "migration:up:tests": "bun run nx run database:migration-up --configuration=test",
@@ -42,7 +42,9 @@
     "migration:status": "bun run nx run database:migration-status",
     "migration:status:tests": "bun run nx run database:migration-status --configuration=test",
     "seed:up": "bun run nx run database:seed",
-    "seed:up:tests": "bun run nx run database:seed --configuration=test"
+    "seed:up:tests": "bun run nx run database:seed --configuration=test",
+    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/dependency-audit.test.ts",
+    "audit:changed": "bun scripts/audit-changed.ts"
   },
   "dependencies": {
     "@nestjs/apollo": "14.0.3",

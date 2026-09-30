@@ -3,7 +3,9 @@
 Use **Bun 1.4.2** and install with `bun install --frozen-lockfile`. The `prepare`
 script installs Husky for this checkout. Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
-core/package tests). The hook runs without Docker. A failure blocks the commit.
+core/package tests). When dependency manifests or Bun lockfiles are staged, the
+hook also audits them against the registry. The hook runs without Docker. A
+failure blocks the commit.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
@@ -13,7 +15,7 @@ the affected files and verification of changed links/commands.
 | Check             | Command                   | Scope                                                                                                              |
 | ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                       |
-| Full gate         | `bun run check:full`      | Fast gate, runner lifecycle tests and provisioned application E2E                                                  |
+| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                    |
 | Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                          |
 | Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                            |
 | Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                           |
@@ -21,7 +23,7 @@ the affected files and verification of changed links/commands.
 | Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                           |
 | Live behavior     | `bun run test:e2e`        | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up      |
 | Runner lifecycle  | `bun run test:tooling`    | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                     |
-| Dependencies      | `bun audit`               | Complete locked tree; no advisory ignores                                                                          |
+| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                          |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -43,6 +45,40 @@ editors. The compile-time fixture is `src/type-tests/final.decorator.ts`.
 `test:unit` runs the existing application, core primitive and example suites.
 `test:debug` opens the application unit suite; package inspector targets are
 `core:test-debug` and `example:test-debug`. Live targets always execute.
+
+## Workspace and dependency guardrails
+
+`bun run check:workspace` starts directly with Bun, before any Nx command in
+`check:code`, `check` or `check:full`. It exercises the supported Nx CLI in a
+unique temporary workspace, checks real project edges and warms typecheck's
+cache before introducing invalid dependency source, shared TypeScript settings
+and decorator-fixture types. Each mutation must fail, and restored source must
+pass. Installed external tools are shared; workspace package links and Nx cache
+paths point into the temporary copy. The checkout and its cache remain untouched.
+
+Subprocesses have a deadline and bounded output. Timeout kills the owned process
+group; output overflow fails explicitly rather than treating truncated output as
+a successful result. Test fixtures remove their temporary directories in
+`finally`. The guardrail suite also tests the audit CLI with real Git and Bun
+against a local HTTP registry fixture, with no external registry or Docker.
+The existing real-Docker runner suite remains `test:tooling`.
+
+`bun run audit:changed` compares dependency files against the merge-base of
+`HEAD` and `origin/master`, including branch commits, staged/unstaged changes and
+untracked manifests. Use `--base <ref>` for another comparison. It runs during
+`check:full`. The hook uses `bun run audit:changed --staged`, considering only the
+pending commit. All `package.json`, `bun.lock` and `bun.lockb` paths are covered.
+Documentation-only changes skip the registry. Dependency changes always query
+it; there is no Nx target or cached audit result. `bun audit` remains the command
+for an unconditional manual audit.
+
+Audit status is explicit: `audit:clean` or `audit:skipped` returns 0,
+`audit:vulnerable` returns 1, and `audit:unavailable` returns 2 for registry,
+timeout, invalid-report or Git-comparison failures. An unavailable comparison
+base never becomes a skipped/successful audit. Staged dependency files must
+match their working copies; mixed staged/unstaged dependency edits fail before
+querying, so a different lockfile cannot validate the pending commit. Registry
+queries are bounded to 60 seconds and include development dependencies.
 
 ## Isolated database checks
 

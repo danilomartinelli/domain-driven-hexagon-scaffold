@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun test ./scripts/tests",
+        "command": "bun test ./scripts/tests/test-database-runner.test.ts",
         "cwd": "."
       }
     },

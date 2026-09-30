@@ -142,4 +142,6 @@ workspace links. See [the workspace guide](nx-workspace.md).
 Nx brings `smol-toml` 1.6.1, affected by
 [GHSA-7w5x-hrqm-74c2](https://github.com/advisories/GHSA-7w5x-hrqm-74c2).
 The root override pins stable **1.9.0**, beyond the advisory's first fixed
-version 1.7.1. No advisory is ignored. Re-run `bun audit` after dependency changes.
+version 1.7.1. No advisory is ignored. The conditional `audit:changed` gate runs in `check:full` and for staged
+dependency changes in pre-commit; registry failures block with a distinct status.
+Use `bun audit` for an unconditional manual query.

@@ -56,7 +56,9 @@ configuration is also an input of every deterministic target.
 
 ## Commands
 
-Run commands from the repository root. `bun run nx` invokes the installed local
+Run commands from the repository root. `check:workspace` bootstraps guardrail
+tests directly under Bun before the Nx quality commands, and `audit:changed`
+runs the conditional registry check directly. `bun run nx` invokes the installed local
 Nx binary using Bun, without downloading a CLI. It disables Nx's automatic
 `.env` loading, preserving the existing explicit environment selection, and
 turns off the daemon. Native root `eslint.config.mjs`, `prettier.config.mjs` and
@@ -105,6 +107,9 @@ cacheable. Inputs include the owning project's files, source dependencies, Bun
 runtime version, lockfile, root manifests and shared TypeScript/ESLint/Prettier,
 Bun and Nx configuration. Repository-wide checks declare repository-wide inputs;
 formatting also includes documentation, root guidance and editor configuration.
+The workspace guardrail tests exercise source/configuration invalidation in an
+isolated cache on every invocation. Conditional dependency audits always query
+the registry when applicable. Both run outside Nx; see [developer checks](developer-checks.md#workspace-and-dependency-guardrails).
 These checks produce no build artifact. `.nx` is local and ignored; Nx Cloud is
 not required and connections to it are disabled.
 
