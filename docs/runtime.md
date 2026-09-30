@@ -172,11 +172,7 @@ independent broker/service startup belong to later work.
 The seven original Gherkin cases remain unchanged. Real PostgreSQL regressions
 cover REST/GraphQL compatibility, Wallet write failure/recovery, persistence
 without dispatch, metadata without ambient context, rollback after dispatch
-failure on creation/deletion, and direct CLI/message delegation. See the
-[User write execution record](validation/issue-19-user-writes.md).
-The [core-decoupling](validation/issue-16-core.md),
-[original runtime](validation/issue-5-runtime.md) and
-[Nest upgrade](validation/issue-6-adapters.md) records are historical evidence.
+failure on creation/deletion, and direct CLI/message delegation.
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the
 runtime alias hook and Nest's build toolchain have been removed. `@types/jest`
@@ -188,8 +184,7 @@ has been removed.
 The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
 Strict lint/type settings and architecture tooling are documented in
 [developer checks](developer-checks.md). The [dependency inventory](dependencies.md)
-and [combined validation record](validation/issue-8-upgrade.md) cover the completed
-remediation, clean frozen install and real application checks. The remaining Nx/service separation and application-core decoupling follow
+records compatible versions and security fixes. The remaining Nx/service separation and application-core decoupling follow
 [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md). Domain primitives are now
 context-independent; command handlers and repository orchestration are still
 Nest/Slonik adapters. CLI bootstrap remains outside the migration scope.

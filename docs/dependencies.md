@@ -126,8 +126,7 @@ bun outdated
 bun audit
 ```
 
-The [combined execution record](validation/issue-8-upgrade.md) records actual
-results. Next objectives remain **Nx monorepo; correction of hexagonal coupling;
+Next objectives remain **Nx monorepo; correction of hexagonal coupling;
 completion of CLI and messaging examples**, as required by
 [ADR 0001](adr/0001-modernize-with-bun.md).
 

@@ -132,7 +132,5 @@ is `john@gmail.com` with a zero-balance Wallet. Seeds are not idempotent: a
 second insertion fails and rolls back. Application tests clear those fixtures
 before the first case and between cases. Migration history remains intact.
 
-Historical database evidence remains in [issue #4](validation/issue-4-database.md)
-and [issue #8](validation/issue-8-upgrade.md); those describe the older manual
-workflow. See [developer checks](developer-checks.md) for the current gate and
+See [developer checks](developer-checks.md) for the current gate and
 [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md) for the remaining service split.

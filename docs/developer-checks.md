@@ -67,9 +67,9 @@ changed TypeScript or JavaScript paths explicitly; for example:
 bun --bun eslint scripts/search.ts scripts/lib/read-ranges.ts scripts/tests/search.test.ts --max-warnings 0
 ```
 
-Use the full gate above for final validation. Record exact test totals in the
-dated execution records under `docs/validation/`; operational guides describe
-coverage so adding a regression does not require updating copied totals.
+Use the full gate above for final validation. Operational guides describe test
+coverage without copying execution totals, so adding a regression does not
+require updating those guides unless the coverage changes.
 
 ## Documentation references
 
@@ -238,7 +238,4 @@ independent service and contract/distribution suites belong to later tickets in
 
 The remaining objectives are independent applications, application-owned read ports and durable
 service integration. See the
-[dependency inventory](dependencies.md) for version decisions and security overrides,
-and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for
-final validation. The [issue #7 record](validation/issue-7-checks.md) retains the
-historical diagnostics and audit finding before remediation.
+[dependency inventory](dependencies.md) for version decisions and security overrides.

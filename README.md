@@ -16,15 +16,13 @@ Install dependencies with **Bun 1.4.2** using `bun install --frozen-lockfile`.
 Run the individual [developer checks](docs/developer-checks.md) for strict types,
 lint, formatting and architecture.
 Database commands also execute directly under Bun. See the [database guide](docs/database.md)
-for local PostgreSQL, SQL migrations, seeds, and the recorded validation results.
+for local PostgreSQL, SQL migrations and seeds.
 Run the application with `bun run start:dev` and the existing Gherkin cases with
 `bun run test:e2e`. `bun test` runs the infrastructure-free core suite. See the
 [runtime guide](docs/runtime.md) for setup, type checking, and the seven original
 Gherkin cases plus the real-database rollback regressions.
 The [dependency inventory](docs/dependencies.md) records compatible versions and
-security fixes; [combined upgrade evidence](docs/validation/issue-8-upgrade.md)
-records the clean installation and real application/database checks. Run
-`bun audit` separately to recheck the complete dependency tree.
+security fixes. Run `bun audit` separately to recheck the complete dependency tree.
 The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the transitional application,
 private technical packages and regressions. Remaining migration work includes
 independent services, application-owned read ports and durable
