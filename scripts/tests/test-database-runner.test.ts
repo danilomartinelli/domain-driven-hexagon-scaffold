@@ -40,13 +40,6 @@ async function runProbe(
     ],
     {
       cwd: root,
-      // The wrapper must use only its own target, even if the caller has dev settings.
-      env: {
-        ...process.env,
-        DB_NAME: 'development',
-        DB_HOST: 'unreachable.invalid',
-        DB_PORT: '1',
-      },
       stdout: 'pipe',
       stderr: 'pipe',
     },

@@ -1,3 +1,4 @@
+import { assertTestEnvironment } from '../../database/environment';
 import { afterAll, afterEach, beforeAll } from 'bun:test';
 import { Test } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -23,6 +24,7 @@ export function getTestDatabase(): DatabasePool {
 }
 
 async function cleanDatabase(): Promise<void> {
+  assertTestEnvironment();
   await pool?.query(sql.unsafe`TRUNCATE "users", "wallets"`);
 }
 

@@ -6,10 +6,9 @@ directly, without producing `dist/`:
 
 ```sh
 bun install --frozen-lockfile
-cp .env.example .env # first setup only; preserve an existing .env
-bun run docker:env
-bun run migration:up
-bun run start:dev
+bun run env:prepare --environment=development --run=default
+bun run env:exec --environment=development --run=default -- bun run migration:up
+bun run env:exec --environment=development --run=default -- bun run start:dev
 ```
 
 The server listens on port 3000: REST at `/v1/users`, OpenAPI at `/docs` and
@@ -23,10 +22,10 @@ See [adapter compatibility](adapters.md) for the Nest/Apollo versions, CLI
 command definition, and the limits of each example. The start scripts invoke Nx targets that execute the full application under Bun.
 See [the Nx baseline](nx-workspace.md) for projects, commands and cache policy.
 
-The shared dotenv 18 loader selects `.env.test` only when `NODE_ENV=test`,
+Outside a prepared environment, the shared dotenv 18 loader selects `.env.test` only when `NODE_ENV=test`,
 otherwise `.env`; shell-provided values take precedence. Its new startup banner
 is disabled so database status output remains readable. Bun's automatic env
-loading stays disabled in `bunfig.toml`. See [database settings](database.md#postgresql-and-connections)
+loading stays disabled in `bunfig.toml`. See [database settings](database.md#isolation-and-configuration)
 before using custom ports or database names. Application HTTP port remains 3000.
 
 `bun run typecheck` runs TypeScript **6.0.3** with `noEmit`. Native execution is
@@ -63,24 +62,25 @@ bun run test:e2e
 ```
 
 The wrapper creates a unique Compose project with an ephemeral loopback port and
-tmpfs storage, applies migrations and always attempts owned-resource cleanup.
+tmpfs storage for PostgreSQL and RabbitMQ, explicitly migrates/seeds, and always attempts owned-resource cleanup.
 Output and exit statuses are retained under `.context/test-runs/`. See
 [developer checks](developer-checks.md#isolated-database-checks) for lifecycle
 limits, failure handling and the complete gate.
 
-No seed command is required. Tests clear users and wallets before the run and
+The wrapper runs seeds explicitly; a manual prepared workflow uses `seed:up:tests`. Tests clear users and wallets before the run and
 after each case, including any seeded fixtures. The migration history is kept.
 Use only a disposable validation database, never development data.
 
 `test:e2e` invokes `test:e2e:prepared`, which explicitly selects `tests/user` and `tests/integration` and preloads
 `tests/setup/preload.ts`; unit discovery never imports this setup.
-The wrapper sets `NODE_ENV=test` and its owned database target. In manual
-`test:e2e:prepared` mode, Bun defaults to `NODE_ENV=test` and the preload rejects
-an explicitly different value.
-The preload loads `.env.test` and rejects database names without a standalone
-`test` or `tests` prefix/suffix, including shell-provided overrides, **before**
-importing the application or opening a pool. Bun's automatic env loading remains
-disabled so a parent `bun run` cannot import development settings first.
+The wrapper sets `NODE_ENV=test` and supplies its owned environment manifest.
+For manual runs, use `env:exec` as documented in the [database workflow](database.md).
+The preload validates all database targets and rejects development, sibling-run,
+unknown and inactive targets **before** importing the application or opening a
+pool. Cleanup revalidates before each truncation. Shell values take precedence;
+an unsafe test override fails rather than redirecting the test. Bun and Nx
+automatic dotenv loading remain disabled, and the shared loader skips files
+inside the selected environment.
 
 `jest-cucumber` **4.5.0** receives `describe` and `test` from `bun:test`; hooks and
 assertions also use Bun. The existing feature text and observable assertions
@@ -101,9 +101,10 @@ bun run test:debug # inspector pauses before execution
 
 Separate `test:e2e` invocations have independent databases. Within one suite,
 shared table cleanup requires sequential cases. Migrations run explicitly in the
-wrapper before the test command. For manual `test:e2e:prepared` runs, prepare the
-database with `docker:tests` and `migration:up:tests`, run only one process against
-that target, and follow the [cleanup instructions](database.md#seeds-and-cleanup).
+wrapper before the test command. For manual `test:e2e:prepared` runs, use the
+[named test workflow](database.md#disposable-tests) to prepare, migrate, seed,
+execute and shut down the selected environment. Run only one test process per
+prepared target.
 
 ## Persistence and transaction review
 

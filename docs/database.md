@@ -1,172 +1,136 @@
-# Local database workflow
+# Workspace database workflow
 
-Use **Bun 1.4.2** as the package manager and database-command runtime. The version
-is pinned in `.bun-version` and `package.json`; `bun.lock` is committed. Run all
-commands below from the repository root:
+Use Bun 1.4.2 and Docker from the repository root. Install dependencies with
+`bun install --frozen-lockfile`. The Nx-backed environment commands provision
+PostgreSQL 18.6 and RabbitMQ (official management image pinned by digest).
+Each environment belongs to the real workspace path and a named run.
 
-```sh
-bun --version # 1.4.2
-bun install --frozen-lockfile
-cp .env.example .env # first setup only; preserve an existing .env
-```
-
-If you already have a `.env` for the bundled Compose database, keep your other
-settings and change its `DB_PORT` from `5432` to `5433` before running the
-application, migrations, or seeds. Connection URIs now honor `DB_PORT`; the old
-value targets port `5432` instead of the development service published on `5433`.
-
-Migrations use stable `node-pg-migrate` **9.0.0** with `pg` **8.23.0**. The `.mjs`
-entry points run directly under Bun, independently of the application's TypeScript
-toolchain and Slonik. Node, `ts-node`, and `jiti` are not used to execute these
-commands or SQL migrations. `jiti` remains an accepted transitive dependency of
-the migrator. The application and Gherkin cases also run directly under Bun;
-see the [runtime guide](runtime.md). The database scripts are included in the strict type and lint checks described
-in [developer checks](developer-checks.md).
-
-## PostgreSQL and connections
-
-The Compose file pins `postgres:18.6-alpine`. PostgreSQL has a five-year support
-policy rather than separate LTS releases; 18.6 was the current maintained stable
-18.x release when selected, with support through November 2030. See the
-[PostgreSQL version policy](https://www.postgresql.org/support/versioning/).
-PostgreSQL 18 stores its cluster below `/var/lib/postgresql`; the Compose mounts
-follow the [official image's layout](https://hub.docker.com/_/postgres).
-
-| Purpose     | Command                | Service         | Host connection            | Storage                                          |
-| ----------- | ---------------------- | --------------- | -------------------------- | ------------------------------------------------ |
-| Development | `bun run docker:env`   | `postgres`      | `localhost:5433/ddh`       | Named volume `ddh-postgres-18`                   |
-| Validation  | `bun run docker:tests` | `postgres-test` | `localhost:5434/ddh_tests` | Separate container, temporary memory-backed data |
-
-Both services use the local example credentials `user` / `password`, bind only to
-loopback, and wait for a TCP health check. This skips the socket-only temporary
-server used during first-time initialization. Starting or stopping the validation
-service does not operate on development data. Stopping the validation container
-discards its data; rerun the baseline after starting it again. The new development
-volume also avoids attaching a legacy PostgreSQL data directory to the new major version.
-No conversion of an existing database or migration history is provided.
-
-The shared connection settings read `.env` for development and `.env.test` when
-`NODE_ENV=test`. Shell-provided `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`,
-and `DB_NAME` take precedence. Credentials/database names are URL-encoded and
-the configured port is included in the application's and commands' connection URI.
-`bunfig.toml` disables Bun's automatic env loading so `bun run ...:tests` cannot
-inherit development values loaded by the parent Bun process before `NODE_ENV`
-is set. Use the validation settings below with no development `DB_*` shell overrides.
-
-Optional pgAdmin:
+## Development
 
 ```sh
-docker compose -p ddh -f docker/docker-compose.yml --profile tools up -d pgadmin
+bun run env:prepare --environment=development --run=default
+bun run env:exec --environment=development --run=default -- bun run migration:up
+bun run env:exec --environment=development --run=default -- bun run seed:up
+bun run env:exec --environment=development --run=default -- bun run start:dev
+# Stop containers and their network; keep all named volumes.
+bun run env:down --environment=development --run=default
 ```
 
-It is available on `localhost:5050` with `admin@email.com` / `admin`; connect to
-the Compose hostname `postgres` or `postgres-test` on port `5432`.
+Preparing the same development environment again reuses its manifest, ports,
+credentials and volumes. Migrations and seeds are explicit, separate operations.
+`docker:env` is an alias for preparing development's `default` run.
 
-## SQL migrations
+## Disposable tests
 
-The baseline replaces the old Slonik migration history. Apply it to an **empty**
-database, not a database containing the legacy `users`/`wallets` tables. Existing
-identifiers, camel-case columns, `timestamptz` dates, integer wallet balances,
-primary keys, unique emails, and unique wallet user IDs are preserved. It adds no
-foreign key, so the existing application deletion and test cleanup behavior remain
-unchanged.
+The complete workflow chooses a fresh run, prepares infrastructure, invokes the
+selected applications' database migration and seed commands, runs the suite,
+and attempts owned-resource shutdown even after failure or interruption:
 
 ```sh
-bun run docker:tests
-bun run migration:status:tests # baseline is pending; does not create history
-bun run migration:up:tests
-bun run migration:status:tests # baseline is applied
-bun run seed:up:tests
+bun run test:e2e
+bun run test:e2e --test-name-pattern 'Wallet persistence failure'
 ```
 
-Create a versioned SQL file without connecting to a database:
+For repeated, targeted runs against prepared infrastructure:
+
+```sh
+bun run env:prepare --environment=test --run=regression-1
+bun run env:exec --environment=test --run=regression-1 -- bun run migration:up:tests
+bun run env:exec --environment=test --run=regression-1 -- bun run seed:up:tests
+bun run env:exec --environment=test --run=regression-1 -- bun run test:e2e:prepared
+bun run env:exec --environment=test --run=regression-1 -- bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts
+bun run env:down --environment=test --run=regression-1
+```
+
+Use a new test run name after shutdown; test names cannot be reused. `docker:tests`
+prepares the test run named `default`. It does not migrate or seed. Direct
+`test:e2e:prepared`, `migration:*:tests` and `seed:up:tests` require the selected
+owned environment, normally supplied through `env:exec`.
+The final Makefile aliases belong to the full workflow slice of issue #15.
+
+## Isolation and configuration
+
+Project names are `ddh-test-<workspace hash>-<run>` or
+`ddh-dev-<workspace hash>-<run>`. Container names, networks, application database
+names, development volumes and RabbitMQ virtual hosts include that scope.
+RabbitMQ has a stable scoped hostname so its node data survives development
+container recreation ([node naming](https://www.rabbitmq.com/docs/clustering)).
+Each application gets a PostgreSQL container; tests use tmpfs, development uses
+new named volumes. No command deletes a volume or transfers legacy data.
+The older `docker/docker-compose.yml` is retained only for accessing existing
+resources; it is no longer called by package commands. Its `ddh` volumes are
+not adopted by the new workflow.
+
+All published infrastructure ports bind to loopback. Ports are allocated per
+run, or explicitly selected at first preparation with `DB_PORT`,
+`RABBITMQ_PORT` and `RABBITMQ_MANAGEMENT_PORT`. An occupied port fails startup
+and triggers cleanup. Allocation cannot reserve a port across Docker startup;
+a race also fails closed and can be retried with a fresh run.
+
+The manifest also reserves `GATEWAY_NAME`, `GATEWAY_HOST` (default
+`host.docker.internal`), `GATEWAY_PROXY_PORT`, `GATEWAY_ADMIN_PORT`,
+`USER_HTTP_PORT` and `WALLET_HTTP_PORT` for the later Kong routing slice.
+Those ports and host are configurable at preparation. This slice does not start
+Kong or install routes; the gateway ports are coordinates, not bound listeners.
+
+The generated manifest and Compose configuration live under
+`.context/test-runs/<project>/` with owner-only file permissions. Treat them as
+local credentials. `run.log` and `result.json` retain command/cleanup statuses.
+The manifest provides database and broker settings to `env:exec`; shell values
+win over defaults. **Tests reject an override that differs from the selected
+owned target**, instead of silently replacing it or connecting to it.
+Development commands may intentionally use shell overrides.
+
+Bun automatic environment loading is disabled in `bunfig.toml`, and Nx dotenv
+loading is disabled by the package wrapper. The application's dotenv loader
+skips `.env`/`.env.test` inside a selected environment. Outside that workflow,
+legacy development commands still read `.env` with shell precedence.
+Tests never authorize cleanup based on a name containing `test`.
+
+Before opening any application pool or database-tool connection, and again
+before each test truncation, the guard checks the ready test manifest and every
+configured database's host, port, username, password and scoped name. Unknown
+`*_DB_*` targets and database URLs are rejected, so adding a future service
+cannot silently bypass the guard. Shutdown derives configuration from the
+selected manifest and checks owner labels on containers, networks and volumes;
+it never derives a Compose project from a caller's database URL.
+
+Readiness has a 60-second Compose deadline within a 90-second process deadline.
+Migrations and seeds each have 60 seconds; test commands have five minutes.
+Each ownership inspection/log command has 15 seconds; Compose shutdown has 30
+seconds. SIGINT/SIGTERM terminate the active process group, with forced
+termination after five seconds, then attempt cleanup and return 130/143.
+A cleanup failure turns a successful wrapped test run into failure. A forcibly
+killed runner or unavailable Docker daemon may leave resources for a later
+`env:down` using the same run ID.
+
+## Application-owned database content
+
+`database/applications.ts` registers the transitional `legacy` application:
+its environment-variable prefix, migration directory and ordered seed files.
+Select it explicitly with `DATABASE_APP=legacy` when needed. Unknown applications
+fail before connecting. Future services add their own entries/content; the
+orchestrator iterates the registry to provision, migrate, seed and validate every
+target. This issue does not split the existing User/Wallet schema or application.
 
 ```sh
 bun run migration:create add-user-index
+DATABASE_APP=legacy bun run env:exec --environment=test --run=regression-1 -- bun run migration:status:tests
+DATABASE_APP=legacy bun run env:exec --environment=test --run=regression-1 -- bun run migration:down:tests
 ```
 
-Use a lowercase name with hyphens. Edit the generated file in
-`database/migrations/`, keeping both `-- Up Migration` and `-- Down Migration`
-sections. The migrator assigns the timestamp prefix and loads SQL directly.
-Only `.sql` files in that directory are considered.
+SQL files retain `-- Up Migration` and `-- Down Migration` sections.
+`node-pg-migrate` owns each database's `public.pgmigrations`, transaction and
+advisory lock. `up` applies pending migrations, `down` rolls back the latest,
+and `status` lists applied/pending history. The baseline must start in an empty
+database; rolling it back drops User and Wallet tables and their data.
 
-| Operation                       | Development                | Validation                       |
-| ------------------------------- | -------------------------- | -------------------------------- |
-| Apply all pending migrations    | `bun run migration:up`     | `bun run migration:up:tests`     |
-| Roll back the latest migration  | `bun run migration:down`   | `bun run migration:down:tests`   |
-| List applied/pending migrations | `bun run migration:status` | `bun run migration:status:tests` |
-| Load fixtures                   | `bun run seed:up`          | `bun run seed:up:tests`          |
+Seeds run explicitly after migrations in one transaction. The legacy fixture
+is `john@gmail.com` with a zero-balance Wallet. Seeds are not idempotent: a
+second insertion fails and rolls back. Application tests clear those fixtures
+before the first case and between cases. Migration history remains intact.
 
-`migration:status` replaces **both** `migration:executed` and `migration:pending`
-(including their `:tests` variants). It reads `public.pgmigrations` without
-modifying the database and flags history entries whose SQL file is missing.
-`migration:create <name>` replaces the legacy `create --name` invocation.
-
-To exercise rollback and reapplication on the disposable validation database:
-
-```sh
-bun run migration:down:tests
-bun run migration:status:tests
-bun run migration:up:tests
-bun run seed:up:tests
-```
-
-Rolling back the baseline **drops users and wallets, including their data**.
-With additional migrations present, each `down` rolls back only the latest one.
-Reapplication is `up` after `down`; there is no separate `redo` command.
-
-`node-pg-migrate` owns its history, transaction handling and PostgreSQL advisory
-lock. All pending migrations run in a single transaction; failures roll back the
-batch. Concurrent execution fails while the migrator's advisory lock is held.
-The commands await completion, release connections and exit nonzero on failure.
-The runner options follow the [version 9 API](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/docs/src/api.md).
-
-## Automated test databases
-
-`bun run test:e2e` provisions its own PostgreSQL from
-`docker/docker-compose.test.yml`, applies the same migrations and removes the
-run's container/network afterward. It assigns a unique project, database and
-loopback port, uses tmpfs instead of a persistent volume, and supplies its own
-`DB_*` target. Logs and exit codes remain under `.context/test-runs/`.
-
-The `docker:tests`, `migration:*:tests` and seed commands documented here remain
-manual tools. Use `test:e2e:prepared` when intentionally testing against that
-already prepared disposable target. See [developer checks](developer-checks.md#isolated-database-checks)
-for the automated lifecycle and targeted commands.
-
-## Seeds and cleanup
-
-Run migrations before seeds. Seeds no longer apply migrations implicitly: they
-load `users.seed.sql` followed by `wallets.seed.sql` using a single client and
-transaction. The existing fixture is `john@gmail.com`, role `guest`, with a zero
-balance wallet. A failure rolls back both files and exits nonzero; connections
-close on success and failure. Fixtures are deliberately not idempotent: running
-the command twice reports a duplicate key and preserves the first insertion.
-
-Inspect persisted fixtures and history:
-
-```sh
-docker compose -p ddh -f docker/docker-compose.yml exec -T postgres-test \
-  psql -U user -d ddh_tests -c 'SELECT name, run_on FROM public.pgmigrations ORDER BY id;'
-docker compose -p ddh -f docker/docker-compose.yml exec -T postgres-test \
-  psql -U user -d ddh_tests -c 'SELECT u.email, w.balance FROM users u JOIN wallets w ON w."userId" = u.id;'
-```
-
-Remove only the disposable validation container when finished:
-
-```sh
-docker compose -p ddh -f docker/docker-compose.yml rm --stop --force postgres-test
-```
-
-## Verification and remaining work
-
-See [the combined issue #8 record](validation/issue-8-upgrade.md) for the database
-workflow rerun on the final dependencies, and [the issue #4 operational record](validation/issue-4-database.md)
-for the original migration replacement. Those records describe the earlier
-manual workflow. Current hooks and automated local validation are documented in
-[developer checks](developer-checks.md).
-
-The broader modernization remains governed by [ADR 0001](adr/0001-modernize-with-bun.md).
-The [Nx baseline](nx-workspace.md) now orchestrates these commands. Independent
-User/Wallet databases, application-owned transactions and durable messaging
-remain future slices; the current shared database and transaction are retained.
+Historical database evidence remains in [issue #4](validation/issue-4-database.md)
+and [issue #8](validation/issue-8-upgrade.md); those describe the older manual
+workflow. See [developer checks](developer-checks.md) for the current gate and
+[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md) for the remaining service split.

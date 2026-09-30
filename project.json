@@ -5,7 +5,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bun --bun prettier --check \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/*.{mjs,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\"",
+        "command": "bun --bun prettier --check \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/**/*.{mjs,ts,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\"",
         "cwd": "."
       },
       "inputs": [
@@ -22,7 +22,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --bun prettier --write \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/*.{mjs,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\"",
+        "command": "bun --bun prettier --write \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/**/*.{mjs,ts,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\"",
         "cwd": "."
       }
     },

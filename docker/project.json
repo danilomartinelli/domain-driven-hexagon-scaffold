@@ -3,11 +3,35 @@
   "projectType": "library",
   "tags": ["scope:tooling"],
   "targets": {
+    "prepare": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/environment-cli.ts --nx prepare",
+        "cwd": "."
+      }
+    },
+    "exec": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/environment-cli.ts --nx exec",
+        "cwd": "."
+      }
+    },
+    "down": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/environment-cli.ts --nx down",
+        "cwd": "."
+      }
+    },
     "up": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres",
+        "command": "bun --no-env-file scripts/environment-cli.ts --nx prepare --environment=development",
         "cwd": "."
       }
     },
@@ -15,7 +39,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres-test",
+        "command": "bun --no-env-file scripts/environment-cli.ts --nx prepare --environment=test",
         "cwd": "."
       }
     }

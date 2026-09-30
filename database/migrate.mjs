@@ -5,9 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { Migration, runner } from 'node-pg-migrate';
 import pg from 'pg';
 
-const migrationsDir = fileURLToPath(new URL('./migrations/', import.meta.url));
+import { selectApplication } from './applications.ts';
+import { databaseTarget } from './target.ts';
 
 async function run() {
+  const migrationsDir = fileURLToPath(selectApplication().migrations);
   const [command, name, ...extra] = process.argv.slice(2);
   if (command === 'create' && name && !extra.length) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
@@ -27,11 +29,10 @@ async function run() {
     );
   }
 
-  const { postgresConnectionUri } =
-    await import('../src/configs/database.config.ts');
+  const { connection } = databaseTarget();
   if (command !== 'status') {
     await runner({
-      databaseUrl: postgresConnectionUri,
+      databaseUrl: connection,
       dir: migrationsDir,
       ignorePattern: '(?!.*\\.sql$).*',
       migrationsTable: 'pgmigrations',
@@ -46,7 +47,7 @@ async function run() {
     return;
   }
 
-  const client = new pg.Client({ connectionString: postgresConnectionUri });
+  const client = new pg.Client(connection);
   try {
     await client.connect();
     /** @type {import('pg').QueryResult<{ history: string | null }>} */

@@ -43,8 +43,11 @@
     "migration:status:tests": "bun run nx run database:migration-status --configuration=test",
     "seed:up": "bun run nx run database:seed",
     "seed:up:tests": "bun run nx run database:seed --configuration=test",
-    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/dependency-audit.test.ts",
-    "audit:changed": "bun scripts/audit-changed.ts"
+    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts",
+    "audit:changed": "bun scripts/audit-changed.ts",
+    "env:prepare": "bun --no-env-file scripts/environment-cli.ts prepare",
+    "env:exec": "bun --no-env-file scripts/environment-cli.ts exec",
+    "env:down": "bun --no-env-file scripts/environment-cli.ts down"
   },
   "dependencies": {
     "@nestjs/apollo": "14.0.3",

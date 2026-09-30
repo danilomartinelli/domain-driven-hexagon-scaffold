@@ -7,7 +7,7 @@ export default defineConfig({
     'src/**/*.ts',
     'tests/**/*.ts',
     'scripts/**/*.ts',
-    'database/**/*.mjs',
+    'database/**/*.{mjs,ts}',
     '*.mjs',
     'tooling/**/*.mjs',
   ],
