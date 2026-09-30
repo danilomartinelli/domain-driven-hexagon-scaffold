@@ -1,5 +1,10 @@
 # Domain-Driven Hexagon
 
+< English | [Português (Brasil)](README.pt-BR.md) >
+
+[![CI](https://github.com/danilomartinelli/vibecoding-starter-js/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/danilomartinelli/vibecoding-starter-js/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Check out my other repositories**:
 
 - [Backend best practices](https://github.com/Sairyss/backend-best-practices) - Best practices, tools and guidelines for backend development.

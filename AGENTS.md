@@ -50,6 +50,7 @@ Issues and specs are tracked in GitHub Issues for `danilomartinelli/vibecoding-s
 ### Triage labels
 
 Use the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+Priority and impact labels are listed in [CONTRIBUTING.md](CONTRIBUTING.md#issues-and-labels).
 
 ### Domain docs
 
@@ -64,7 +65,7 @@ bare `bun test` only discovers `src/tests`. Use `bun run lint`,
 Before declaring code changes ready, run `bun run check:full`; Docker must be
 running for its lifecycle and E2E suites. `bun run test:e2e` provisions an
 isolated environment, migrates, seeds, runs tests and cleans up owned resources.
-Pre-commit hooks run the infrastructure-free checks.
+Pre-commit hooks and CI run the infrastructure-free checks.
 
 For documentation-only changes, format the affected files, run
 `bun run check:docs`, and verify changed commands. See
@@ -75,6 +76,7 @@ For documentation-only changes, format the affected files, run
 Review the intended staged changes, including new files, before committing.
 Follow `.agents/skills/code-review/SKILL.md` to pin the base and index snapshot
 for both reviewers; re-review fixes before committing the reviewed snapshot.
+Write commit messages in the [CONTRIBUTING.md](CONTRIBUTING.md#commit-style) style.
 
 ### Focused exploration
 

@@ -5,6 +5,12 @@ date: 2026-09-29
 
 # Adopt Nx with hexagonal Nest 12 services and native Bun
 
+Amended on 2026-09-30: continuous integration now runs the infrastructure-free
+fast gate (`bun run check`) on pull requests and pushes to `master`. This lifts the
+GitHub Actions restriction below and the CI restriction in
+[ADR 0001](0001-modernize-with-bun.md); the Docker-backed suites in
+`check:full` remain local.
+
 The repository will adopt Nx with `user` and `wallet` as separate Nest
 applications. Wallet's current size does not determine its intended application
 boundary. Preserve Nest 12 and Bun as the application runtime, package manager

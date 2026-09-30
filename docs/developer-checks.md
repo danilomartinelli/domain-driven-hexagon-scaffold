@@ -25,7 +25,9 @@ Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
 core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
-failure blocks the commit.
+failure blocks the commit. Continuous integration runs `bun run check` on pull
+requests and pushes to `master`; the `protect-master` ruleset requires it to
+pass before merging.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
