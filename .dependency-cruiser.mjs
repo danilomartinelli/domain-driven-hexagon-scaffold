@@ -97,8 +97,9 @@ const config = {
       to: {
         pathNot: [
           ...corePaths,
-          '^node_modules/oxide\\.ts/',
-          '^node_modules/\\.bun/oxide\\.ts@[^/]+/node_modules/oxide\\.ts/',
+          // The package, wherever node_modules resolves (including linked copies).
+          '(^|/)node_modules/oxide\\.ts/',
+          '(^|/)node_modules/\\.bun/oxide\\.ts@[^/]+/node_modules/oxide\\.ts/',
         ],
       },
     },

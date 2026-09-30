@@ -156,7 +156,22 @@ For the separate preparation, selected-app migration/seed, targeted test and
 shutdown commands, see [the database workflow](database.md). The same guide
 explains environment precedence, resource ownership, lifecycle deadlines and
 reserved gateway configuration. Logs, manifests and result statuses remain
-under `.context/test-runs/<project>/`.
+under `.context/test-runs/<project>/`; each run ends with a `Result:` line.
+
+To show that tests describe behavior that existed before a change, run them
+against the base commit (the merge-base with `origin/master`, or `--base <ref>`):
+
+```sh
+bun run characterize -- tests/integration/find-users.test.ts
+```
+
+It copies the named files into a temporary worktree of the base, installs its
+locked dependencies and runs the named `*.test.ts` files there with a deadline;
+files under `tests/` use the provisioned runner, whose records are kept beside
+the output log in `.context/characterize/<commit>-<id>/`. It prints one result
+line and removes the worktree, including after interruption, unless the
+provisioned run reports a cleanup failure; then it keeps the worktree to shut
+that run down.
 
 `test:tooling` proves that independently named runs cannot redirect cleanup to
 each other's targets, development seeds survive all seven Gherkin cases plus
@@ -219,6 +234,9 @@ the conversion and decorator helpers have been removed.
 foundation helpers, User/Wallet domain, User use cases, their ports and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
 API adapters and CQRS handlers may not import a module's `database/` persistence models or repositories.
+`check:workspace` injects representative violations into a temporary copy
+(core to Nest, adapter to persistence, handler to API DTO, and a cycle) and
+requires each to fail under its rule name.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own

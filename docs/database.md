@@ -78,7 +78,10 @@ Kong or install routes; the gateway ports are coordinates, not bound listeners.
 
 The generated manifest and Compose configuration live under
 `.context/test-runs/<project>/` with owner-only file permissions. Treat them as
-local credentials. `run.log` and `result.json` retain command/cleanup statuses.
+local credentials. `run.log` and `result.json` retain command/cleanup statuses
+and, for `bun test` commands, pass/fail counts. Container logs stay in `run.log`
+and reach the terminal only when a run fails; every run ends with one `Result:`
+line naming its statuses, counts and log.
 The manifest provides database and broker settings to `env:exec`; shell values
 win over defaults. **Tests reject an override that differs from the selected
 owned target**, instead of silently replacing it or connecting to it.

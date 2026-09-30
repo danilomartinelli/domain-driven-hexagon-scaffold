@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { applications } from '../../database/applications';
 import {
   environmentLocation,
@@ -13,6 +19,7 @@ import {
 } from '../../database/environment';
 import { composeConfiguration } from './compose';
 import { commandSession } from './session';
+import { bunTestCounts, describeCounts } from './test-counts';
 
 async function availablePort(): Promise<number> {
   const server = createServer();
@@ -125,11 +132,8 @@ export async function operateEnvironment(
     COMPOSE_PROFILES: '',
     COMPOSE_REMOVE_ORPHANS: '0',
   };
-  const session = commandSession(
-    workspaceRoot,
-    join(location.directory, 'run.log'),
-    composeEnv,
-  );
+  const logPath = join(location.directory, 'run.log');
+  const session = commandSession(workspaceRoot, logPath, composeEnv);
   const compose = [
     'docker',
     'compose',
@@ -140,6 +144,7 @@ export async function operateEnvironment(
   ];
   let code = 1;
   let commandExitCode: number | undefined;
+  let tests: ReturnType<typeof bunTestCounts>;
   let cleanupExitCode = 0;
   const ownership = { verified: false };
   const requireSuccess = async (args: string[]) => {
@@ -188,11 +193,13 @@ export async function operateEnvironment(
         throw new Error('Refusing resource owned by another environment.');
     }
   }
-  async function shutdown() {
+  /** Container logs always reach run.log; the terminal gets them on failure. */
+  async function shutdown(showLogs: boolean) {
     session.startCleanup();
     await verifyOwnership(true);
     await session.execute([...compose, 'logs', '--no-color'], {
       timeout: 15_000,
+      echo: showLogs,
     });
     const result = await session.execute(
       [...compose, 'down', '--timeout', '10'],
@@ -227,7 +234,7 @@ export async function operateEnvironment(
       save();
     }
     if (action === 'down') {
-      code = await shutdown();
+      code = await shutdown(false);
       cleanupExitCode = code;
       return code;
     }
@@ -249,12 +256,14 @@ export async function operateEnvironment(
       }
     }
     if (command.length) {
+      const offset = statSync(logPath).size;
       const result = await session.execute(command, {
         env,
         timeout:
           action === 'exec' && environment === 'development' ? null : 300_000,
       });
       commandExitCode = result.code;
+      tests = bunTestCounts(readFileSync(logPath).subarray(offset).toString());
       code = result.code;
     } else code = 0;
     return code;
@@ -271,7 +280,9 @@ export async function operateEnvironment(
         (creating && (code !== 0 || session.interrupted !== 0)))
     ) {
       try {
-        cleanupExitCode = await shutdown();
+        cleanupExitCode = await shutdown(
+          code !== 0 || session.interrupted !== 0,
+        );
       } catch (error) {
         session.log(String(error));
         cleanupExitCode = 1;
@@ -285,12 +296,19 @@ export async function operateEnvironment(
         {
           project: manifest.project,
           commandExitCode,
+          ...(tests && { tests }),
           cleanupExitCode,
           exitCode: code,
         },
         null,
         2,
       ),
+    );
+    // The final line summarises the run, however much output precedes it.
+    session.log(
+      `Result: exit ${String(code)} (command ${String(commandExitCode ?? '-')}, cleanup ${String(cleanupExitCode)}); ` +
+        describeCounts(tests) +
+        `log ${relative(workspaceRoot, logPath)}`,
     );
     session.close();
   }

@@ -52,6 +52,14 @@ async function runProbe(
   expect(exitCode, stdout + stderr).toBe(code);
   expect(stdout).toContain('probe completed');
   const project = await assertCleanedUp(stdout, stderr, code);
+  const log = `.context/test-runs/${project}/run.log`;
+  expect(stdout.trimEnd().split('\n').at(-1)).toBe(
+    `Result: exit ${String(code)} (command ${String(code)}, cleanup 0); log ${log}`,
+  );
+  // Container logs stay in run.log and reach the terminal only on failure.
+  const containerLog = /^\S+-1\s+\| /m;
+  expect(containerLog.test(stdout)).toBe(code !== 0);
+  expect(await Bun.file(join(root, log)).text()).toMatch(containerLog);
   return { project, exitCode };
 }
 
