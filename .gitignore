@@ -1,5 +1,13 @@
 # Environment variables
-.env
+.env*
+!.env.example
+!.env.*.example
+!.env.test
+
+# Local credentials copied into Conductor workspaces
+/.secrets/
+/secrets/
+/certs/local/
 
 # compiled output
 /dist
@@ -43,3 +51,6 @@ lerna-debug.log*
 
 # Local Nx graph and task caches
 /.nx/
+
+# Machine-local Conductor settings
+/.conductor/settings.local.toml

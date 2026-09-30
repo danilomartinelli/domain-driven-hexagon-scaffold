@@ -7,6 +7,9 @@ Each environment belongs to the real workspace path and a named run.
 
 ## Development
 
+Conductor users can use the [workspace setup and Run commands](conductor.md)
+for an isolated development environment and an allocated application port.
+
 ```sh
 bun run env:prepare --environment=development --run=default
 bun run env:exec --environment=development --run=default -- bun run migration:up
