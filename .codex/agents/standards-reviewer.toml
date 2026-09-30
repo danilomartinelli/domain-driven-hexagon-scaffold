@@ -1,0 +1,5 @@
+sandbox_mode = "read-only"
+developer_instructions = """
+Read and follow .agents/reviewers/standards.md from the repository root.
+Keep the review read-only and return findings to the parent.
+"""

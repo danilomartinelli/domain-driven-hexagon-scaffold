@@ -5,7 +5,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bun --bun prettier --check \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/**/*.{mjs,ts,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\"",
+        "command": "bun --bun prettier --check \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/**/*.{mjs,ts,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\" \".mcp.json\" \".claude/settings.json\" \".claude/agents/*.md\" \".agents/reviewers/*.md\" \".agents/skills/{create-migration,local-env,nx-workspace,nx-run-tasks,typescript-navigation}/**/*.{md,yaml}\" \".opencode/commands/*.md\"",
         "cwd": "."
       },
       "inputs": [
@@ -15,14 +15,24 @@
         "{workspaceRoot}/*.json",
         "{workspaceRoot}/*.mjs",
         "{workspaceRoot}/.lintstagedrc",
-        "{workspaceRoot}/.vscode/*.json"
+        "{workspaceRoot}/.vscode/*.json",
+        "{workspaceRoot}/.mcp.json",
+        "{workspaceRoot}/.claude/settings.json",
+        "{workspaceRoot}/.claude/agents/**/*.md",
+        "{workspaceRoot}/.agents/reviewers/**/*.md",
+        "{workspaceRoot}/.agents/skills/create-migration/**/*",
+        "{workspaceRoot}/.agents/skills/local-env/**/*",
+        "{workspaceRoot}/.agents/skills/nx-workspace/**/*",
+        "{workspaceRoot}/.agents/skills/nx-run-tasks/**/*",
+        "{workspaceRoot}/.agents/skills/typescript-navigation/**/*",
+        "{workspaceRoot}/.opencode/commands/**/*.md"
       ]
     },
     "format": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --bun prettier --write \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/**/*.{mjs,ts,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\"",
+        "command": "bun --bun prettier --write \"{src,tests,scripts,tooling}/**/*.{ts,mjs,json,md}\" \"database/**/*.{mjs,ts,json}\" \"*.json\" \"*.mjs\" \".dependency-cruiser.mjs\" \"docker/*.{yml,json}\" \"tests/**/*.yaml\" \"docs/**/*.md\" \"AGENTS.md\" \"CLAUDE.md\" \"GLOSSARY.md\" \".lintstagedrc\" \".vscode/*.json\" \".mcp.json\" \".claude/settings.json\" \".claude/agents/*.md\" \".agents/reviewers/*.md\" \".agents/skills/{create-migration,local-env,nx-workspace,nx-run-tasks,typescript-navigation}/**/*.{md,yaml}\" \".opencode/commands/*.md\"",
         "cwd": "."
       }
     },

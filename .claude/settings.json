@@ -1,0 +1,40 @@
+{
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true,
+    "nx@nx-claude-plugins": true
+  },
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "nx-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "nrwl/nx-ai-agents-config"
+      }
+    }
+  },
+  "env": {
+    "NX_DAEMON": "false",
+    "NX_LOAD_DOT_ENV_FILES": "false"
+  },
+  "enabledMcpjsonServers": ["context7"],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^(Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun --no-env-file \"$(git rev-parse --show-toplevel)/scripts/format-agent-edit.ts\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

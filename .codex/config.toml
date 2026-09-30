@@ -1,0 +1,29 @@
+[features]
+hooks = true
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+
+[mcp_servers.nx]
+command = "sh"
+args = ["-c", 'cd "$(git rev-parse --show-toplevel)" && exec bun run nx mcp --minimal']
+startup_timeout_sec = 60
+
+[agents]
+enabled = true
+
+[agents.standards-reviewer]
+description = "Review an immutable Git comparison against repository standards and architectural boundaries."
+config_file = "agents/standards-reviewer.toml"
+
+[agents.spec-reviewer]
+description = "Review an immutable Git comparison against the supplied user request, issue or specification."
+config_file = "agents/spec-reviewer.toml"
+
+[[hooks.PostToolUse]]
+matcher = "^apply_patch$"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = 'bun --no-env-file "$(git rev-parse --show-toplevel)/scripts/format-agent-edit.ts"'
+timeout = 30

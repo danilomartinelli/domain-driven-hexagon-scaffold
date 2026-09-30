@@ -78,6 +78,11 @@ Each smell reads _what it is_ → _how to fix_; match it against the diff:
 
 ### 4. Spawn both sub-agents in parallel
 
+Use the configured `standards-reviewer` and `spec-reviewer` roles when the client
+provides them. Their shared instructions live in `.agents/reviewers/`; otherwise
+pass the same briefs below to generic sub-agents. Both receive the same pinned
+comparison. The reviewers return findings without editing or publishing them.
+
 **Standards sub-agent prompt** should include:
 
 - The full diff command and commit list.

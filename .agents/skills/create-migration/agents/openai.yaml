@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Create migration'
+  short_description: 'Create SQL migrations with isolated validation'
+  default_prompt: 'Use $create-migration to implement the requested schema change and validate it in an owned test environment.'
+policy:
+  allow_implicit_invocation: false

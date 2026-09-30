@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Local environment'
+  short_description: 'Operate owned development and test environments'
+  default_prompt: "Use $local-env to prepare and run the requested local environment with the repository's lifecycle commands."
+policy:
+  allow_implicit_invocation: false

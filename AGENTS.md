@@ -37,6 +37,12 @@ owned-resource shutdown and prepared test environments.
 
 ## Agent skills
 
+Claude Code, Codex and OpenCode share repository skills and reviewer instructions.
+See [agent automation](docs/agents/automation.md) for configuration, activation
+and the client-specific equivalents. Use Context7 for version-specific library
+documentation; confirm versions against `package.json`. All Nx advice must retain
+the `bun run nx` wrapper and the environment/cache rules in this repository.
+
 ### Issue tracker
 
 Issues and specs are tracked in GitHub Issues for `danilomartinelli/vibecoding-starter-js` using the `gh` CLI. See `docs/agents/issue-tracker.md`.
