@@ -7,7 +7,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bun --bun eslint src --max-warnings 0 --ignore-pattern src/packages",
+        "command": "bun --bun eslint src --max-warnings 0 --ignore-pattern src/packages --ignore-pattern src/apps",
         "cwd": "."
       }
     },
@@ -87,7 +87,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --bun eslint src --max-warnings 0 --ignore-pattern src/packages --fix",
+        "command": "bun --bun eslint src --max-warnings 0 --ignore-pattern src/packages --ignore-pattern src/apps --fix",
         "cwd": "."
       }
     }

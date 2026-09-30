@@ -1,15 +1,19 @@
 # Database instructions
 
 Read [the database workflow](../docs/database.md) before changing migrations,
-seeds or target selection. The current registered application is `legacy`,
-which owns the shared User/Wallet schema.
+seeds or target selection. The registered applications are `legacy`, which
+owns the shared User/Wallet schema in this directory, and `wallet`, whose
+migrations and seed live in `src/apps/wallet/database/`.
 
 ## Application content
 
 - [applications.ts](applications.ts) defines each application's environment
-  prefix, migration directory and ordered seed files. Keep this registry as
-  the source for provisioning, migration, seeding and target validation.
-  Unknown `DATABASE_APP` values must fail before connecting.
+  prefix, migration directory, ordered seed files and optional runtime role.
+  Keep this registry as the source for provisioning, migration, seeding and
+  target validation. Unknown `DATABASE_APP` values must fail before connecting.
+- An application with a runtime role migrates and seeds as the owner
+  (`<prefix>_MIGRATION_*`); its migrations grant the runtime role only what
+  the running application needs. Never run migrations with runtime credentials.
 - Create SQL migrations from the repository root with
   `bun run migration:create add-user-index` (replace the example name).
   Preserve the `-- Up Migration` and `-- Down Migration` sections.

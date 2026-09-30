@@ -8,7 +8,11 @@ import {
 } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, relative } from 'node:path';
-import { applications } from '../../database/applications';
+import {
+  applications,
+  selectApplication,
+  type DatabaseApplication,
+} from '../../database/applications';
 import {
   environmentLocation,
   environmentVariables,
@@ -21,7 +25,7 @@ import { composeConfiguration } from './compose';
 import { commandSession } from './session';
 import { bunTestCounts, describeCounts } from './test-counts';
 
-async function availablePort(): Promise<number> {
+export async function availablePort(): Promise<number> {
   const server = createServer();
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -40,13 +44,12 @@ async function availablePort(): Promise<number> {
   });
 }
 
-async function newManifest(
-  environment: EnvironmentKind,
-  run: string,
-): Promise<EnvironmentManifest> {
-  const { project } = environmentLocation(environment, run);
-  const ports = new Set<number>();
-  async function nextPort(variable: string) {
+type PortAllocator = (variable: string) => Promise<number>;
+
+/** An explicit shell port wins; allocated ports never repeat one already taken. */
+function portAllocator(taken: number[] = []): PortAllocator {
+  const ports = new Set(taken);
+  return async (variable) => {
     const override = process.env[variable];
     let port =
       override === undefined ? await availablePort() : Number(override);
@@ -57,18 +60,61 @@ async function newManifest(
     while (ports.has(port)) port = await availablePort();
     ports.add(port);
     return port;
-  }
+  };
+}
+
+async function scopedDatabase(
+  app: DatabaseApplication,
+  project: string,
+  nextPort: PortAllocator,
+): Promise<EnvironmentManifest['databases'][number]> {
+  return {
+    app: app.name,
+    prefix: app.prefix,
+    host: '127.0.0.1',
+    port: await nextPort(`${app.prefix}_PORT`),
+    username: 'starter',
+    password: randomUUID(),
+    database: `${project.replaceAll('-', '_')}_${app.name}`,
+    ...(app.runtimeRole && {
+      runtime: { username: app.runtimeRole, password: randomUUID() },
+    }),
+  };
+}
+
+/**
+ * A development run keeps its existing databases, credentials and volumes;
+ * applications registered after it was created get new databases.
+ */
+async function addRegisteredDatabases(
+  manifest: EnvironmentManifest,
+): Promise<boolean> {
+  // Every numeric coordinate in these sections is an allocated port.
+  const nextPort = portAllocator(
+    [manifest.broker, manifest.gateway, ...manifest.databases].flatMap(
+      (section) =>
+        Object.values(section).filter((value) => typeof value === 'number'),
+    ),
+  );
+  const missing = applications.filter(
+    (app) => !manifest.databases.some((db) => db.app === app.name),
+  );
+  for (const app of missing)
+    manifest.databases.push(
+      await scopedDatabase(app, manifest.project, nextPort),
+    );
+  return missing.length > 0;
+}
+
+async function newManifest(
+  environment: EnvironmentKind,
+  run: string,
+): Promise<EnvironmentManifest> {
+  const { project } = environmentLocation(environment, run);
+  const nextPort = portAllocator();
   const databases: EnvironmentManifest['databases'] = [];
   for (const app of applications)
-    databases.push({
-      app: app.name,
-      prefix: app.prefix,
-      host: '127.0.0.1',
-      port: await nextPort(`${app.prefix}_PORT`),
-      username: 'starter',
-      password: randomUUID(),
-      database: `${project.replaceAll('-', '_')}_${app.name}`,
-    });
+    databases.push(await scopedDatabase(app, project, nextPort));
   return {
     environment,
     run,
@@ -94,18 +140,30 @@ async function newManifest(
   };
 }
 
+/**
+ * `apps` selects the applications a `run` migrates and seeds (default: all).
+ * Every registered database is still provisioned, so isolation checks can
+ * reach the other applications' targets.
+ */
 export async function operateEnvironment(
   action: 'prepare' | 'down' | 'exec' | 'run',
   environment: EnvironmentKind,
   run: string,
   command: string[] = [],
+  apps: string[] = applications.map((app) => app.name),
 ): Promise<number> {
   const location = environmentLocation(environment, run);
   const creating = action === 'prepare' || action === 'run';
   if ((action === 'exec' || action === 'run') && !command.length)
     throw new Error('A command after -- is required.');
+  const selected = apps.map((name) => selectApplication(name));
   if (action === 'down' && !existsSync(location.manifestPath)) return 0;
   let manifest: EnvironmentManifest;
+  const save = () => {
+    writeFileSync(location.manifestPath, JSON.stringify(manifest, null, 2), {
+      mode: 0o600,
+    });
+  };
   if (creating && !existsSync(location.manifestPath)) {
     manifest = await newManifest(environment, run);
     mkdirSync(location.directory, { recursive: true });
@@ -115,16 +173,15 @@ export async function operateEnvironment(
       mode: 0o600,
     });
   } else {
-    manifest = readEnvironment(environment, run);
+    const extending = creating && environment === 'development';
+    manifest = readEnvironment(environment, run, {
+      complete: !extending && action !== 'down',
+    });
     if (creating && environment === 'test')
       throw new Error('Test run already exists. Select a new run ID.');
+    if (extending && (await addRegisteredDatabases(manifest))) save();
   }
   const composePath = join(location.directory, 'compose.json');
-  const save = () => {
-    writeFileSync(location.manifestPath, JSON.stringify(manifest, null, 2), {
-      mode: 0o600,
-    });
-  };
   // Use only known fields; inherited Compose options/.env cannot change ownership.
   const composeEnv = {
     ...process.env,
@@ -242,7 +299,7 @@ export async function operateEnvironment(
       throw new Error('Environment is not ready.');
     const env = environmentVariables(manifest);
     if (action === 'run') {
-      for (const app of applications) {
+      for (const app of selected) {
         for (const script of ['migration:up:tests', 'seed:up:tests']) {
           const result = await session.execute(
             [process.execPath, '--no-env-file', 'run', script],

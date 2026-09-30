@@ -34,19 +34,20 @@ is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files, `bun run check:docs`, and verification of changed commands.
 
-| Check             | Command                   | Scope                                                                                                                                      |
-| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                                      |
-| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                                            |
-| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                  |
-| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                    |
-| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                   |
-| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                         |
-| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, User use cases, exceptions and colocated package tests                                   |
-| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up |
-| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                      |
-| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents              |
-| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                                  |
+| Check             | Command                   | Scope                                                                                                                                           |
+| ----------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                                           |
+| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E and service component suites                       |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                       |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                         |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                        |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                              |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, User and Wallet use cases, exceptions and colocated package tests                             |
+| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up      |
+| Components        | `bun run test:component`  | Provisions an isolated run, migrates/seeds only Wallet, starts it without User or broker, checks both lookups and database ownership, cleans up |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                           |
+| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents                   |
+| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                                       |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -95,12 +96,12 @@ error's identity, and reports multiple failures together in an `AggregateError`.
 ## Nx orchestration
 
 Package scripts delegate to Nx targets; see [the workspace guide](nx-workspace.md)
-for all ten projects, private exports, absent suites and cache inputs. Shared
+for all eleven projects, private exports, absent suites and cache inputs. Shared
 quality settings live in `tooling/config`, with native root entry points for
 editors. The compile-time fixture is `src/type-tests/final.decorator.ts`.
-`test:unit` runs the existing application, core primitive and example suites.
+`test:unit` runs the legacy application, Wallet core, core primitive and example suites.
 `test:debug` opens the application unit suite; package inspector targets are
-`core:test-debug` and `example:test-debug`. Live targets always execute.
+`core:test-debug`, `example:test-debug` and `wallet:test-debug`. Live targets always execute.
 
 ## Workspace and dependency guardrails
 
@@ -231,17 +232,20 @@ the conversion and decorator helpers have been removed.
 ## Architecture and deferred work
 
 `.dependency-cruiser.mjs` closes the import graph of shared DDD, exceptions,
-foundation helpers, User/Wallet domain, User use cases, their ports and command inputs to plain core modules
+foundation helpers, User/Wallet domain, User and Wallet use cases, their ports and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
-API adapters and CQRS handlers may not import a module's `database/` persistence models or repositories.
+API adapters and CQRS handlers may not import a module's or application's `database/` persistence models or repositories.
+Applications under `src/apps` import only their own files and shared package entry points;
+nothing else imports their implementation, and their production code cannot import database tooling.
 `check:workspace` injects representative violations into a temporary copy
-(core to Nest, adapter to persistence, handler to API DTO, and a cycle) and
+(core to Nest or Slonik, adapter to persistence, handler to API DTO, a cycle,
+imports between the Wallet and transitional applications, and Wallet runtime to database tooling) and
 requires each to fail under its rule name.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
-fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; private technical
-packages now live under `src/packages`.
+fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; `wallet` owns
+`src/apps/wallet`; private technical packages now live under `src/packages`.
 Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was

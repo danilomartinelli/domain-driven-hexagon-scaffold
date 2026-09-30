@@ -1,0 +1,104 @@
+{
+  "name": "wallet",
+  "projectType": "application",
+  "tags": ["scope:wallet", "type:app"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint src/apps/wallet --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project src/apps/wallet/tsconfig.json",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun test ./src/apps/wallet/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-watch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --watch ./src/apps/wallet/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-coverage": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --coverage ./src/apps/wallet/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-debug": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --inspect-brk test ./src/apps/wallet/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-component": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts --app=wallet -- bun run nx run wallet:test-component-prepared",
+        "cwd": "."
+      }
+    },
+    "test-component-prepared": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --preload ./src/apps/wallet/tests/component/preload.ts ./src/apps/wallet/tests/component",
+        "cwd": "."
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun src/apps/wallet/main.ts",
+        "cwd": "."
+      }
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --watch src/apps/wallet/main.ts",
+        "cwd": "."
+      }
+    },
+    "debug": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --inspect --watch src/apps/wallet/main.ts",
+        "cwd": "."
+      }
+    },
+    "lint-fix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --bun eslint src/apps/wallet --max-warnings 0 --fix",
+        "cwd": "."
+      }
+    }
+  },
+  "implicitDependencies": ["test-runner"]
+}

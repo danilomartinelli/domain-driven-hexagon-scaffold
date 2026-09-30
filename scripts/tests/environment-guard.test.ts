@@ -9,6 +9,12 @@ const root = new URL('../../', import.meta.url).pathname;
 test('direct test cleanup and database tools reject an unowned target before connecting', async () => {
   for (const command of [
     ['test', '--preload', './tests/setup/preload.ts', './tests/user'],
+    [
+      'test',
+      '--preload',
+      './src/apps/wallet/tests/component/preload.ts',
+      './src/apps/wallet/tests/component',
+    ],
     ['database/migrate.mjs', 'down'],
     ['database/seed.mjs'],
   ]) {

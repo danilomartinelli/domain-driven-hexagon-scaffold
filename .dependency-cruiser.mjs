@@ -40,15 +40,47 @@ const corePaths = [
   '^src/modules/[^/]+/domain/',
   '^src/modules/[^/]+/commands/.*\\.command\\.ts$',
   '^src/modules/user/application/',
+  '^src/apps/[^/]+/(domain|application)/',
 ];
 
 // Root files are entry points; every package subfolder is private.
 const PACKAGES_ROOT = 'src/packages';
 const PACKAGE_INTERNALS = `^${PACKAGES_ROOT}/[^/]+/[^/]+/`;
 
+// Test code; production code must not import it.
+const testPaths =
+  '^(tests|src/tests|src/type-tests|scripts/tests|src/packages/[^/]+/tests|src/apps/[^/]+/tests)';
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 const config = {
   forbidden: [
+    {
+      name: 'apps-are-independent',
+      severity: 'error',
+      comment:
+        'An application imports its own files and shared packages, never another application or the transitional src tree.',
+      from: { path: '^src/apps/([^/]+)/' },
+      to: {
+        path: '^(src|tests|scripts)/',
+        pathNot: ['^src/apps/$1/', `^${PACKAGES_ROOT}/`],
+      },
+    },
+    {
+      name: 'app-runtime-excludes-tooling',
+      severity: 'error',
+      comment:
+        'Production application code cannot depend on database or environment tooling; only its tests use the environment guard.',
+      from: { path: '^src/apps/[^/]+/', pathNot: '^src/apps/[^/]+/tests/' },
+      to: { path: '^database/' },
+    },
+    {
+      name: 'app-implementation-is-private',
+      severity: 'error',
+      comment:
+        'Other applications, packages, tooling and system tests cannot import application implementation.',
+      from: { pathNot: '^src/apps/' },
+      to: { path: '^src/apps/' },
+    },
     {
       name: 'shared-is-technical',
       severity: 'error',
@@ -91,7 +123,7 @@ const config = {
     {
       name: 'core-is-context-independent',
       comment:
-        'Domain, commands, User use cases and shared primitives may only import the plain TypeScript core.',
+        'Domain, commands, application use cases and shared primitives may only import the plain TypeScript core.',
       severity: 'error',
       from: { path: corePaths },
       to: {
@@ -147,7 +179,7 @@ const config = {
         'Controllers, resolvers and CQRS handlers use application results, not persistence models or repositories',
       severity: 'error',
       from: { path: [...apiLayerPaths, ...cqrsHandlerPaths] },
-      to: { path: '^src/modules/[^/]+/database/' },
+      to: { path: '^src/(modules|apps)/[^/]+/database/' },
     },
     {
       name: 'no-command-query-to-api-deps',
@@ -280,13 +312,8 @@ const config = {
         "implement functionality this is odd. Either you're writing a test outside the test folder " +
         "or there's something in the test folder that isn't a test.",
       severity: 'error',
-      from: {
-        pathNot:
-          '^(tests|src/tests|src/type-tests|scripts/tests|src/packages/[^/]+/tests)',
-      },
-      to: {
-        path: '^(tests|src/tests|src/type-tests|scripts/tests|src/packages/[^/]+/tests)',
-      },
+      from: { pathNot: testPaths },
+      to: { path: testPaths },
     },
     {
       name: 'not-to-spec',

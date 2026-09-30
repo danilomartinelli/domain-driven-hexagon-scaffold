@@ -3,26 +3,28 @@
 Issue [#17](https://github.com/danilomartinelli/vibecoding-starter-js/issues/17)
 puts the existing application and regressions under Nx **23.2.1**, with Bun
 **1.4.2** for installation, application execution and native tests. Nest stays on
-**12.1.1**. User and Wallet still run together and share the existing transaction;
-this is the runnable baseline for [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md),
+**12.1.1**. User and Wallet still run together in `legacy-app` and share the
+existing transaction; the independent [Wallet application](wallet.md) owns Wallet
+lookup and its own database. This is the runnable baseline for [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md),
 not completion of its independent services, outbox, generators or distributions.
 The [User/Wallet language](../GLOSSARY.md) and ADR 0001 supersession note remain
 part of that design.
 
 ## Projects and ownership
 
-| Nx project       | Root                              | Responsibility / tests                                                                                                                                                        |
-| ---------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `legacy-app`     | `src` (excluding nested projects) | Current User/Wallet application, owned entities, use cases and persistence models; domain/command tests in `src/tests` and compile-only decorator fixture in `src/type-tests` |
-| `core`           | `src/packages/core`               | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                   |
-| `nest-support`   | `src/packages/nest-support`       | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                    |
-| `example`        | `src/packages/example`            | Existing deep-module search-term example and its real unit test; optional starter template                                                                                    |
-| `config`         | `tooling/config`                  | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                       |
-| `database`       | `database`                        | Existing migration history and seeds; exercised by live checks, no standalone unit suite                                                                                      |
-| `infrastructure` | `docker`                          | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                         |
-| `test-runner`    | `scripts`                         | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                             |
-| `e2e`            | `tests`                           | Seven original Gherkin cases and database/API regressions, with opt-in setup                                                                                                  |
-| `workspace`      | `.`                               | Repository formatting and architecture checks                                                                                                                                 |
+| Nx project       | Root                              | Responsibility / tests                                                                                                                                                            |
+| ---------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `legacy-app`     | `src` (excluding nested projects) | Current User/Wallet application, owned entities, use cases and persistence models; domain/command tests in `src/tests` and compile-only decorator fixture in `src/type-tests`     |
+| `wallet`         | `src/apps/wallet`                 | Independent Wallet lookup application with its own domain, read port, adapters, migrations and seed; core tests in `tests/unit`, provisioned component suite in `tests/component` |
+| `core`           | `src/packages/core`               | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                       |
+| `nest-support`   | `src/packages/nest-support`       | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                        |
+| `example`        | `src/packages/example`            | Existing deep-module search-term example and its real unit test; optional starter template                                                                                        |
+| `config`         | `tooling/config`                  | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                           |
+| `database`       | `database`                        | Existing migration history and seeds; exercised by live checks, no standalone unit suite                                                                                          |
+| `infrastructure` | `docker`                          | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                             |
+| `test-runner`    | `scripts`                         | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                                 |
+| `e2e`            | `tests`                           | Seven original Gherkin cases and database/API regressions, with opt-in setup                                                                                                      |
+| `workspace`      | `.`                               | Repository formatting and architecture checks                                                                                                                                     |
 
 `core`, `nest-support`, `example` and `config` are private Bun workspace packages.
 Their package manifests export specific root entry points, with no wildcard
@@ -31,7 +33,8 @@ access to internals. Callers use imports such as `@starter/core/domain` and
 configuration remain application-owned. No shared project contains User/Wallet
 business entities, use cases or persistence models. Package entry-point,
 context-independent core and cycle rules run through dependency-cruiser; shared
-technical packages may not import application implementation.
+technical packages may not import application implementation, and applications
+under `src/apps` import neither each other nor the transitional `src` tree.
 
 ```mermaid
 graph TD
@@ -39,6 +42,10 @@ graph TD
   e2e --> nest-support
   e2e --> core
   e2e --> test-runner
+  wallet --> nest-support
+  wallet --> core
+  wallet --> test-runner
+  wallet --> database
   test-runner --> database
   test-runner --> infrastructure
   database --> legacy-app
@@ -48,7 +55,9 @@ graph TD
 ```
 
 The database-to-app edge is real: migration and seed commands still read the
-transitional app's connection configuration. Source imports (including type-only
+transitional app's dotenv loader. Wallet's edges to `database` and
+`test-runner` come from its component suite's environment guard and runner;
+its production code imports only its own files and the shared packages. Source imports (including type-only
 imports), workspace manifests and the runner's explicit command dependencies
 supply the Nx graph. Nx's built-in JavaScript analyzer is explicitly enabled;
 package-manifest discovery alone would miss application imports. Shared quality
@@ -78,21 +87,23 @@ bun run check
 bun run check:full
 ```
 
-| Package command                                                          | Nx target(s)                                                                         |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `lint`, `typecheck`                                                      | All applicable project `lint` / `typecheck` targets                                  |
-| `test`, `test:unit`                                                      | `legacy-app:test`, `core:test`, `example:test`                                       |
-| `start`, `start:dev`, `start:debug`, `start:prod`                        | `legacy-app:serve`, `watch`, `debug`, `serve-production`                             |
-| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets                     |
-| `test:debug`                                                             | `legacy-app:test-debug`; use `core:test-debug` or `example:test-debug` for a package |
-| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                        |
-| `test:tooling`                                                           | `test-runner:test-live`                                                              |
-| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                               |
-| `seed:up`                                                                | `database:seed`                                                                      |
-| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                          |
-| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                             |
-| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                        |
-| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                                     |
+| Package command                                                          | Nx target(s)                                                                                                  |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `lint`, `typecheck`                                                      | All applicable project `lint` / `typecheck` targets                                                           |
+| `test`, `test:unit`                                                      | `legacy-app:test`, `wallet:test`, `core:test`, `example:test`                                                 |
+| `start`, `start:dev`, `start:debug`, `start:prod`                        | `legacy-app:serve`, `watch`, `debug`, `serve-production`                                                      |
+| `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                                                              |
+| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets                                              |
+| `test:debug`                                                             | `legacy-app:test-debug`; use `core:test-debug`, `example:test-debug` or `wallet:test-debug` for another suite |
+| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                                                 |
+| `test:component`                                                         | Every `test-component` target (currently `wallet:test-component`)                                             |
+| `test:tooling`                                                           | `test-runner:test-live`                                                                                       |
+| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                                                        |
+| `seed:up`                                                                | `database:seed`                                                                                               |
+| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                                                   |
+| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                                                      |
+| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                                                 |
+| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                                                              |
 
 The environment CLI carries its argument array into its uncached Nx target through
 a dedicated process variable, preserving the command after `--` without shell
@@ -105,7 +116,7 @@ Arguments continue through the command chain, for example
 `bun run migration:create add-user-index`. Direct Bun commands for focused
 experiments remain possible; use the package commands for the quality gates.
 Unit discovery has no E2E preload. Bare `bun test` runs only `src/tests`;
-`test:unit` includes all three unit suites. The decorator fixture is never a
+`test:unit` includes all four unit suites. The decorator fixture is never a
 runtime test and remains in `legacy-app:typecheck`.
 
 ## Cache contract
@@ -122,8 +133,8 @@ These checks produce no build artifact. `.nx` is local and ignored; Nx Cloud is
 not required and connections to it are disabled.
 
 Serving, watch/debug/coverage modes, lint fixes, formatting writes, infrastructure, migrations,
-seeds, database-runner lifecycle checks and both provisioned/manual live E2E
-always execute (`cache: false`). Required absent service/contract/distribution
+seeds, database-runner lifecycle checks, both provisioned/manual live E2E and
+service component suites always execute (`cache: false`). Required absent service/contract/distribution
 suites have no dummy targets or empty-success assertions; subsequent slices add
 them to the full gate. Use `--skip-nx-cache` to force deterministic checks when
 collecting fresh validation evidence.
