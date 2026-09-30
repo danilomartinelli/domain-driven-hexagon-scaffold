@@ -29,8 +29,8 @@ Gherkin cases plus the real-database rollback regressions.
 The [dependency inventory](docs/dependencies.md) records compatible versions and
 security fixes. Run `bun audit` separately to recheck the complete dependency tree.
 The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the transitional application,
-private technical packages and regressions. Remaining migration work includes
-independent services and durable service integration, as defined in [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md).
+private technical packages and regressions. Delivered and remaining migration
+work is tracked in [ADR 0002's implementation status](docs/adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
 
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
 

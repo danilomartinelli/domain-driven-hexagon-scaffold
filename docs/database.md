@@ -136,4 +136,5 @@ second insertion fails and rolls back. Application tests clear those fixtures
 before the first case and between cases. Migration history remains intact.
 
 See [developer checks](developer-checks.md) for the current gate and
-[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md) for the remaining service split.
+[ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status)
+for the remaining service split.

@@ -219,10 +219,9 @@ has been removed.
 The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
 Strict lint/type settings and architecture tooling are documented in
 [developer checks](developer-checks.md). The [dependency inventory](dependencies.md)
-records compatible versions and security fixes. The remaining Nx/service separation and application-core decoupling follow
-[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md). Domain primitives are now
-context-independent; command handlers and repository orchestration are still
-Nest/Slonik adapters. CLI bootstrap remains outside the migration scope.
+records compatible versions and security fixes. Migration progress is tracked in
+[ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status). CLI bootstrap remains outside the
+migration scope.
 
 References: [Slonik runtime validation](https://github.com/gajus/slonik#runtime-validation),
 [jest-cucumber runner injection](https://github.com/bencompton/jest-cucumber/blob/main/docs/AdditionalConfiguration.md#configure-test-runner),

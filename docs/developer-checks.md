@@ -239,10 +239,7 @@ ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` include
 `src/tests` and colocated tests under `src/packages`. `test:debug` runs only
 `src/tests`; use `bun run nx run core:test-debug` or
 `bun run nx run example:test-debug` for package suites. Bare `bun test` retains its
-`src/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline;
-independent service and contract/distribution suites belong to later tickets in
-[the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
+`src/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline.
 
-The remaining objectives are independent applications and durable
-service integration. See the
-[dependency inventory](dependencies.md) for version decisions and security overrides.
+Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+See the [dependency inventory](dependencies.md) for version decisions and security overrides.

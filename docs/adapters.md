@@ -116,8 +116,7 @@ commit, so arbitrary listener side effects cannot be rolled back. This temporary
 bridge must be replaced by an outbox and independent Wallet consumption at the
 asynchronous cutover. See the [write-path explanation](runtime.md#persistence-and-transaction-review).
 
-Remaining work follows [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md):
-independent services with durable messaging.
+Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
 CLI bootstrap remains outside that migration scope. See [developer checks](developer-checks.md)
 for the complete validation gate.
 
