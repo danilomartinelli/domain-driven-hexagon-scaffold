@@ -21,7 +21,7 @@ src/packages/
     tests/          ← co-located tests + fixtures (a subfolder, so private).
 ```
 
-The public surface is the package's **root files**, not one designated `index.ts`. By convention implementation lives in `lib/` and tests in `tests/`, giving every package the same two-folder shape. The rule itself is general, though: *anything* in *any* subfolder is private, so you never extend the config to add a folder.
+The public surface is the package's **root files**, not one designated `index.ts`. By convention implementation lives in `lib/` and tests in `tests/`, giving every package the same two-folder shape. The rule itself is general, though: _anything_ in _any_ subfolder is private, so you never extend the config to add a folder.
 
 Four rules, all `error`:
 
@@ -30,9 +30,9 @@ Four rules, all `error`:
 3. **Tests through the entry points**: files under `<pkg>/tests/` may import any package's entry points and their own `tests/` fixtures, but never any package's subfolder internals (not even their own). Integration tests across packages are fine; deep imports are not.
 4. **No cycles**: no dependency cycles.
 
-**Entry points, not a barrel.** Because the public surface is *every* root file, a package can expose several small entry points (`index.ts`, `client.ts`, `server.ts`) instead of funnelling everything through one giant `index.ts`. Barrel files that re-export a whole subtree are discouraged; keep entry points small and hide implementation in subfolders.
+**Entry points, not a barrel.** Because the public surface is _every_ root file, a package can expose several small entry points (`index.ts`, `client.ts`, `server.ts`) instead of funnelling everything through one giant `index.ts`. Barrel files that re-export a whole subtree are discouraged; keep entry points small and hide implementation in subfolders.
 
-Layering (which packages may depend on which) is a *different* concern and is left as a commented stub in the config for this repo to fill in.
+Layering (which packages may depend on which) is a _different_ concern and is left as a commented stub in the config for this repo to fill in.
 
 ## Steps
 
@@ -68,7 +68,7 @@ Copy [`dependency-cruiser.config.cjs`](./dependency-cruiser.config.cjs) to the r
 
 Create a committed `<packages-root>/example/` as a copy-me template:
 
-- `index.ts` is an entry point. Export one function that delegates to an internal file (so the package is visibly *deep*, not a pass-through).
+- `index.ts` is an entry point. Export one function that delegates to an internal file (so the package is visibly _deep_, not a pass-through).
 - `lib/impl.ts`: an internal file in a **subfolder**, imported by `index.ts`, not reachable from outside.
 - `tests/example.test.ts` imports **only** `../index` (an entry point) and asserts against the public function.
 
@@ -88,11 +88,11 @@ This is the completion criterion for the whole skill: a config that doesn't fail
 
 ### 7. Document the convention
 
-Write a `README.md` **in the packages folder** (`<packages-root>/README.md`, next to the packages it governs) covering: the `src/packages/<name>/` layout (entry points at the root, `lib/` for implementation, `tests/` for tests), "import only through a package's entry points (its root files)", and how to run `lint:boundaries`. **Discourage barrel files** explicitly: expose several small entry points instead of re-exporting a whole subtree through one index. Keep it to the copy-me snippet plus the four rules in one paragraph each.
+Write an `AGENTS.md` **in the packages folder** (`<packages-root>/AGENTS.md`, next to the packages it governs) covering: the `src/packages/<name>/` layout (entry points at the root, `lib/` for implementation, `tests/` for tests), "import only through a package's entry points (its root files)", and how to run `lint:boundaries`. **Discourage barrel files** explicitly: expose several small entry points instead of re-exporting a whole subtree through one index. Keep it to the copy-me snippet plus the four rules in one paragraph each.
 
-Then add a **context pointer** to it from the repo's agent-instructions file (`CLAUDE.md` if present, else `AGENTS.md`, creating `AGENTS.md` if neither exists). One line is enough, e.g. `Packages are deep modules: see [src/packages/README.md](./src/packages/README.md) before adding or importing one.` This is what makes an agent discover the boundary rule instead of tripping over it.
+Then add a **context pointer** to it from the repo's agent-instructions file (`CLAUDE.md` if present, else `AGENTS.md`, creating `AGENTS.md` if neither exists). One line is enough, e.g. `Packages are deep modules: see [src/packages/AGENTS.md](./src/packages/AGENTS.md) before adding or importing one.` This is what makes an agent discover the boundary rule instead of tripping over it.
 
-**Done when:** `<packages-root>/README.md` exists and discourages barrels, and the repo's `CLAUDE.md`/`AGENTS.md` links to it.
+**Done when:** `<packages-root>/AGENTS.md` exists and discourages barrels, and the repo's `CLAUDE.md`/`AGENTS.md` links to it.
 
 ## Notes
 

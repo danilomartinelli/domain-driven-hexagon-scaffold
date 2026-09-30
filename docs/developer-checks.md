@@ -213,7 +213,7 @@ the conversion and decorator helpers have been removed.
 foundation helpers, User/Wallet domain, User write use cases and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
 The domain request-context exception is removed. New packages follow
-[the deep-module convention](../src/packages/README.md): root files are public
+[the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
 fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; private technical
 packages now live under `src/packages`.
