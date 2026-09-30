@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import pg from 'pg';
 import { readEnvironmentFile } from '../../../../../database/environment';
+import { withCleanup } from '../../../../../scripts/tests/cleanup';
 import { ownerDatabase, walletDatabase } from './wallet-process';
 
 async function withClient<T>(
@@ -9,11 +10,7 @@ async function withClient<T>(
 ): Promise<T> {
   const client = new pg.Client(config);
   await client.connect();
-  try {
-    return await use(client);
-  } finally {
-    await client.end();
-  }
+  return withCleanup(() => use(client), [() => client.end()]);
 }
 
 /** The PostgreSQL SQLSTATE an operation fails with, or undefined on success. */

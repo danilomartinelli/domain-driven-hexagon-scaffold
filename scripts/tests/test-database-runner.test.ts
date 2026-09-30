@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { z } from 'zod';
+import { withCleanup } from './cleanup';
 
 const root = join(import.meta.dir, '../..');
 const resultSchema = z.object({
@@ -66,20 +67,19 @@ async function runProbe(
 test('isolated database runs preserve success/failure codes and clean only their own resources', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ddh-runner-probe-'));
   const barrier = join(directory, 'sibling-cleaned');
-  try {
+  await withCleanup(async () => {
     const successRun = runProbe(0, barrier);
-    const failureRun = runProbe(23).finally(async () => {
-      await writeFile(barrier, 'cleanup finished');
-    });
+    const failureRun = withCleanup(
+      () => runProbe(23),
+      [() => writeFile(barrier, 'cleanup finished')],
+    );
     const results = await Promise.allSettled([successRun, failureRun]);
     const [success, failure] = results.map((result) => {
       if (result.status === 'rejected') throw result.reason;
       return result.value;
     });
     expect(success.project).not.toBe(failure.project);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+  }, [() => rm(directory, { recursive: true, force: true })]);
 }, 120_000);
 
 async function assertCleanedUp(

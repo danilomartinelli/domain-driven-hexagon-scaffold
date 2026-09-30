@@ -29,6 +29,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       # Fast gate: formatting, docs references, lint, types, boundaries and unit tests.
-      # The Docker-backed suites in check:full stay local.
       - name: Check
         run: bun run check
+      # Keep component failures inside the existing required check status.
+      - name: Component tests
+        run: bun run test:component
