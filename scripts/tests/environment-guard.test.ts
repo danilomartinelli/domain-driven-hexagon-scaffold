@@ -9,6 +9,12 @@ const root = new URL('../../', import.meta.url).pathname;
 test('direct test cleanup and database tools reject an unowned target before connecting', async () => {
   for (const command of [
     ['test', '--preload', './tests/setup/preload.ts', './tests/user'],
+    [
+      'test',
+      '--preload',
+      './src/apps/wallet/tests/component/preload.ts',
+      './src/apps/wallet/tests/component',
+    ],
     ['database/migrate.mjs', 'down'],
     ['database/seed.mjs'],
   ]) {
@@ -29,6 +35,25 @@ test('direct test cleanup and database tools reject an unowned target before con
     );
   }
 });
+
+test('the test-database wrapper parses application selections before provisioning anything', async () => {
+  for (const [args, message] of [
+    [['--app=unknown', '--', 'true'], 'Unknown database application: unknown'],
+    [
+      ['--app=legacy', '--app=unknown', '--', 'true'],
+      'Unknown database application: unknown',
+    ],
+    [['--app=wallet'], 'A command after -- is required.'],
+  ] as const) {
+    // A parser that never consumes its options would hang here, not fail.
+    const result = await runCommand(
+      [process.execPath, 'scripts/with-test-database.ts', ...args],
+      { cwd: root, timeout: 5_000 },
+    );
+    expect(result.code, args.join(' ')).toBe(1);
+    expect(result.stdout + result.stderr).toContain(message);
+  }
+}, 30_000);
 
 test('Bun entry points preserve shell settings without automatically importing development files', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'starter-env-'));

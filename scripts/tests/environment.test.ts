@@ -1,13 +1,118 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
+import {
+  environmentLocation,
+  readEnvironment,
+} from '../../database/environment';
 import { runCommand } from '../lib/command';
+import { composeConfiguration } from '../lib/compose';
+import { availablePort } from '../lib/environments';
 import { withCleanup } from './cleanup';
 
 const root = new URL('../../', import.meta.url).pathname;
 const run = `probe-${randomUUID().slice(0, 8)}`;
 
-function environment(command: string, args: string[] = []) {
+test.each([
+  {
+    username: 'runtime',
+    password: 'a$ROLE_SCRIPT_PROBE',
+    sql: 'CREATE ROLE "runtime" LOGIN PASSWORD \'a$$ROLE_SCRIPT_PROBE\';\n',
+  },
+  {
+    username: 'run"$ROLE_SCRIPT_PROBE',
+    password: "a'${ROLE_SCRIPT_PROBE}$$$",
+    sql: 'CREATE ROLE "run""$$ROLE_SCRIPT_PROBE" LOGIN PASSWORD \'a\'\'$${ROLE_SCRIPT_PROBE}$$$$$$\';\n',
+  },
+  {
+    username: 'run${ROLE_SCRIPT_MISSING}',
+    password: '$ROLE_SCRIPT_MISSING',
+    sql: 'CREATE ROLE "run$${ROLE_SCRIPT_MISSING}" LOGIN PASSWORD \'$$ROLE_SCRIPT_MISSING\';\n',
+  },
+])(
+  'Compose preserves dollar signs in runtime role SQL %#',
+  async ({ username, password, sql }) => {
+    const directory = await mkdtemp(join(tmpdir(), 'starter-compose-'));
+    await withCleanup(async () => {
+      const configuration = composeConfiguration({
+        environment: 'test',
+        run: 'compose-probe',
+        project: 'compose-probe',
+        owner: randomUUID(),
+        status: 'starting',
+        databases: [
+          {
+            app: 'wallet',
+            prefix: 'WALLET_DB',
+            host: '127.0.0.1',
+            port: 5432,
+            username: 'owner',
+            password: 'fixture-owner',
+            database: 'wallet',
+            runtime: { username, password },
+          },
+        ],
+        broker: {
+          port: 5672,
+          managementPort: 15672,
+          username: 'fixture',
+          password: 'fixture-broker',
+          vhost: 'compose-probe',
+        },
+        gateway: {
+          name: 'compose-probe-gateway',
+          host: 'host.docker.internal',
+          proxyPort: 8000,
+          adminPort: 8001,
+          userPort: 3000,
+          walletPort: 3001,
+        },
+      });
+      const file = join(directory, 'compose.json');
+      await writeFile(file, JSON.stringify(configuration), { mode: 0o600 });
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        ROLE_SCRIPT_PROBE: 'interpolated',
+      };
+      delete env.ROLE_SCRIPT_MISSING;
+      const result = await runCommand(
+        [
+          'docker',
+          'compose',
+          '--env-file',
+          '/dev/null',
+          '-p',
+          'compose-probe',
+          '-f',
+          file,
+          'config',
+          '--format',
+          'json',
+        ],
+        { cwd: directory, env },
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const resolved = z
+        .object({
+          configs: z.object({
+            'wallet-runtime-role': z.object({ content: z.string() }),
+          }),
+        })
+        .parse(JSON.parse(result.stdout));
+      // Canonical Compose output re-escapes literal dollars for reuse as input.
+      expect(resolved.configs['wallet-runtime-role'].content).toBe(sql);
+    }, [() => rm(directory, { recursive: true, force: true })]);
+  },
+);
+
+function environment(
+  command: string,
+  args: string[] = [],
+  env: NodeJS.ProcessEnv = {},
+) {
   return runCommand(
     [
       process.execPath,
@@ -17,39 +122,46 @@ function environment(command: string, args: string[] = []) {
       `--run=${run}`,
       ...args,
     ],
-    { cwd: root, timeout: 120_000 },
+    { cwd: root, env: { ...process.env, ...env }, timeout: 120_000 },
   );
 }
+
+/** The User seed's profile and Wallet's lookup example share one user identity. */
+const seedsProbe = `
+  const { Client } = await import('pg');
+  const users = new Client({host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_NAME});
+  await users.connect();
+  const profiles = (await users.query('SELECT id, email FROM users')).rows;
+  await users.end();
+  if (profiles.length !== 1 || profiles[0].email !== 'john@gmail.com') throw new Error('Selected seed missing');
+  // Wallet's runtime role can read its own seeded lookup example.
+  const wallets = new Client({host: process.env.WALLET_DB_HOST, port: Number(process.env.WALLET_DB_PORT), user: process.env.WALLET_DB_USERNAME, password: process.env.WALLET_DB_PASSWORD, database: process.env.WALLET_DB_NAME});
+  await wallets.connect();
+  const lookups = (await wallets.query('SELECT "userId", balance FROM wallets')).rows;
+  await wallets.end();
+  if (lookups.length !== 1 || lookups[0].userId !== profiles[0].id || lookups[0].balance !== 0) throw new Error('Wallet seed is not consistent with the User seed');
+`;
 
 test('a named test environment prepares PostgreSQL and RabbitMQ for explicit database tooling', async () => {
   await withCleanup(async () => {
     const prepared = await environment('prepare');
     expect(prepared.code, prepared.stdout + prepared.stderr).toBe(0);
-    const migrated = await environment('exec', [
-      '--',
-      process.execPath,
-      'run',
-      'migration:up:tests',
-    ]);
-    expect(migrated.code, migrated.stdout + migrated.stderr).toBe(0);
-    const seeded = await environment('exec', [
-      '--',
-      process.execPath,
-      'run',
-      'seed:up:tests',
-    ]);
-    expect(seeded.code, seeded.stdout + seeded.stderr).toBe(0);
+    for (const app of ['legacy', 'wallet']) {
+      for (const script of ['migration:up:tests', 'seed:up:tests']) {
+        const result = await environment(
+          'exec',
+          ['--', process.execPath, 'run', script],
+          { DATABASE_APP: app },
+        );
+        expect(result.code, result.stdout + result.stderr).toBe(0);
+      }
+    }
     const probe = await environment('exec', [
       '--',
       process.execPath,
       '-e',
       `
-      const { Client } = await import('pg');
-      const client = new Client({host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_NAME});
-      await client.connect();
-      const {rows} = await client.query('SELECT email FROM users');
-      if (rows.length !== 1 || rows[0].email !== 'john@gmail.com') throw new Error('Selected seed missing');
-      await client.end();
+      ${seedsProbe}
       const response = await fetch(process.env.RABBITMQ_MANAGEMENT_URL + '/api/vhosts/' + encodeURIComponent(process.env.RABBITMQ_VHOST), {headers: {Authorization: 'Basic ' + btoa(process.env.RABBITMQ_USERNAME + ':' + process.env.RABBITMQ_PASSWORD)}});
       if (!response.ok) throw new Error('Owned broker namespace unavailable: ' + response.status);
       console.log('prepared resources verified');
@@ -200,6 +312,8 @@ test('prepared regression runs reject foreign targets and preserve development a
         { DB_PASSWORD: 'another' },
         { USER_DB_NAME: siblingTarget.database },
         { WALLET_DB_NAME: siblingTarget.database },
+        { WALLET_DB_MIGRATION_PASSWORD: 'another' },
+        { WALLET_DB_MIGRATION_HOST: 'localhost' },
         { DATABASE_URL: 'postgres://localhost/development' },
         { RABBITMQ_VHOST: siblingTarget.vhost },
       ]) {
@@ -307,3 +421,88 @@ test('a bound database port fails preparation and removes only the failed run', 
     );
   }, [() => succeeded(failed('down')), () => succeeded(sibling('down'))]);
 }, 120_000);
+
+test('preparing a development run created before Wallet was registered adds only its database', async () => {
+  const name = `upgrade-${randomUUID().slice(0, 8)}`;
+  const dev = namedEnvironment('development', name);
+  const { project, directory, manifestPath } = environmentLocation(
+    'development',
+    name,
+  );
+  const legacy = {
+    app: 'legacy',
+    prefix: 'DB',
+    host: '127.0.0.1' as const,
+    port: await availablePort(),
+    username: 'starter',
+    password: randomUUID(),
+    database: `${project.replaceAll('-', '_')}_legacy`,
+  };
+  // The manifest shape written while legacy was the only registered application.
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      environment: 'development',
+      run: name,
+      project,
+      owner: randomUUID(),
+      status: 'stopped',
+      databases: [legacy],
+      broker: {
+        port: await availablePort(),
+        managementPort: await availablePort(),
+        username: 'starter',
+        password: randomUUID(),
+        vhost: project,
+      },
+      gateway: {
+        name: `${project}-gateway`,
+        host: 'host.docker.internal',
+        proxyPort: await availablePort(),
+        adminPort: await availablePort(),
+        userPort: await availablePort(),
+        walletPort: await availablePort(),
+      },
+    }),
+    { mode: 0o600 },
+  );
+  await withCleanup(async () => {
+    const stale = await dev('exec', [
+      '--',
+      process.execPath,
+      '-e',
+      "console.log('STALE_COMMAND_STARTED')",
+    ]);
+    expect(stale.code).not.toBe(0);
+    expect(stale.stdout + stale.stderr).toContain('prepare it again');
+    expect(stale.stdout).not.toContain('\nSTALE_COMMAND_STARTED\n');
+
+    await succeeded(dev('prepare'));
+    const upgraded = readEnvironment('development', name);
+    expect(upgraded.databases.find((db) => db.app === 'legacy')).toEqual(
+      legacy,
+    );
+    expect(upgraded.databases.map((db) => db.app).sort()).toEqual([
+      'legacy',
+      'wallet',
+    ]);
+    for (const app of ['legacy', 'wallet']) {
+      for (const script of ['migration:up', 'seed:up'])
+        await succeeded(
+          dev('exec', ['--', process.execPath, 'run', script], {
+            DATABASE_APP: app,
+          }),
+        );
+    }
+    await succeeded(dev('exec', ['--', process.execPath, '-e', seedsProbe]));
+    // Preparing again reuses the upgraded manifest and both databases' data.
+    await succeeded(dev('down'));
+    await succeeded(dev('prepare'));
+    expect(readEnvironment('development', name)).toEqual({
+      ...upgraded,
+      status: 'ready',
+    });
+    await succeeded(dev('exec', ['--', process.execPath, '-e', seedsProbe]));
+  }, [() => succeeded(dev('down'))]);
+}, 180_000);

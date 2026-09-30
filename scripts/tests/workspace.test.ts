@@ -181,8 +181,41 @@ test('large Git file inventories preserve all workspace source files', async () 
   }
 }, 30_000);
 
+/** First-column backticked names of the table under a guide heading. */
+async function tableNames(heading: string): Promise<string[]> {
+  const guide = await Bun.file(
+    join(import.meta.dir, '../../docs/nx-workspace.md'),
+  ).text();
+  const section = guide.split(/^## /m).find((part) => part.startsWith(heading));
+  if (!section) throw new Error(`Missing section: ${heading}`);
+  return section
+    .split('\n')
+    .filter((line) => line.startsWith('| `'))
+    .flatMap((line) =>
+      [...(line.split('|')[1] ?? '').matchAll(/`([^`]+)`/g)].map(
+        (match) => match[1],
+      ),
+    );
+}
+
+test('the Nx guide maps every package script that invokes Nx', async () => {
+  const { scripts } = z
+    .object({ scripts: z.record(z.string(), z.string()) })
+    .parse(await Bun.file(join(import.meta.dir, '../../package.json')).json());
+  // A documented `*` stands for one script-name segment, as in `migration:*:tests`.
+  const documented = (await tableNames('Commands')).map(
+    (name) => new RegExp(`^${name.replaceAll('*', '[^:]+')}$`),
+  );
+  const undocumented = Object.entries(scripts)
+    .filter(([, command]) => /\bnx run(-many)?\b/.test(command))
+    .map(([name]) => name)
+    .filter((name) => !documented.some((pattern) => pattern.test(name)));
+  expect(undocumented).toEqual([]);
+});
+
 const graphSchema = z.object({
   graph: z.object({
+    nodes: z.record(z.string(), z.unknown()),
     dependencies: z.record(
       z.string(),
       z.array(z.object({ target: z.string() })),
@@ -206,6 +239,7 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
     );
     for (const [project, dependencies] of Object.entries({
       'legacy-app': ['core', 'nest-support'],
+      wallet: ['core', 'nest-support'],
       'nest-support': ['core'],
       e2e: ['legacy-app', 'test-runner'],
       'test-runner': ['database', 'infrastructure'],
@@ -218,6 +252,17 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
         ).toContain(dependency);
       }
     }
+    // The guide's project table stays in step with Nx discovery; this reuses
+    // the graph above rather than running Nx in the copied workspace again.
+    expect((await tableNames('Projects and ownership')).sort()).toEqual(
+      Object.keys(graph.nodes).sort(),
+    );
+    const targets = (project: string) =>
+      graph.dependencies[project].map((edge) => edge.target);
+    expect(targets('wallet')).not.toContain('legacy-app');
+    expect(targets('legacy-app')).not.toContain('wallet');
+    // Shared tooling must not link an application to the transitional one.
+    expect(targets('database')).not.toContain('legacy-app');
   } finally {
     await workspace.cleanup();
   }

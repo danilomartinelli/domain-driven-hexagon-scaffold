@@ -22,8 +22,8 @@ See [adapter compatibility](adapters.md) for the Nest/Apollo versions, CLI
 command definition, and the limits of each example. The start scripts invoke Nx targets that execute the full application under Bun.
 See [the Nx baseline](nx-workspace.md) for projects, commands and cache policy.
 
-Outside a prepared environment, the shared dotenv 18 loader selects `.env.test` only when `NODE_ENV=test`,
-otherwise `.env`; shell-provided values take precedence. Its new startup banner
+Outside a prepared environment, the legacy application's and database tooling's dotenv 18 loaders select `.env.test` only when `NODE_ENV=test`,
+otherwise `.env`; shell-provided values take precedence. Their new startup banner
 is disabled so database status output remains readable. Bun's automatic env
 loading stays disabled in `bunfig.toml`. See [database settings](database.md#isolation-and-configuration)
 before using custom ports or database names. Set `PORT` to override the default
@@ -41,8 +41,9 @@ type, lint, format and architecture commands.
 
 ## Infrastructure-free core
 
-`bun run test:unit` (also `bun run test`) discovers `src/tests` and colocated
-the `core` and `example` package tests under `src/packages`. Bare `bun test` discovers only `src/tests`. Neither has a
+`bun run test:unit` (also `bun run test`) runs every project's `test` target,
+including `src/tests`, the colocated package tests and each application's core
+tests. Bare `bun test` discovers only `src/tests`. Neither has a
 preload, app bootstrap, dotenv loader, Nest, database or broker. These native
 Bun tests cover User roles and address invariants, Wallet balances, commands,
 recorded events and serializable exceptions through their public interfaces.
@@ -84,7 +85,7 @@ The preload validates all database targets and rejects development, sibling-run,
 unknown and inactive targets **before** importing the application or opening a
 pool. Cleanup revalidates before each truncation. Shell values take precedence;
 an unsafe test override fails rather than redirecting the test. Bun and Nx
-automatic dotenv loading remain disabled, and the shared loader skips files
+automatic dotenv loading remain disabled, and both loaders skip files
 inside the selected environment.
 
 `jest-cucumber` **4.5.0** receives `describe` and `test` from `bun:test`; hooks and

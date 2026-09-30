@@ -6,15 +6,18 @@ instructions take precedence within their directory and descendants.
 
 ## Project context
 
-This is a Bun/Nx workspace with a NestJS application. `src/main.ts` is the
-runtime entry point; User and Wallet business code lives in `src/modules/`
-and still runs in one application (`legacy-app`).
+This is a Bun/Nx workspace with NestJS applications. The transitional
+`legacy-app` (`src/main.ts`) still runs User and Wallet business code from
+`src/modules/` together. The independent Wallet application in
+`src/apps/wallet/` owns Wallet lookup and its own database; read
+[src/apps/AGENTS.md](./src/apps/AGENTS.md) before working there.
 
 - `src/packages/core/` contains framework-free technical primitives;
   `src/packages/nest-support/` contains Nest adapters. Keep business entities
   and use cases in the application.
-- `database/` owns migrations and seeds; `scripts/` owns environment runners
-  and repository checks; `tooling/config/` owns shared quality settings.
+- `database/` owns the migration/seed tooling and the legacy content;
+  `scripts/` owns environment runners and repository checks; `tooling/config/`
+  owns shared quality settings.
 
 Packages are deep modules: read [src/packages/AGENTS.md](./src/packages/AGENTS.md)
 before adding or importing one. External callers and package tests use explicit
@@ -59,17 +62,13 @@ Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`, created lazily 
 ### Validation
 
 Use `bun run test:unit` for infrastructure-free application and package tests;
-bare `bun test` only discovers `src/tests`. Use `bun run lint`,
-`bun run typecheck` and `bun run lint:boundaries` for focused quality feedback.
+bare `bun test` only discovers `src/tests`.
 
-Before declaring code changes ready, run `bun run check:full`; Docker must be
-running for its lifecycle and E2E suites. `bun run test:e2e` provisions an
-isolated environment, migrates, seeds, runs tests and cleans up owned resources.
-Pre-commit hooks and CI run the infrastructure-free checks.
-
-For documentation-only changes, format the affected files, run
-`bun run check:docs`, and verify changed commands. See
-[developer checks](docs/developer-checks.md) for individual suites and formatting.
+Before declaring code changes ready, run `bun run check:full` with Docker
+running. For documentation-only changes, format the affected files, run
+`bun run check:docs` and verify changed commands. See
+[developer checks](docs/developer-checks.md) for focused suites and the scope
+of each gate.
 
 ### Review before commit
 

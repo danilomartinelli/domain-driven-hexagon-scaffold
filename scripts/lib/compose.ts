@@ -1,5 +1,19 @@
 import type { EnvironmentManifest } from '../../database/environment';
 
+/**
+ * Runs once, when the image initializes an empty cluster. The role gets no
+ * privileges here: the application's migrations grant exactly what it needs.
+ * Compose interpolates `$`, so it is escaped as `$$`.
+ */
+function runtimeRoleScript(role: { username: string; password: string }) {
+  const identifier = `"${role.username.replaceAll('"', '""')}"`;
+  const literal = `'${role.password.replaceAll("'", "''")}'`;
+  return `CREATE ROLE ${identifier} LOGIN PASSWORD ${literal};\n`.replaceAll(
+    '$',
+    () => '$$',
+  );
+}
+
 /** Compose's JSON form keeps every app on the same lifecycle implementation. */
 export function composeConfiguration(
   manifest: EnvironmentManifest,
@@ -7,9 +21,13 @@ export function composeConfiguration(
   const labels = { 'dev.starter.owner': manifest.owner };
   const services: Record<string, unknown> = {};
   const volumes: Record<string, unknown> = {};
+  const configs: Record<string, unknown> = {};
   for (const db of manifest.databases) {
     const volume = `${db.app}-postgres`;
     if (manifest.environment === 'development') volumes[volume] = { labels };
+    const runtimeRole = `${db.app}-runtime-role`;
+    if (db.runtime)
+      configs[runtimeRole] = { content: runtimeRoleScript(db.runtime) };
     services[`postgres-${db.app}`] = {
       image: 'postgres:18.6-alpine',
       labels,
@@ -22,6 +40,14 @@ export function composeConfiguration(
       ...(manifest.environment === 'test'
         ? { tmpfs: ['/var/lib/postgresql'] }
         : { volumes: [`${volume}:/var/lib/postgresql`] }),
+      ...(db.runtime && {
+        configs: [
+          {
+            source: runtimeRole,
+            target: '/docker-entrypoint-initdb.d/runtime-role.sql',
+          },
+        ],
+      }),
       healthcheck: {
         test: [
           'CMD-SHELL',
@@ -60,5 +86,5 @@ export function composeConfiguration(
   if (manifest.environment === 'development') volumes.rabbitmq = { labels };
   // Reserved gateway coordinates are published in the environment manifest.
   // Kong routes and its container are introduced by the routing slice.
-  return { services, networks: { default: { labels } }, volumes };
+  return { services, networks: { default: { labels } }, volumes, configs };
 }

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { createWorkspace } from './workspace-fixture';
 
 const findUsers = 'src/modules/user/queries/find-users';
+const wallet = 'src/apps/wallet';
 
 /** Each import is legal TypeScript that only the architecture rules reject. */
 const violations = [
@@ -32,6 +33,34 @@ const violations = [
     rule: 'no-circular',
     file: 'src/modules/user/application/user-read.port.ts',
     source: "import type { FindUsers } from './find-users';",
+  },
+  {
+    rule: 'core-is-context-independent',
+    file: `${wallet}/application/find-wallet-by-user.ts`,
+    source: "import type { DatabasePool } from 'slonik';",
+  },
+  {
+    rule: 'no-input-adapter-to-persistence-deps',
+    file: `${wallet}/queries/find-wallet-by-user/find-wallet-by-user.graphql-resolver.ts`,
+    source: "import type { walletSchema } from '../../database/wallet.schema';",
+  },
+  {
+    rule: 'apps-are-independent',
+    file: `${wallet}/application/wallet-read.port.ts`,
+    source:
+      "import type { UserSummary } from '../../../modules/user/application/user-read.port';",
+  },
+  {
+    rule: 'app-runtime-excludes-tooling',
+    file: `${wallet}/configs/environment.ts`,
+    source:
+      "import type { EnvironmentManifest } from '../../../../database/environment';",
+  },
+  {
+    rule: 'app-implementation-is-private',
+    file: 'src/modules/wallet/wallet.module.ts',
+    source:
+      "import type { WalletSummary } from '../../apps/wallet/application/wallet-read.port';",
   },
 ];
 

@@ -10,30 +10,30 @@ tests and migrations.
 
 ## Application dependencies
 
-| Package                             | Version  | Consumer / decision                                                                      |
-| ----------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
-| `@nestjs/common`, `@nestjs/core`    | 12.1.1   | Application modules, injection, middleware, controllers and bootstrap                    |
-| `@nestjs/platform-express`          | 12.1.1   | Nest HTTP adapter using Express 5                                                        |
-| `@nestjs/microservices`             | 12.1.1   | Existing message-controller decorators; no transport/bootstrap added                     |
-| `@nestjs/cqrs`                      | 12.1.0   | Command/query buses and handlers                                                         |
-| `@nestjs/event-emitter`             | 12.0.1   | Awaited in-process domain publication                                                    |
-| `@nestjs/swagger`                   | 12.0.2   | OpenAPI DTO metadata and `/docs`                                                         |
-| `@nestjs/graphql`, `@nestjs/apollo` | 14.0.3   | Code-first schema, resolvers and Apollo driver                                           |
-| `@apollo/server`                    | 5.5.1    | Server loaded by the Nest Apollo driver                                                  |
-| `@as-integrations/express5`         | 1.1.2    | Apollo driver's Express middleware integration                                           |
-| `graphql`                           | 16.14.2  | Latest 16.x; Apollo Server 5.5.1 requires `^16.11.0`, excluding registry latest 17.0.2   |
-| `class-transformer`                 | 0.5.1    | Nest DTO transformation; current stable version                                          |
-| `class-validator`                   | 0.15.1   | DTO validation and Nest validation pipe                                                  |
-| `reflect-metadata`                  | 0.2.2    | Decorator metadata at application/test bootstrap                                         |
-| `rxjs`                              | 7.8.2    | Nest interceptors and reactive framework contracts                                       |
-| `slonik`                            | 49.10.10 | Local pool provider, repositories and SQL tokens                                         |
-| `zod`                               | 4.6.5    | Persistence result schemas and mapper validation                                         |
-| `dotenv`                            | 18.0.4   | Updated from 16.6.1; shared `.env` / `.env.test` loader                                  |
-| `env-var`                           | 7.5.0    | Required database setting validation; pin latest stable instead of the old minimum range |
-| `nanoid`                            | 6.0.1    | Updated from 3.3.19; existing `nanoid(6)` request correlation IDs                        |
-| `oxide.ts`                          | 1.1.0    | Existing Result/Option contracts; pin latest stable instead of the old minimum range     |
-| `commander`                         | 15.0.0   | Existing CLI command definition; no executable CLI added                                 |
-| `cors`                              | 2.8.6    | GraphQL middleware restoring the existing browser CORS behavior                          |
+| Package                             | Version  | Consumer / decision                                                                       |
+| ----------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `@nestjs/common`, `@nestjs/core`    | 12.1.1   | Application modules, injection, middleware, controllers and bootstrap                     |
+| `@nestjs/platform-express`          | 12.1.1   | Nest HTTP adapter using Express 5                                                         |
+| `@nestjs/microservices`             | 12.1.1   | Existing message-controller decorators; no transport/bootstrap added                      |
+| `@nestjs/cqrs`                      | 12.1.0   | Command/query buses and handlers                                                          |
+| `@nestjs/event-emitter`             | 12.0.1   | Awaited in-process domain publication                                                     |
+| `@nestjs/swagger`                   | 12.0.2   | OpenAPI DTO metadata and `/docs`                                                          |
+| `@nestjs/graphql`, `@nestjs/apollo` | 14.0.3   | Code-first schema, resolvers and Apollo driver                                            |
+| `@apollo/server`                    | 5.5.1    | Server loaded by the Nest Apollo driver                                                   |
+| `@as-integrations/express5`         | 1.1.2    | Apollo driver's Express middleware integration                                            |
+| `graphql`                           | 16.14.2  | Latest 16.x; Apollo Server 5.5.1 requires `^16.11.0`, excluding registry latest 17.0.2    |
+| `class-transformer`                 | 0.5.1    | Nest DTO transformation; current stable version                                           |
+| `class-validator`                   | 0.15.1   | DTO validation and Nest validation pipe                                                   |
+| `reflect-metadata`                  | 0.2.2    | Decorator metadata at application/test bootstrap                                          |
+| `rxjs`                              | 7.8.2    | Nest interceptors and reactive framework contracts                                        |
+| `slonik`                            | 49.10.10 | Local pool provider, repositories and SQL tokens                                          |
+| `zod`                               | 4.6.5    | Persistence result schemas and mapper validation                                          |
+| `dotenv`                            | 18.0.4   | Updated from 16.6.1; legacy application and database tooling `.env` / `.env.test` loaders |
+| `env-var`                           | 7.5.0    | Required database setting validation; pin latest stable instead of the old minimum range  |
+| `nanoid`                            | 6.0.1    | Updated from 3.3.19; existing `nanoid(6)` request correlation IDs                         |
+| `oxide.ts`                          | 1.1.0    | Existing Result/Option contracts; pin latest stable instead of the old minimum range      |
+| `commander`                         | 15.0.0   | Existing CLI command definition; no executable CLI added                                  |
+| `cors`                              | 2.8.6    | GraphQL middleware restoring the existing browser CORS behavior                           |
 
 All selections other than GraphQL were the registry's latest stable versions.
 Nest packages have mutually compatible Nest 12 peers; Apollo/Express integration

@@ -18,9 +18,11 @@ const targetSchema = z.object({
   prefix: z.string(),
   host: z.literal('127.0.0.1'),
   port,
+  /** Owner role: migration authority, and the application's role when no runtime role is registered. */
   username: z.string(),
   password: z.string(),
   database: z.string(),
+  runtime: z.object({ username: z.string(), password: z.string() }).optional(),
 });
 const manifestSchema = z.object({
   environment: z.enum(['test', 'development']),
@@ -66,13 +68,23 @@ export function environmentLocation(
 export function readEnvironment(
   environment: EnvironmentKind,
   run: string,
+  options?: { complete?: boolean },
 ): EnvironmentManifest {
   return readEnvironmentFile(
     environmentLocation(environment, run).manifestPath,
+    options,
   );
 }
 
-export function readEnvironmentFile(path: string): EnvironmentManifest {
+/**
+ * Every listed database must belong to a registered application and this run.
+ * `complete: false` accepts a development manifest that predates a newly
+ * registered application, so preparation can add it and shutdown still works.
+ */
+export function readEnvironmentFile(
+  path: string,
+  { complete = true }: { complete?: boolean } = {},
+): EnvironmentManifest {
   const manifest = manifestSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
   const location = environmentLocation(manifest.environment, manifest.run);
   if (
@@ -81,23 +93,29 @@ export function readEnvironmentFile(path: string): EnvironmentManifest {
   ) {
     throw new Error('Environment belongs to another workspace or run.');
   }
-  if (manifest.databases.length !== applications.length)
-    throw new Error(
-      'Environment application registry changed; prepare a new run.',
-    );
-  for (const application of applications) {
-    const target = manifest.databases.find((db) => db.app === application.name);
+  const listed = new Set<string>();
+  for (const target of manifest.databases) {
+    const application = applications.find((app) => app.name === target.app);
     if (
-      !target ||
+      !application ||
+      listed.has(target.app) ||
       target.prefix !== application.prefix ||
       target.database !==
-        `${manifest.project.replaceAll('-', '_')}_${application.name}`
+        `${manifest.project.replaceAll('-', '_')}_${application.name}` ||
+      target.runtime?.username !== application.runtimeRole
     ) {
       throw new Error(
         'Database is not scoped to the selected application and run.',
       );
     }
+    listed.add(target.app);
   }
+  if (complete && listed.size !== applications.length)
+    throw new Error(
+      manifest.environment === 'development'
+        ? 'Environment application registry changed; prepare it again to add the new application databases.'
+        : 'Environment application registry changed; prepare a new run.',
+    );
   if (
     manifest.broker.vhost !== manifest.project ||
     manifest.gateway.name !== `${manifest.project}-gateway`
@@ -112,13 +130,19 @@ function databaseVariables(
 ): Record<string, string> {
   const variables: Record<string, string> = {};
   for (const db of manifest.databases) {
+    const connectAs = db.runtime ?? db;
     Object.assign(variables, {
       [`${db.prefix}_HOST`]: db.host,
       [`${db.prefix}_PORT`]: String(db.port),
-      [`${db.prefix}_USERNAME`]: db.username,
-      [`${db.prefix}_PASSWORD`]: db.password,
+      [`${db.prefix}_USERNAME`]: connectAs.username,
+      [`${db.prefix}_PASSWORD`]: connectAs.password,
       [`${db.prefix}_NAME`]: db.database,
     });
+    if (db.runtime)
+      Object.assign(variables, {
+        [`${db.prefix}_MIGRATION_USERNAME`]: db.username,
+        [`${db.prefix}_MIGRATION_PASSWORD`]: db.password,
+      });
   }
   return variables;
 }
@@ -189,7 +213,9 @@ export function assertTestEnvironment(
   }
   for (const key of Object.keys(env)) {
     if (
-      (/(^|_)DB_(HOST|PORT|USERNAME|PASSWORD|NAME|URL)$/.test(key) ||
+      (/(^|_)DB_(MIGRATION_)?(HOST|PORT|USERNAME|PASSWORD|NAME|URL)$/.test(
+        key,
+      ) ||
         /(^|_)DATABASE_URL$/.test(key)) &&
       !recognized.has(key)
     ) {

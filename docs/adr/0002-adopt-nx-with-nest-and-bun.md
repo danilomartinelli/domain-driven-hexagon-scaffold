@@ -194,19 +194,22 @@ This section is the single record of migration progress; other documents link
 here instead of restating it. The decision and the
 [User/Wallet glossary](../../GLOSSARY.md) remain the migration contract.
 
-Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-starter-js/issues/15),
-all still inside the transitional application:
+Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-starter-js/issues/15).
+#16 to #20 run inside the transitional application:
 
 - #16: domain primitives without request context.
 - #17: the [Nx/Bun baseline](../nx-workspace.md) around the existing regressions.
 - #18: database-backed regressions in workspace-isolated environments.
 - #19: User creation and deletion through plain use cases and owned ports.
 - #20: Find Users through an application-owned read model.
+- #21: the independent [Wallet application](../wallet.md), with its own
+  database, runtime role, migration history and seed, looks Wallets up by User
+  identity through REST and GraphQL.
 
-Remaining: independent User and Wallet applications, durable integration through
-an outbox and RabbitMQ, the Kong gateway, final executable boundaries,
-distributions and generators (#21 to #35). The shared User/Wallet transaction is
-still present.
+Remaining: Wallet creation from RabbitMQ events, the independent User
+application, durable integration through an outbox, the Kong gateway, final
+executable boundaries, distributions and generators (#22 to #35). The shared
+User/Wallet transaction is still present in the transitional application.
 
 ## References
 
