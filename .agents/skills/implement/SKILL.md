@@ -10,6 +10,11 @@ Before exploring issues, source or registry metadata, follow the bounded-reading
 workflow in `docs/agents/issue-tracker.md`. For a parent issue, start with the
 acceptance criteria referenced by the selected child.
 
+Before the first test, formatter or Nx task, complete the setup in
+`docs/developer-checks.md#setup`. Continue when the checkout's pinned Bun and
+local Nx/Prettier executables run successfully. Recheck after changing the
+lockfile or dependency manifests.
+
 Use /tdd where possible, at pre-agreed seams.
 
 Run typechecking and focused tests during implementation. Before declaring code

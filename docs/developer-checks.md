@@ -1,20 +1,37 @@
 # Developer checks
 
-Use **Bun 1.4.2** and install with `bun install --frozen-lockfile`. The `prepare`
-script installs Husky for this checkout. Git commits run lint-staged with the
+## Setup
+
+Use the Bun version pinned in `.bun-version`. Installation runs the `prepare`
+script to install Husky for this checkout. Confirm the installed tools before
+the first test, formatter or Nx task:
+
+```sh
+bun --version # must match .bun-version
+bun install --frozen-lockfile
+bun --bun ./node_modules/.bin/nx --version
+bun --bun ./node_modules/.bin/prettier --version
+```
+
+Setup is complete when installation and all three version commands succeed;
+repeat it after dependency or lockfile changes.
+
+## Gates
+
+Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
-core/package tests). When dependency manifests or Bun lockfiles are staged, the
+core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
 failure blocks the commit.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
-the affected files and verification of changed links/commands.
+the affected files, `bun run check:docs`, and verification of changed commands.
 
 | Check             | Command                   | Scope                                                                                                                             |
 | ----------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                                      |
+| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                             |
 | Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                                   |
 | Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                         |
 | Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                           |
@@ -23,6 +40,7 @@ the affected files and verification of changed links/commands.
 | Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                                          |
 | Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs seven Gherkin cases and four integration regressions, cleans up |
 | Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup             |
+| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents     |
 | Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                         |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
@@ -35,6 +53,25 @@ Run `bun --bun lint-staged` before capturing a staged review snapshot. If a hook
 changes the committed tree, review the resulting difference before publishing.
 `bun run prepare` reinstalls hooks when needed. The hook needs Bun on the Git
 process's `PATH`; it invokes the installed local tools without downloading them.
+
+## Documentation references
+
+`check:docs` parses Markdown with [Bun's Markdown API](https://bun.com/docs/runtime/markdown)
+and derives heading anchors with [github-slugger](https://github.com/Flet/github-slugger),
+including Unicode and duplicate headings. It checks relative/root-relative links,
+images, reference-style links and explicit HTML anchors. Code examples and
+external URLs are outside the local reference check; it makes no network requests.
+A link to a non-Markdown file checks file existence, not that format's fragments.
+
+The hook runs `bun run check:docs --staged` against an immutable Git index tree.
+Unstaged fixes cannot hide a broken staged link. Normal runs include new,
+unignored Markdown files and check incoming references when a target changes.
+Failures identify the source, destination and missing file/anchor; exit 1 means
+broken references and exit 2 means the checker could not complete.
+
+Infrastructure test fixtures use `withCleanup` from `scripts/tests/cleanup.ts`.
+It attempts every registered cleanup after success or failure, preserves a lone
+error's identity, and reports multiple failures together in an `AggregateError`.
 
 ## Nx orchestration
 

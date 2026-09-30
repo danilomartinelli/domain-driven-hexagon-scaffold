@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
+import { withCleanup } from './cleanup';
 
 const root = new URL('../../', import.meta.url).pathname;
 const run = `probe-${randomUUID().slice(0, 8)}`;
@@ -21,7 +22,7 @@ function environment(command: string, args: string[] = []) {
 }
 
 test('a named test environment prepares PostgreSQL and RabbitMQ for explicit database tooling', async () => {
-  try {
+  await withCleanup(async () => {
     const prepared = await environment('prepare');
     expect(prepared.code, prepared.stdout + prepared.stderr).toBe(0);
     const migrated = await environment('exec', [
@@ -56,10 +57,7 @@ test('a named test environment prepares PostgreSQL and RabbitMQ for explicit dat
     ]);
     expect(probe.code, probe.stdout + probe.stderr).toBe(0);
     expect(probe.stdout).toContain('prepared resources verified');
-  } finally {
-    const stopped = await environment('down');
-    expect(stopped.code, stopped.stdout + stopped.stderr).toBe(0);
-  }
+  }, [() => succeeded(environment('down'))]);
 }, 180_000);
 
 function namedEnvironment(kind: 'test' | 'development', name: string) {
@@ -111,110 +109,108 @@ test('prepared regression runs reject foreign targets and preserve development a
   const first = namedEnvironment('test', `first-${id}`);
   const sibling = namedEnvironment('test', `sibling-${id}`);
   const environments = [dev, first, sibling];
-  try {
-    const prepared = await Promise.allSettled(
-      environments.map((cli) => succeeded(cli('prepare'))),
-    );
-    for (const result of prepared)
-      if (result.status === 'rejected') throw result.reason;
-    for (const cli of environments) {
-      await succeeded(
-        cli('exec', ['--', process.execPath, 'run', 'migration:up']),
+  await withCleanup(
+    async () => {
+      const prepared = await Promise.allSettled(
+        environments.map((cli) => succeeded(cli('prepare'))),
       );
-      await succeeded(cli('exec', ['--', process.execPath, 'run', 'seed:up']));
-    }
-    await succeeded(
-      dev('exec', ['--', process.execPath, '-e', brokerQueue('PUT')]),
-    );
-    const infoCode = `console.log('TARGET=' + JSON.stringify({database: process.env.DB_NAME, port: process.env.DB_PORT, vhost: process.env.RABBITMQ_VHOST, brokerPort: process.env.RABBITMQ_PORT}));`;
-    const firstInfo = await succeeded(
-      first('exec', ['--', process.execPath, '-e', infoCode]),
-    );
-    const siblingInfo = await succeeded(
-      sibling('exec', ['--', process.execPath, '-e', infoCode]),
-    );
-    const parseInfo = (output: string) =>
-      z
-        .object({
-          database: z.string(),
-          port: z.string(),
-          vhost: z.string(),
-          brokerPort: z.string(),
-        })
-        .parse(JSON.parse(/^TARGET=(.+)$/m.exec(output)?.[1] ?? 'null'));
-    const firstTarget = parseInfo(firstInfo.stdout);
-    const siblingTarget = parseInfo(siblingInfo.stdout);
-    expect(firstTarget.database).not.toBe(siblingTarget.database);
-    expect(firstTarget.port).not.toBe(siblingTarget.port);
-    expect(firstTarget.vhost).not.toBe(siblingTarget.vhost);
-    expect(firstTarget.brokerPort).not.toBe(siblingTarget.brokerPort);
-    const marker = [
-      '--',
-      process.execPath,
-      '-e',
-      "console.log('UNSAFE_COMMAND_STARTED')",
-    ];
-    for (const override of [
-      { DB_NAME: siblingTarget.database },
-      { DB_NAME: 'ddh_tests' },
-      { DB_PORT: siblingTarget.port },
-      { DB_HOST: 'localhost' },
-      { DB_USERNAME: 'another' },
-      { DB_PASSWORD: 'another' },
-      { USER_DB_NAME: siblingTarget.database },
-      { WALLET_DB_NAME: siblingTarget.database },
-      { DATABASE_URL: 'postgres://localhost/development' },
-      { RABBITMQ_VHOST: siblingTarget.vhost },
-    ]) {
-      const rejected = await first('exec', marker, override);
-      expect(rejected.code, rejected.stdout + rejected.stderr).not.toBe(0);
-      expect(rejected.stdout).toContain('Refusing');
-      expect(rejected.stdout).not.toContain('\nUNSAFE_COMMAND_STARTED\n');
-    }
-    const shell = await succeeded(
-      first(
-        'exec',
-        [
-          '--',
-          process.execPath,
-          '-e',
-          "if (process.env.ISSUE18_SETTING !== 'shell') throw new Error('shell override lost');",
-        ],
-        { ISSUE18_SETTING: 'shell' },
-      ),
-    );
-    expect(shell.code).toBe(0);
-    const regression = await succeeded(
-      first('exec', ['--', process.execPath, 'run', 'test:e2e:prepared']),
-    );
-    expect(regression.stderr + regression.stdout).toContain('11 pass');
-    await succeeded(first('down'));
-    await succeeded(sibling('exec', ['--', process.execPath, '-e', seedProbe]));
-    await succeeded(dev('exec', ['--', process.execPath, '-e', seedProbe]));
-    // Development volumes remain usable after shutdown and restart.
-    await succeeded(dev('down'));
-    await succeeded(dev('prepare'));
-    await succeeded(
-      dev('exec', ['--', process.execPath, '-e', brokerQueue('GET')]),
-    );
-    await succeeded(dev('exec', ['--', process.execPath, '-e', seedProbe]));
-  } finally {
-    const stopped = await Promise.allSettled(
-      environments.map((cli) => succeeded(cli('down'))),
-    );
-    for (const result of stopped)
-      expect(
-        result.status,
-        String(result.status === 'rejected' ? result.reason : ''),
-      ).toBe('fulfilled');
-  }
+      for (const result of prepared)
+        if (result.status === 'rejected') throw result.reason;
+      for (const cli of environments) {
+        await succeeded(
+          cli('exec', ['--', process.execPath, 'run', 'migration:up']),
+        );
+        await succeeded(
+          cli('exec', ['--', process.execPath, 'run', 'seed:up']),
+        );
+      }
+      await succeeded(
+        dev('exec', ['--', process.execPath, '-e', brokerQueue('PUT')]),
+      );
+      const infoCode = `console.log('TARGET=' + JSON.stringify({database: process.env.DB_NAME, port: process.env.DB_PORT, vhost: process.env.RABBITMQ_VHOST, brokerPort: process.env.RABBITMQ_PORT}));`;
+      const firstInfo = await succeeded(
+        first('exec', ['--', process.execPath, '-e', infoCode]),
+      );
+      const siblingInfo = await succeeded(
+        sibling('exec', ['--', process.execPath, '-e', infoCode]),
+      );
+      const parseInfo = (output: string) =>
+        z
+          .object({
+            database: z.string(),
+            port: z.string(),
+            vhost: z.string(),
+            brokerPort: z.string(),
+          })
+          .parse(JSON.parse(/^TARGET=(.+)$/m.exec(output)?.[1] ?? 'null'));
+      const firstTarget = parseInfo(firstInfo.stdout);
+      const siblingTarget = parseInfo(siblingInfo.stdout);
+      expect(firstTarget.database).not.toBe(siblingTarget.database);
+      expect(firstTarget.port).not.toBe(siblingTarget.port);
+      expect(firstTarget.vhost).not.toBe(siblingTarget.vhost);
+      expect(firstTarget.brokerPort).not.toBe(siblingTarget.brokerPort);
+      const marker = [
+        '--',
+        process.execPath,
+        '-e',
+        "console.log('UNSAFE_COMMAND_STARTED')",
+      ];
+      for (const override of [
+        { DB_NAME: siblingTarget.database },
+        { DB_NAME: 'ddh_tests' },
+        { DB_PORT: siblingTarget.port },
+        { DB_HOST: 'localhost' },
+        { DB_USERNAME: 'another' },
+        { DB_PASSWORD: 'another' },
+        { USER_DB_NAME: siblingTarget.database },
+        { WALLET_DB_NAME: siblingTarget.database },
+        { DATABASE_URL: 'postgres://localhost/development' },
+        { RABBITMQ_VHOST: siblingTarget.vhost },
+      ]) {
+        const rejected = await first('exec', marker, override);
+        expect(rejected.code, rejected.stdout + rejected.stderr).not.toBe(0);
+        expect(rejected.stdout).toContain('Refusing');
+        expect(rejected.stdout).not.toContain('\nUNSAFE_COMMAND_STARTED\n');
+      }
+      const shell = await succeeded(
+        first(
+          'exec',
+          [
+            '--',
+            process.execPath,
+            '-e',
+            "if (process.env.ISSUE18_SETTING !== 'shell') throw new Error('shell override lost');",
+          ],
+          { ISSUE18_SETTING: 'shell' },
+        ),
+      );
+      expect(shell.code).toBe(0);
+      const regression = await succeeded(
+        first('exec', ['--', process.execPath, 'run', 'test:e2e:prepared']),
+      );
+      expect(regression.stderr + regression.stdout).toContain('11 pass');
+      await succeeded(first('down'));
+      await succeeded(
+        sibling('exec', ['--', process.execPath, '-e', seedProbe]),
+      );
+      await succeeded(dev('exec', ['--', process.execPath, '-e', seedProbe]));
+      // Development volumes remain usable after shutdown and restart.
+      await succeeded(dev('down'));
+      await succeeded(dev('prepare'));
+      await succeeded(
+        dev('exec', ['--', process.execPath, '-e', brokerQueue('GET')]),
+      );
+      await succeeded(dev('exec', ['--', process.execPath, '-e', seedProbe]));
+    },
+    environments.map((cli) => () => succeeded(cli('down'))),
+  );
 }, 240_000);
 
 test('a bound database port fails preparation and removes only the failed run', async () => {
   const id = randomUUID().slice(0, 8);
   const sibling = namedEnvironment('test', `holder-${id}`);
   const failed = namedEnvironment('test', `bind-${id}`);
-  try {
+  await withCleanup(async () => {
     await succeeded(sibling('prepare'));
     const info = await succeeded(
       sibling('exec', [
@@ -255,8 +251,5 @@ test('a bound database port fails preparation and removes only the failed run', 
         "console.log('sibling still available')",
       ]),
     );
-  } finally {
-    await succeeded(failed('down'));
-    await succeeded(sibling('down'));
-  }
+  }, [() => succeeded(failed('down')), () => succeeded(sibling('down'))]);
 }, 120_000);
