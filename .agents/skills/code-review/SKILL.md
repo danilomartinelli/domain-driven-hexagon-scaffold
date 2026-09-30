@@ -36,9 +36,10 @@ Record the chosen mode, both object IDs, exact diff command and
 `git log <fixed-point-sha>..HEAD --oneline`. Require a non-empty diff and pass
 these values to both reviewers. No preliminary commit is needed.
 
-Keep the reviewed files unchanged during review. If the worktree differs from
-the staged snapshot, read snapshot content with `git show <index-tree-sha>:<path>`
-and distinguish worktree test results from validation of that snapshot.
+Keep the index at the reviewed tree until both reviewers return; working-tree
+fixes may start immediately, because reviewers read snapshot content with
+`git show <index-tree-sha>:<path>`. Distinguish worktree test results from
+validation of that snapshot.
 After fixes, restage, rerun affected checks and review the updated snapshot.
 Before committing, verify `git write-tree` still matches the reviewed tree.
 If a hook changes the committed tree, review the resulting difference before

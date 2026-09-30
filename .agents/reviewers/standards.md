@@ -5,8 +5,9 @@ documented conventions. Read the root AGENTS.md, applicable nested instructions,
 and the Standards axis in `.agents/skills/code-review/SKILL.md`.
 
 The parent supplies the resolved base SHA, subject SHA or index tree, diff command,
-commit list and standards sources. Use `git show <subject>:<path>` when the working
-copy differs. If those inputs are missing, return the missing inputs to the parent.
+commit list and standards sources. Read files with `git show <subject>:<path>`:
+the working copy may change during review, and tests run there are not evidence
+for the subject. If those inputs are missing, return the missing inputs to the parent.
 Do not choose a new base or review a moving working copy.
 
 Pay attention to framework-free core, explicit package entry points, business

@@ -48,16 +48,15 @@ graph TD
   wallet --> database
   test-runner --> database
   test-runner --> infrastructure
-  database --> legacy-app
   legacy-app --> nest-support
   legacy-app --> core
   nest-support --> core
 ```
 
-The database-to-app edge is real: migration and seed commands still read the
-transitional app's dotenv loader. Wallet's edges to `database` and
-`test-runner` come from its component suite's environment guard and runner;
-its production code imports only its own files and the shared packages. Source imports (including type-only
+Database tooling has its own dotenv loader, so it depends on no application.
+Wallet's edges to `database` and `test-runner` come from its component suite's
+environment guard and runner; its production code imports only its own files
+and the shared packages. Source imports (including type-only
 imports), workspace manifests and the runner's explicit command dependencies
 supply the Nx graph. Nx's built-in JavaScript analyzer is explicitly enabled;
 package-manifest discovery alone would miss application imports. Shared quality
@@ -87,23 +86,23 @@ bun run check
 bun run check:full
 ```
 
-| Package command                                                          | Nx target(s)                                                                                                  |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `lint`, `typecheck`                                                      | All applicable project `lint` / `typecheck` targets                                                           |
-| `test`, `test:unit`                                                      | `legacy-app:test`, `wallet:test`, `core:test`, `example:test`                                                 |
-| `start`, `start:dev`, `start:debug`, `start:prod`                        | `legacy-app:serve`, `watch`, `debug`, `serve-production`                                                      |
-| `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                                                              |
-| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets                                              |
-| `test:debug`                                                             | `legacy-app:test-debug`; use `core:test-debug`, `example:test-debug` or `wallet:test-debug` for another suite |
-| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                                                 |
-| `test:component`                                                         | Every `test-component` target (currently `wallet:test-component`)                                             |
-| `test:tooling`                                                           | `test-runner:test-live`                                                                                       |
-| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                                                        |
-| `seed:up`                                                                | `database:seed`                                                                                               |
-| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                                                   |
-| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                                                      |
-| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                                                 |
-| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                                                              |
+| Package command                                                          | Nx target(s)                                                                     |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `lint`, `typecheck`, `lint:fix`                                          | All applicable project `lint` / `typecheck` / `lint-fix` targets                 |
+| `test`, `test:unit`                                                      | Every project's `test` target                                                    |
+| `start`, `start:dev`, `start:debug`, `start:prod`                        | `legacy-app:serve`, `watch`, `debug`, `serve-production`                         |
+| `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                                 |
+| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets                 |
+| `test:debug`                                                             | `legacy-app:test-debug`; run another project's `test-debug` target for its suite |
+| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                    |
+| `test:component`                                                         | Every `test-component` target (currently `wallet:test-component`)                |
+| `test:tooling`                                                           | `test-runner:test-live`                                                          |
+| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                           |
+| `seed:up`                                                                | `database:seed`                                                                  |
+| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                      |
+| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                         |
+| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                    |
+| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                                 |
 
 The environment CLI carries its argument array into its uncached Nx target through
 a dedicated process variable, preserving the command after `--` without shell
@@ -115,9 +114,9 @@ Arguments continue through the command chain, for example
 `bun run test:e2e --test-name-pattern 'Wallet persistence failure'` and
 `bun run migration:create add-user-index`. Direct Bun commands for focused
 experiments remain possible; use the package commands for the quality gates.
-Unit discovery has no E2E preload. Bare `bun test` runs only `src/tests`;
-`test:unit` includes all four unit suites. The decorator fixture is never a
-runtime test and remains in `legacy-app:typecheck`.
+Unit discovery has no E2E preload. Bare `bun test` runs only `src/tests`.
+The decorator fixture is never a runtime test and remains in
+`legacy-app:typecheck`.
 
 ## Cache contract
 

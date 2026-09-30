@@ -34,20 +34,20 @@ is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files, `bun run check:docs`, and verification of changed commands.
 
-| Check             | Command                   | Scope                                                                                                                                           |
-| ----------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                                           |
-| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E and service component suites                       |
-| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                       |
-| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                         |
-| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                        |
-| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                              |
-| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, User and Wallet use cases, exceptions and colocated package tests                             |
-| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up      |
-| Components        | `bun run test:component`  | Provisions an isolated run, migrates/seeds only Wallet, starts it without User or broker, checks both lookups and database ownership, cleans up |
-| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                           |
-| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents                   |
-| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                                       |
+| Check             | Command                   | Scope                                                                                                                                                                                               |
+| ----------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                                                                                               |
+| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E and service component suites                                                                           |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                                                                           |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                                                                             |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                                                                            |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                                                                                  |
+| Core and packages | `bun run test:unit`       | Every project's infrastructure-free `test` target: domain, use cases, commands, exceptions and colocated package tests                                                                              |
+| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up                                                          |
+| Components        | `bun run test:component`  | Each application's `test-component` target: provisions an isolated run, migrates/seeds only that application, starts it without sibling services, checks its APIs and database ownership, cleans up |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                                                                               |
+| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents                                                                       |
+| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                                                                                           |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -96,12 +96,11 @@ error's identity, and reports multiple failures together in an `AggregateError`.
 ## Nx orchestration
 
 Package scripts delegate to Nx targets; see [the workspace guide](nx-workspace.md)
-for all eleven projects, private exports, absent suites and cache inputs. Shared
+for projects, private exports, absent suites and cache inputs. Shared
 quality settings live in `tooling/config`, with native root entry points for
 editors. The compile-time fixture is `src/type-tests/final.decorator.ts`.
-`test:unit` runs the legacy application, Wallet core, core primitive and example suites.
-`test:debug` opens the application unit suite; package inspector targets are
-`core:test-debug`, `example:test-debug` and `wallet:test-debug`. Live targets always execute.
+`test:debug` opens the legacy application unit suite; every other suite has its
+own `test-debug` target. Live targets always execute.
 
 ## Workspace and dependency guardrails
 
@@ -257,10 +256,9 @@ Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
 name. Both commands use the same ESM architecture configuration.
 
 Run every applicable check above, including the live suite, before declaring code
-ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` include
-`src/tests` and colocated tests under `src/packages`. `test:debug` runs only
-`src/tests`; use `bun run nx run core:test-debug` or
-`bun run nx run example:test-debug` for package suites. Bare `bun test` retains its
+ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` run every project's
+unit suite. `test:debug` runs only `src/tests`; use
+`bun run nx run <project>:test-debug` for another suite. Bare `bun test` retains its
 `src/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline.
 
 Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).

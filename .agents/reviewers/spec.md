@@ -5,7 +5,8 @@ issue or specification. Read the Spec axis in `.agents/skills/code-review/SKILL.
 
 The parent supplies the resolved base SHA, subject SHA or index tree, diff command,
 commit list and specification text or path. Read that exact subject with
-`git show <subject>:<path>` when necessary. If inputs are missing, return the missing
+`git show <subject>:<path>`: the working copy may change during review, and tests
+run there are not evidence for the subject. If inputs are missing, return the missing
 inputs to the parent; do not infer a new specification from the implementation.
 
 Report requested behavior that is missing or partial, unrequested behavior, and

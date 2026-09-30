@@ -62,18 +62,13 @@ Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`, created lazily 
 ### Validation
 
 Use `bun run test:unit` for infrastructure-free application and package tests;
-bare `bun test` only discovers `src/tests`. Use `bun run lint`,
-`bun run typecheck` and `bun run lint:boundaries` for focused quality feedback.
+bare `bun test` only discovers `src/tests`.
 
-Before declaring code changes ready, run `bun run check:full`; Docker must be
-running for its lifecycle, E2E and component suites. `bun run test:e2e` and
-`bun run test:component` provision an isolated environment, migrate, seed, run
-tests and clean up owned resources.
-Pre-commit hooks and CI run the infrastructure-free checks.
-
-For documentation-only changes, format the affected files, run
-`bun run check:docs`, and verify changed commands. See
-[developer checks](docs/developer-checks.md) for individual suites and formatting.
+Before declaring code changes ready, run `bun run check:full` with Docker
+running. For documentation-only changes, format the affected files, run
+`bun run check:docs` and verify changed commands. See
+[developer checks](docs/developer-checks.md) for focused suites and the scope
+of each gate.
 
 ### Review before commit
 

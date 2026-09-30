@@ -1,4 +1,4 @@
-import '../src/configs/load-env';
+import './load-env';
 import { assertTestEnvironment } from './environment';
 import { selectApplication, type DatabaseApplication } from './applications';
 

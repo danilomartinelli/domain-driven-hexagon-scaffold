@@ -97,9 +97,10 @@ owned target**, instead of silently replacing it or connecting to it.
 Development commands may intentionally use shell overrides.
 
 Bun automatic environment loading is disabled in `bunfig.toml`, and Nx dotenv
-loading is disabled by the package wrapper. The application's dotenv loader
-skips `.env`/`.env.test` inside a selected environment. Outside that workflow,
-legacy development commands still read `.env` with shell precedence.
+loading is disabled by the package wrapper. The legacy application's and the
+database tooling's dotenv loaders skip `.env`/`.env.test` inside a selected
+environment. Outside that workflow, legacy development and database commands
+still read `.env` with shell precedence; Wallet reads no dotenv file.
 Tests never authorize cleanup based on a name containing `test`.
 
 Before opening any application pool or database-tool connection, and again
