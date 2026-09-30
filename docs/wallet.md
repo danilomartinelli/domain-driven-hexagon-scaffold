@@ -2,12 +2,13 @@
 
 Wallet is the first independently runnable application of
 [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md). The Nx project `wallet`
-lives in `src/apps/wallet` and looks up a persisted Wallet by User identity
-through REST and GraphQL. It starts without a User process or RabbitMQ and
-uses only its own database. The transitional `legacy-app` still creates Wallets
-in its own database; Wallet does not read that data. The next Wallet slice
-([#22](https://github.com/danilomartinelli/vibecoding-starter-js/issues/22))
-activates the RabbitMQ consumer that creates Wallets from user-created events.
+lives in `src/apps/wallet`, creates Wallets from versioned user-created RabbitMQ
+events and looks them up by User identity through REST and GraphQL. Its APIs
+start without a User process or an available broker and use only its own database.
+The transitional `legacy-app` still creates Wallets in its own database;
+Wallet does not read that data. The User integration mapper defines the producer
+envelope; wiring User persistence and publication through an outbox belongs to
+the later User/outbox slices (#23/#24).
 
 ## Run it locally
 
@@ -47,12 +48,13 @@ Wallet exposes no deposit, withdrawal, deletion or cancellation operation.
 Wallet reads its settings from the process environment and loads no dotenv
 file; `env:exec` supplies them from the selected environment manifest.
 
-| Variable                                                                      | Meaning                                  |
-| ----------------------------------------------------------------------------- | ---------------------------------------- |
-| `WALLET_HTTP_PORT`                                                            | HTTP and GraphQL listener port           |
-| `WALLET_DB_HOST`, `WALLET_DB_PORT`, `WALLET_DB_NAME`                          | Wallet's own database                    |
-| `WALLET_DB_USERNAME`, `WALLET_DB_PASSWORD`                                    | Restricted runtime role `wallet_runtime` |
-| `WALLET_DB_MIGRATION_USERNAME`, `WALLET_DB_MIGRATION_PASSWORD` (tooling only) | Owner role for migrations and seeds      |
+| Variable                                                                                     | Meaning                                                                                                          |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `WALLET_HTTP_PORT`                                                                           | HTTP and GraphQL listener port                                                                                   |
+| `WALLET_DB_HOST`, `WALLET_DB_PORT`, `WALLET_DB_NAME`                                         | Wallet's own database                                                                                            |
+| `WALLET_DB_USERNAME`, `WALLET_DB_PASSWORD`                                                   | Restricted runtime role `wallet_runtime`                                                                         |
+| `WALLET_DB_MIGRATION_USERNAME`, `WALLET_DB_MIGRATION_PASSWORD` (tooling only)                | Owner role for migrations and seeds                                                                              |
+| `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`, `RABBITMQ_VHOST` | Broker supplied by the owned environment; configuration is required, connectivity is independent of HTTP startup |
 
 ## Database ownership
 
@@ -60,7 +62,11 @@ Wallet owns a new database with its own migration history and seed; no data
 is transferred from the transitional database and no volume is deleted.
 [Its baseline](../src/apps/wallet/database/migrations/1790801127437_wallet-baseline.sql)
 creates `wallets` (one Wallet per User identity, balance never negative) and
-grants the runtime role `SELECT` only. The owner role keeps migration
+initially grants the runtime role `SELECT` only. The
+[consumption migration](../src/apps/wallet/database/migrations/1790807962923_wallet-consumed-events.sql)
+adds `wallet_consumed_events`, grants `INSERT` on Wallets and `SELECT, INSERT`
+on deduplication records. No runtime `UPDATE`, `DELETE` or schema privileges are
+granted. The owner role keeps migration
 authority, including the `pgmigrations` history the runtime role cannot read.
 Environment preparation creates the runtime role when it initializes the
 cluster; see [the database workflow](database.md#application-owned-database-content).
@@ -84,18 +90,107 @@ from production Wallet code into database tooling and from input adapters into
 the transitional application keeps its copy until the asynchronous cutover.
 There is no shared User/Wallet business-model library.
 
+## User-created integration contract
+
+User owns the serializable envelope exposed at
+`@starter/integration-contracts/user-created`. It is a plain JSON value, not a
+serialized domain-event class. The required v1 shape is:
+
+```json
+{
+  "type": "user.created",
+  "version": 1,
+  "source": "user",
+  "eventId": "4efebd63-a9d1-424d-990b-23c726cd7230",
+  "occurredAt": "2026-09-30T12:00:00.000Z",
+  "correlationId": "registration-42",
+  "causationId": "create-user-42",
+  "data": { "userId": "1f713fd5-ebcc-4954-981c-389628259a2d" }
+}
+```
+
+Messages must be valid UTF-8. Identities are nonempty strings of at most 255
+UTF-16 code units, with no NUL or unpaired surrogate; `occurredAt` is an ISO
+timestamp in years 0001–9999, with UTC or an offset below 16 hours. These bounds
+ensure accepted identities and timestamps can be persisted unchanged in meaning.
+User email and address are neither required nor
+included by the producer mapper. The producer assigns `eventId` once when
+recording the publication, keeping it, the User identity and correlation metadata
+unchanged on retries and explicit replay. Deleting a User does not invalidate
+the event; Wallet never queries User to process it.
+
+| Purpose                                 | Destination                                                                 |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| User integration exchange               | `user.events` (durable, direct)                                             |
+| v1 routing key                          | `user.created.v1`                                                           |
+| Wallet subscription                     | `wallet.user-created` (durable, manual ACK, prefetch 4)                     |
+| Retained invalid/unsupported deliveries | `wallet.user-created.failed` (durable, no automatic consumer or expiration) |
+
+These destinations are distinct from the User `user.create` **command**.
+Producers must publish persistent messages with `mandatory` routing and publisher
+confirmations, and declare the durable destination before publishing even when
+Wallet is offline. A return, failure or missing confirmation is not acceptance.
+Broker acceptance is not Wallet completion: observe lookup through REST/GraphQL.
+
+The decoder validates the envelope and version before the use case starts.
+Additive optional fields are ignored by v1 consumers. Breaking semantics require
+a new supported version and explicit coexistence before retirement. Keep v1
+support while retained outbox/failure messages or producers still require it;
+each service evolves its own schema with expand/transition/contract migrations.
+The [independent baseline fixture](../src/packages/integration-contracts/tests/fixtures/user-created-v1.json)
+and consumer tests establish this compatibility baseline; they do not claim
+historical release binaries have been tested.
+
+## Delivery and recovery
+
+```text
+RabbitMQ delivery -> validate -> per-message identity/correlation metadata
+  CreateWallet -> WalletCreationTransaction.run
+    claim event_id (unique, durable)
+    insert zero-balance Wallet if userId is absent (unique)
+  commit -> ACK
+```
+
+Both writes roll back together. A concurrent duplicate waits for the unique
+event claim; repeated events and different event identities for the same User
+preserve the existing Wallet identity and balance. A crash after commit before
+ACK causes broker redelivery and a harmless durable deduplication check.
+Deduplication records are not automatically expired.
+
+Invalid JSON, invalid envelopes and unsupported versions are published unchanged
+to the failure queue as persistent messages. Original identity, correlation and
+headers are retained, with failure reason, original routing and redelivery
+metadata. Source expiration is removed. Only successful routing **and** publisher
+confirmation permit the source ACK. Interrupted retention may leave multiple
+failure copies; retaining the original identity makes future replay idempotent.
+Operator inspection and explicit replay commands belong to the later
+failure-queue workflow; this slice provides durable retention without retry loops.
+
+Infrastructure errors close the connection without ACK and retry at 250ms,
+500ms, 1s and so on, capped at 10s. Only successful processing resets this
+backoff. Connections have a 2s timeout and heartbeat; topology and close waits
+are bounded at 5s, processing at 10s, and transactional statements at 5s.
+Shutdown closes consumption before the database pool, leaving interrupted work
+recoverable. Messaging runs independently of HTTP/GraphQL, with explicit
+per-message context and correlated commit logs, without HTTP middleware.
+
 ## Tests
 
 ```sh
-bun run nx run wallet:test            # core and read use case; part of test:unit
+bun run nx run wallet:test            # plain core/use cases/consumer; part of test:unit
+bun run nx run integration-contracts:test # independent schema/fixture contracts
 bun run nx run wallet:test-component  # provisioned component suite; part of test:component
 ```
 
-Unit tests run the domain and `FindWalletByUser` against a small in-memory read
-port, with no framework or infrastructure. The component target provisions an
-isolated test run, migrates and seeds only Wallet's database, starts
-`src/apps/wallet/main.ts` without User, legacy database, broker or migration
-settings, and exercises both lookup APIs. It also verifies the runtime role's
+Unit tests run the domain, read/creation use cases and consumer validation with
+plain ports, without framework or infrastructure. The component target provisions
+an isolated test run, migrates and seeds only Wallet's database, and starts
+`src/apps/wallet/main.ts` without User, legacy database or migration settings.
+It drives real RabbitMQ events and observes both APIs, proves PostgreSQL rollback
+and kills a test consumer on either side of commit to observe actual broker
+redelivery. Concurrent consumers preserve balances, invalid events remain in the
+failure queue, and an owned TCP gate proves startup and recovery while messaging
+is unavailable. The suite also verifies the runtime role's
 privileges and that neither Wallet credential can connect to the other
 configured application databases. For repeated runs against a prepared
 environment:
@@ -108,4 +203,6 @@ bun run env:down --environment=test --run=wallet-1
 ```
 
 The preload validates the owned test environment before starting Wallet or
-opening a connection, and cleanup revalidates before each truncation.
+opening a connection. Cleanup stops consumers and purges owned message queues
+before truncating Wallet/deduplication state, preventing delayed deliveries from
+racing another scenario.

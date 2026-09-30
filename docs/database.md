@@ -146,7 +146,9 @@ access. Its database owner (`<prefix>_MIGRATION_USERNAME`/`_PASSWORD`) runs
 migrations and seeds; the application connects as the restricted role
 (`<prefix>_USERNAME`/`_PASSWORD`), which the environment creates when it
 initializes the cluster and the migrations grant only what the application
-needs. Wallet's `wallet_runtime` can only read `wallets`. Each application
+needs. Wallet's `wallet_runtime` can read and insert `wallets` and
+`wallet_consumed_events`, but cannot update balances, delete records or change
+the schema. Each application
 database runs in its own PostgreSQL container, so neither Wallet credential can
 connect to another application's database; Wallet's component suite verifies
 both properties. The legacy database still uses its owner for both.

@@ -62,7 +62,11 @@ const config = {
       from: { path: '^src/apps/([^/]+)/' },
       to: {
         path: '^(src|tests|scripts)/',
-        pathNot: ['^src/apps/$1/', `^${PACKAGES_ROOT}/`],
+        pathNot: [
+          '^src/apps/$1/',
+          `^${PACKAGES_ROOT}/`,
+          '^scripts/tests/cleanup\\.ts$',
+        ],
       },
     },
     {
@@ -71,7 +75,7 @@ const config = {
       comment:
         'Production application code cannot depend on database or environment tooling; only its tests use the environment guard.',
       from: { path: '^src/apps/[^/]+/', pathNot: '^src/apps/[^/]+/tests/' },
-      to: { path: '^database/' },
+      to: { path: '^(database|scripts)/' },
     },
     {
       name: 'app-implementation-is-private',
@@ -84,8 +88,24 @@ const config = {
     {
       name: 'shared-is-technical',
       severity: 'error',
-      from: { path: '^src/packages/(core|nest-support)/' },
+      from: {
+        path: '^src/packages/(core|nest-support|integration-contracts)/',
+      },
       to: { path: '^(src/(?!packages/)|tests/|scripts/|database/)' },
+    },
+    {
+      name: 'integration-contract-is-independent',
+      severity: 'error',
+      comment:
+        'Wire contracts depend only on their own schema and validation library, never on application or framework implementation.',
+      from: { path: '^src/packages/integration-contracts/(?!tests/)' },
+      to: {
+        pathNot: [
+          '^src/packages/integration-contracts/',
+          '(^|/)node_modules/zod/',
+          '(^|/)node_modules/\\.bun/zod@[^/]+/node_modules/zod/',
+        ],
+      },
     },
     {
       name: 'entrypoint-boundary-from-app',
@@ -178,7 +198,13 @@ const config = {
       comment:
         'Controllers, resolvers and CQRS handlers use application results, not persistence models or repositories',
       severity: 'error',
-      from: { path: [...apiLayerPaths, ...cqrsHandlerPaths] },
+      from: {
+        path: [
+          ...apiLayerPaths,
+          ...cqrsHandlerPaths,
+          '^src/apps/[^/]+/messaging/',
+        ],
+      },
       to: { path: '^src/(modules|apps)/[^/]+/database/' },
     },
     {

@@ -205,10 +205,14 @@ Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-s
 - #21: the independent [Wallet application](../wallet.md), with its own
   database, runtime role, migration history and seed, looks Wallets up by User
   identity through REST and GraphQL.
+- #22: versioned User integration envelopes, atomic Wallet creation and durable
+  deduplication, RabbitMQ consumption with commit-before-ACK, retained invalid
+  events and independent broker recovery. Real component tests cover crashes
+  on either side of commit, concurrent delivery and API availability.
 
-Remaining: Wallet creation from RabbitMQ events, the independent User
-application, durable integration through an outbox, the Kong gateway, final
-executable boundaries, distributions and generators (#22 to #35). The shared
+Remaining: the independent User application, durable integration through an
+outbox, operator inspection/replay, the Kong gateway, final executable boundaries,
+distributions and generators (#23 to #35). The shared
 User/Wallet transaction is still present in the transitional application.
 
 ## References

@@ -84,7 +84,9 @@
     "commander": "15.0.0",
     "cors": "2.8.6",
     "@starter/core": "workspace:*",
-    "@starter/nest-support": "workspace:*"
+    "@starter/nest-support": "workspace:*",
+    "@starter/integration-contracts": "workspace:*",
+    "amqplib": "2.2.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

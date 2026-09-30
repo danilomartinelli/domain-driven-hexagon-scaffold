@@ -18,3 +18,5 @@ own Nx project. Read [the Wallet guide](../../docs/wallet.md) before changing
 - `tests/unit/` needs no framework or infrastructure and runs in `test:unit`.
   `tests/component/` starts the real entry point against a provisioned run; its
   preload must validate the owned test environment before anything else.
+  Infrastructure fixtures may import `scripts/tests/cleanup.ts` to attempt all
+  owned cleanup and preserve failures; this exception is limited to test code.

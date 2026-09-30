@@ -9,6 +9,17 @@ const wallet = 'src/apps/wallet';
 /** Each import is legal TypeScript that only the architecture rules reject. */
 const violations = [
   {
+    rule: 'integration-contract-is-independent',
+    file: 'src/packages/integration-contracts/user-created.ts',
+    source:
+      "import type { UserCreatedDomainEvent } from '../../modules/user/domain/events/user-created.domain-event';",
+  },
+  {
+    rule: 'no-input-adapter-to-persistence-deps',
+    file: `${wallet}/messaging/user-created-consumer.ts`,
+    source: "import type { walletSchema } from '../database/wallet.schema';",
+  },
+  {
     rule: 'core-is-context-independent',
     file: 'src/modules/user/application/find-users.ts',
     source: "import type { Logger } from '@nestjs/common';",
@@ -55,6 +66,11 @@ const violations = [
     file: `${wallet}/configs/environment.ts`,
     source:
       "import type { EnvironmentManifest } from '../../../../database/environment';",
+  },
+  {
+    rule: 'app-runtime-excludes-tooling',
+    file: `${wallet}/configs/environment.ts`,
+    source: "import { withCleanup } from '../../../../scripts/tests/cleanup';",
   },
   {
     rule: 'app-implementation-is-private',

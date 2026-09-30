@@ -5,28 +5,29 @@ puts the existing application and regressions under Nx **23.2.1**, with Bun
 **1.4.2** for installation, application execution and native tests. Nest stays on
 **12.1.1**. User and Wallet still run together in `legacy-app` and share the
 existing transaction; the independent [Wallet application](wallet.md) owns Wallet
-lookup and its own database. This is the runnable baseline for [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md),
+creation from RabbitMQ events, lookup and its own database. This is the runnable baseline for [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md),
 not completion of its independent services, outbox, generators or distributions.
 The [User/Wallet language](../GLOSSARY.md) and ADR 0001 supersession note remain
 part of that design.
 
 ## Projects and ownership
 
-| Nx project       | Root                              | Responsibility / tests                                                                                                                                                            |
-| ---------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `legacy-app`     | `src` (excluding nested projects) | Current User/Wallet application, owned entities, use cases and persistence models; domain/command tests in `src/tests` and compile-only decorator fixture in `src/type-tests`     |
-| `wallet`         | `src/apps/wallet`                 | Independent Wallet lookup application with its own domain, read port, adapters, migrations and seed; core tests in `tests/unit`, provisioned component suite in `tests/component` |
-| `core`           | `src/packages/core`               | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                       |
-| `nest-support`   | `src/packages/nest-support`       | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                        |
-| `example`        | `src/packages/example`            | Existing deep-module search-term example and its real unit test; optional starter template                                                                                        |
-| `config`         | `tooling/config`                  | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                           |
-| `database`       | `database`                        | Existing migration history and seeds; exercised by live checks, no standalone unit suite                                                                                          |
-| `infrastructure` | `docker`                          | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                             |
-| `test-runner`    | `scripts`                         | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                                 |
-| `e2e`            | `tests`                           | Seven original Gherkin cases and database/API regressions, with opt-in setup                                                                                                      |
-| `workspace`      | `.`                               | Repository formatting and architecture checks                                                                                                                                     |
+| Nx project              | Root                                 | Responsibility / tests                                                                                                                                                            |
+| ----------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `legacy-app`            | `src` (excluding nested projects)    | Current User/Wallet application, owned entities, use cases and persistence models; domain/command tests in `src/tests` and compile-only decorator fixture in `src/type-tests`     |
+| `wallet`                | `src/apps/wallet`                    | Independent Wallet lookup application with its own domain, read port, adapters, migrations and seed; core tests in `tests/unit`, provisioned component suite in `tests/component` |
+| `integration-contracts` | `src/packages/integration-contracts` | Versioned serializable integration envelopes and independent baseline fixtures; infrastructure-free contract tests                                                                |
+| `core`                  | `src/packages/core`                  | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                       |
+| `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                        |
+| `example`               | `src/packages/example`               | Existing deep-module search-term example and its real unit test; optional starter template                                                                                        |
+| `config`                | `tooling/config`                     | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                           |
+| `database`              | `database`                           | Existing migration history and seeds; exercised by live checks, no standalone unit suite                                                                                          |
+| `infrastructure`        | `docker`                             | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                             |
+| `test-runner`           | `scripts`                            | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                                 |
+| `e2e`                   | `tests`                              | Seven original Gherkin cases and database/API regressions, with opt-in setup                                                                                                      |
+| `workspace`             | `.`                                  | Repository formatting and architecture checks                                                                                                                                     |
 
-`core`, `nest-support`, `example` and `config` are private Bun workspace packages.
+`core`, `nest-support`, `integration-contracts`, `example` and `config` are private Bun workspace packages.
 Their package manifests export specific root entry points, with no wildcard
 access to internals. Callers use imports such as `@starter/core/domain` and
 `@starter/nest-support/context`. The database pool provider and environment
@@ -44,12 +45,14 @@ graph TD
   e2e --> test-runner
   wallet --> nest-support
   wallet --> core
+  wallet --> integration-contracts
   wallet --> test-runner
   wallet --> database
   test-runner --> database
   test-runner --> infrastructure
   legacy-app --> nest-support
   legacy-app --> core
+  legacy-app --> integration-contracts
   nest-support --> core
 ```
 
