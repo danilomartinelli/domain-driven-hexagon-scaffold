@@ -32,6 +32,10 @@ export function walletUrl(): string {
   return `http://127.0.0.1:${setting('WALLET_HTTP_PORT')}`;
 }
 
+export function walletOutput(): string {
+  return output;
+}
+
 /** Owner connection for fixtures and cleanup; available after the preload starts Wallet. */
 export function ownerDatabase(): pg.Client {
   if (!owner) throw new Error('Wallet database has not been opened.');

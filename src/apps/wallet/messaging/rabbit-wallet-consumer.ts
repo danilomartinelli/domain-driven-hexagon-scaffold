@@ -62,9 +62,10 @@ export class RabbitWalletConsumer {
     while (!signal.aborted) {
       try {
         await this.consumeSession();
-      } catch {
+      } catch (error: unknown) {
         this.logger.warn(
           'Wallet messaging unavailable; deliveries remain unacknowledged.',
+          error,
         );
       }
       if (this.shutdown.signal.aborted) break;
@@ -110,9 +111,14 @@ export class RabbitWalletConsumer {
               // Reset only after successful work, never merely after reconnecting.
               this.retryMs = initialRetryMs;
             })
-            .catch(() => {
+            .catch((error: unknown) => {
               this.logger.warn(
                 'Wallet delivery failed; closing the channel for recovery.',
+                error,
+                {
+                  messageId: optionalText(message.properties.messageId),
+                  correlationId: optionalText(message.properties.correlationId),
+                },
               );
               end();
             })

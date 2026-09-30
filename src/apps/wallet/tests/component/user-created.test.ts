@@ -11,6 +11,7 @@ import {
   ownerDatabase,
   startWallet,
   stopWallet,
+  walletOutput,
   walletUrl,
 } from './wallet-process';
 import { startConsumerWorker } from './worker-fixture';
@@ -157,7 +158,20 @@ test('an unroutable failure publication does not ACK the source and recovers thr
   });
 }, 30_000);
 
-test('a database failure between deduplication and Wallet insertion rolls back and retries with backoff', async () => {
+test('broker authentication failure logs its diagnostic while HTTP remains available', async () => {
+  await stopWallet();
+  await startWallet({ RABBITMQ_PASSWORD: 'invalid-test-password' });
+  await eventually(() => {
+    expect(walletOutput()).toContain('Wallet messaging unavailable');
+    expect(walletOutput()).toContain('ACCESS_REFUSED');
+    return Promise.resolve();
+  }, 2_000);
+  expect(
+    (await fetch(`${walletUrl()}/v1/wallets/by-user/user-offline`)).status,
+  ).toBe(404);
+}, 20_000);
+
+test('a database failure logs its diagnostic and delivery identity, rolls back and retries with backoff', async () => {
   await stopWallet();
   const gate = await brokerGate();
   gate.allow();
@@ -167,7 +181,17 @@ test('a database failure between deduplication and Wallet insertion rolls back a
     );
     await startWallet({ RABBITMQ_PORT: gate.port });
     await withBroker(async (channel) => {
-      await publish(channel, userCreated('event-retry', 'user-retry'));
+      await publish(channel, userCreated('event-retry', 'user-retry'), {
+        messageId: 'delivery-retry',
+        correlationId: 'correlation-retry',
+      });
+      await eventually(() => {
+        expect(walletOutput()).toContain('Wallet delivery failed');
+        expect(walletOutput()).toContain('test_reject_wallet');
+        expect(walletOutput()).toContain('delivery-retry');
+        expect(walletOutput()).toContain('correlation-retry');
+        return Promise.resolve();
+      }, 2_000);
       await eventually(() => {
         expect(gate.attempts()).toBeGreaterThanOrEqual(3);
         return Promise.resolve();
