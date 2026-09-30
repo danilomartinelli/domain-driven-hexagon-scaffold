@@ -42,7 +42,7 @@ the affected files, `bun run check:docs`, and verification of changed commands.
 | Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                    |
 | Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                   |
 | Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                         |
-| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                                                   |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, User use cases, exceptions and colocated package tests                                   |
 | Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up |
 | Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                      |
 | Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents              |
@@ -212,8 +212,9 @@ the conversion and decorator helpers have been removed.
 ## Architecture and deferred work
 
 `.dependency-cruiser.mjs` closes the import graph of shared DDD, exceptions,
-foundation helpers, User/Wallet domain, User write use cases and command inputs to plain core modules
+foundation helpers, User/Wallet domain, User use cases, their ports and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
+API adapters and CQRS handlers may not import a module's `database/` persistence models or repositories.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
@@ -238,6 +239,6 @@ ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` include
 independent service and contract/distribution suites belong to later tickets in
 [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
 
-The remaining objectives are independent applications, application-owned read ports and durable
+The remaining objectives are independent applications and durable
 service integration. See the
 [dependency inventory](dependencies.md) for version decisions and security overrides.

@@ -48,6 +48,8 @@ Bun tests cover User roles and address invariants, Wallet balances, commands,
 recorded events and serializable exceptions through their public interfaces.
 User creation/deletion also run against small atomic port implementations,
 covering duplicate email, missing profiles and rollback when recording facts fails.
+Find Users runs against a small read port implementation, covering default and
+explicit pages, forwarded filters and blank filters.
 
 Entity creation receives identity and creation time as explicit values. Commands
 receive operation identity and tracing metadata from transport adapters. Domain
@@ -109,12 +111,41 @@ wrapper before the test command. For manual `test:e2e:prepared` runs, use the
 execute and shut down the selected environment. Run only one test process per
 prepared target.
 
+## Find Users read path
+
+Find Users reads through an application-owned port, without reconstructing the
+User aggregate:
+
+```text
+REST GET body filters + query pagination, or GraphQL options string
+  adapter builds FindUsersQuery (limit 20 and page 0 by default)
+    Nest CQRS handler -> plain FindUsers
+      blank filters match any value; offset = page * limit
+      UserReadPort.findUsers(criteria) -> UserSummary[]
+        Slonik adapter: SQL, row validation, mapping
+    Paginated<UserSummary>, where count is the size of this page
+  adapter maps UserSummary into its existing response DTO
+```
+
+[FindUsers](../src/modules/user/application/find-users.ts) owns the plain
+query, its result and the [User read port](../src/modules/user/application/user-read.port.ts),
+and imports only the plain core. [SlonikUserReadAdapter](../src/modules/user/database/user-read.adapter.ts)
+is the only Find Users code that executes SQL: it selects the listed columns,
+parses rows with the stored-profile rules and maps them into `UserSummary`.
+REST and GraphQL map that read model; the architecture check rejects API and
+CQRS handler imports from a module's `database/` folder.
+
+Request and response behavior is unchanged. REST validates exact `country`,
+`street` and `postalCode` filters in the GET body, and `limit`/`page` in the
+query string. GraphQL `findUsers(options: String!)` still ignores its string
+and returns the first 20 profiles. Results have no guaranteed order.
+
 ## Persistence and transaction review
 
 Slonik **49.10.10**, its matching `@slonik/*` packages, Zod **4.6.5** and the
 resolved `pg` **8.23.0** replace Slonik 31 and `nestjs-slonik`. The global local
 `DatabaseModule` provides one awaited `createPool()` result and awaits `end()`
-on application shutdown. Repositories and the direct listing query inject this
+on application shutdown. Repositories and the User read adapter inject this
 same token. The default Slonik pg driver is used; no alternate database adapter
 is introduced. Slonik declares Node >=24; execution of this application is
 verified on the explicitly selected Bun 1.4.2 runtime.
@@ -171,7 +202,8 @@ metadata; their direct calls work without HTTP context. A CLI bootstrap and
 independent broker/service startup belong to later work.
 
 The seven original Gherkin cases remain unchanged. Real PostgreSQL regressions
-cover REST/GraphQL compatibility, Wallet write failure/recovery, persistence
+cover Find Users filtering, pagination, validation and REST/GraphQL response
+mapping, REST/GraphQL compatibility, Wallet write failure/recovery, persistence
 without dispatch, metadata without ambient context, rollback after dispatch
 failure on creation/deletion, and direct CLI/message delegation.
 

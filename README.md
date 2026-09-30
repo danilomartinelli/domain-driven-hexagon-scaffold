@@ -30,8 +30,7 @@ The [dependency inventory](docs/dependencies.md) records compatible versions and
 security fixes. Run `bun audit` separately to recheck the complete dependency tree.
 The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the transitional application,
 private technical packages and regressions. Remaining migration work includes
-independent services, application-owned read ports and durable
-service integration, as defined in [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md).
+independent services and durable service integration, as defined in [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md).
 
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
 
@@ -282,13 +281,15 @@ Read more:
 
 `Query` is similar to a `Command`. It belongs to a read model and signals user intent to find something and describes how to do it.
 
-`Query` is just a data retrieval operation and should not make any state changes (like writes to the database, files, third party APIs, etc.). For this reason, in read model we can bypass a domain and repository layers completely and query database directly from a query handler.
+`Query` is just a data retrieval operation and should not make any state changes (like writes to the database, files, third party APIs, etc.). For this reason, in read model we can bypass a domain and repository layers completely: a query returns a dedicated read model through an application-owned read port, and only the output adapter executes SQL.
 
 Similarly to Commands, Queries can use a `Query Bus` if needed. This way you can query anything from anywhere without importing classes directly and avoid coupling.
 
 Example files:
 
-- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - a query handler. Notice how we query the database directly, without using domain objects or repositories (more info [here](https://codeopinion.com/should-you-use-the-repository-pattern-with-cqrs-yes-and-no/)).
+- [find-users.ts](src/modules/user/application/find-users.ts) - a plain query and use case. It owns its [read port and read model](src/modules/user/application/user-read.port.ts), without using domain objects or repositories (more info [here](https://codeopinion.com/should-you-use-the-repository-pattern-with-cqrs-yes-and-no/)).
+- [user-read.adapter.ts](src/modules/user/database/user-read.adapter.ts) - the output adapter that executes SQL, validates rows and maps them into the read model.
+- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - a Nest CQRS query handler delegating to the use case. REST and GraphQL adapters map its read model, never the persistence model.
 
 ---
 
