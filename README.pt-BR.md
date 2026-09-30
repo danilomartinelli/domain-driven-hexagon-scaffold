@@ -330,7 +330,7 @@ Arquivos de exemplo:
 
 - [repository.port.ts](src/packages/core/lib/ddd/repository.port.ts) - porta genérica para repositórios
 - [user.repository.port.ts](src/modules/user/database/user.repository.port.ts) - uma porta para o repositório de usuários
-- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - repare como o query handler depende de uma porta em vez de uma implementação concreta de repositório, e como uma implementação é injetada
+- [user-write.port.ts](src/modules/user/application/user-write.port.ts) - portas da aplicação para persistência de usuários e registro de fatos em um escopo atômico; os casos de uso de User dependem dessas interfaces
 - [logger.port.ts](src/packages/core/lib/ports/logger.port.ts) - outro exemplo de porta, desta vez para o logger da aplicação
 
 Leia mais:

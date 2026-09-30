@@ -16,7 +16,7 @@ tests and migrations.
 | `@nestjs/platform-express`          | 12.1.1   | Nest HTTP adapter using Express 5                                                        |
 | `@nestjs/microservices`             | 12.1.1   | Existing message-controller decorators; no transport/bootstrap added                     |
 | `@nestjs/cqrs`                      | 12.1.0   | Command/query buses and handlers                                                         |
-| `@nestjs/event-emitter`             | 12.0.1   | Awaited domain publication and wallet listener                                           |
+| `@nestjs/event-emitter`             | 12.0.1   | Awaited in-process domain publication                                                    |
 | `@nestjs/swagger`                   | 12.0.2   | OpenAPI DTO metadata and `/docs`                                                         |
 | `@nestjs/graphql`, `@nestjs/apollo` | 14.0.3   | Code-first schema, resolvers and Apollo driver                                           |
 | `@apollo/server`                    | 5.5.1    | Server loaded by the Nest Apollo driver                                                  |

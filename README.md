@@ -330,7 +330,7 @@ Example files:
 
 - [repository.port.ts](src/packages/core/lib/ddd/repository.port.ts) - generic port for repositories
 - [user.repository.port.ts](src/modules/user/database/user.repository.port.ts) - a port for user repository
-- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - notice how query handler depends on a port instead of concrete repository implementation, and an implementation is injected
+- [user-write.port.ts](src/modules/user/application/user-write.port.ts) - application-owned ports for user persistence and fact recording within one atomic scope; the User use cases depend on these interfaces
 - [logger.port.ts](src/packages/core/lib/ports/logger.port.ts) - another example of a port for application logger
 
 Read more:

@@ -24,7 +24,7 @@ export class CreateUserHttpController {
 
   @ApiOperation({ summary: 'Create a user' })
   @ApiResponse({
-    status: HttpStatus.OK,
+    status: HttpStatus.CREATED,
     type: IdResponse,
   })
   @ApiResponse({
