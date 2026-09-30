@@ -19,7 +19,10 @@ function isDependencyFile(path: string): boolean {
 }
 
 async function git(...args: string[]): Promise<string> {
-  const result = await runCommand(['git', ...args], { cwd: process.cwd() });
+  const result = await runCommand(['git', ...args], {
+    cwd: process.cwd(),
+    maxOutput: Infinity,
+  });
   if (result.code !== 0)
     throw new Error(result.stderr || 'Git change detection failed.');
   return result.stdout;

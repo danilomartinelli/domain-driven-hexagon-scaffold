@@ -56,10 +56,12 @@ and decorator-fixture types. Each mutation must fail, and restored source must
 pass. Installed external tools are shared; workspace package links and Nx cache
 paths point into the temporary copy. The checkout and its cache remain untouched.
 
-Subprocesses have a deadline and bounded output. Timeout kills the owned process
-group; output overflow fails explicitly rather than treating truncated output as
-a successful result. Test fixtures remove their temporary directories in
-`finally`. The guardrail suite also tests the audit CLI with real Git and Bun
+Subprocesses have a deadline and a default output limit of 64,000 characters per
+stream. Git file inventories retain their complete output so repository or branch
+growth cannot truncate the files being checked. Timeout kills the owned process
+group; other commands fail explicitly on output overflow rather than treating
+truncated output as a successful result. Test fixtures remove their temporary
+directories in `finally`. The guardrail suite also tests the audit CLI with real Git and Bun
 against a local HTTP registry fixture, with no external registry or Docker.
 The existing real-Docker runner suite remains `test:tooling`.
 
@@ -174,8 +176,10 @@ Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
 name. Both commands use the same ESM architecture configuration.
 
 Run every applicable check above, including the live suite, before declaring code
-ready. `bun run test`, `test:unit`, `test:watch`, `test:cov` and `test:debug` include
-`src/tests` and colocated tests under `src/packages`. Bare `bun test` retains its
+ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` include
+`src/tests` and colocated tests under `src/packages`. `test:debug` runs only
+`src/tests`; use `bun run nx run core:test-debug` or
+`bun run nx run example:test-debug` for package suites. Bare `bun test` retains its
 `src/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline;
 independent service and contract/distribution suites belong to later tickets in
 [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).

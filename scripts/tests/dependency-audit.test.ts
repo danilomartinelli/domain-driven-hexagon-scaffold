@@ -62,6 +62,69 @@ test('non-dependency changes skip the registry in both branch and staged modes',
   });
 });
 
+test('large Git file inventories do not block or skip dependency audits', async () => {
+  let requests = 0;
+  const registry = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch() {
+      requests++;
+      return Response.json({});
+    },
+  });
+  try {
+    await withRepository(async (root) => {
+      await mkdir(join(root, 'src'));
+      await Promise.all(
+        Array.from({ length: 300 }, (_, index) =>
+          writeFile(
+            join(
+              root,
+              'src',
+              `${String(index).padStart(4, '0')}-${'source'.repeat(36)}.ts`,
+            ),
+            'export {};',
+          ),
+        ),
+      );
+      const untracked = await audit(root);
+      expect(untracked.code, untracked.stderr).toBe(0);
+      expect(untracked.stdout).toContain('[audit:skipped]');
+      await git(root, 'add', 'src');
+      for (const args of [[], ['--staged']]) {
+        const result = await audit(root, args);
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stdout).toContain('[audit:skipped]');
+      }
+      await git(
+        root,
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '--quiet',
+        '-m',
+        'large branch',
+      );
+      const committed = await audit(root);
+      expect(committed.code, committed.stderr).toBe(0);
+      expect(committed.stdout).toContain('[audit:skipped]');
+      expect(requests).toBe(0);
+
+      const manifest = Bun.file(join(root, 'package.json'));
+      await Bun.write(manifest, (await manifest.text()) + '\n');
+      await git(root, 'add', 'package.json');
+      for (const args of [[], ['--staged']]) {
+        const result = await audit(root, args, registry.url.toString());
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stdout).toContain('[audit:clean]');
+      }
+      expect(requests).toBe(2);
+    });
+  } finally {
+    await registry.stop(true);
+  }
+}, 30_000);
+
 test('changed lockfiles and workspace manifests trigger a fresh real Bun audit across staged, committed and untracked changes', async () => {
   const requests: unknown[] = [];
   const registry = Bun.serve({

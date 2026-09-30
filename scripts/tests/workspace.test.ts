@@ -1,7 +1,73 @@
 import { expect, test } from 'bun:test';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { createWorkspace } from './workspace-fixture';
+import { runCommand } from '../lib/command';
+import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
+
+test('large Git file inventories preserve all workspace source files', async () => {
+  const source = await mkdtemp(join(tmpdir(), 'ddh-large-workspace-'));
+  const names = Array.from(
+    { length: 300 },
+    (_, index) => `${String(index).padStart(4, '0')}-${'source'.repeat(36)}.ts`,
+  );
+  try {
+    for (const directory of [
+      'scripts/tests',
+      'scripts/lib',
+      'node_modules',
+      'src',
+      '.agents',
+    ]) {
+      await mkdir(join(source, directory), { recursive: true });
+    }
+    for (const path of [
+      'scripts/tests/workspace-fixture.ts',
+      'scripts/lib/command.ts',
+    ]) {
+      await copyFile(join(import.meta.dir, '../..', path), join(source, path));
+    }
+    for (const directory of ['src', '.agents']) {
+      await Promise.all(
+        names.map((name) => writeFile(join(source, directory, name), name)),
+      );
+    }
+    const initialized = await runCommand(['git', 'init', '--quiet'], {
+      cwd: source,
+      env: isolatedEnvironment(),
+    });
+    expect(initialized.code, initialized.stderr).toBe(0);
+    // Load the real helper from a disposable repository so its sourceRoot is isolated.
+    const result = await runCommand(
+      [
+        process.execPath,
+        '-e',
+        `
+        import { strict as assert } from 'node:assert';
+        import { readdir } from 'node:fs/promises';
+        import { join } from 'node:path';
+        import { createWorkspace } from './scripts/tests/workspace-fixture.ts';
+        const workspace = await createWorkspace();
+        try {
+          const expected = await readdir('src');
+          assert.deepEqual((await readdir(join(workspace.root, 'src'))).sort(), expected.sort());
+          for (const name of expected) {
+            assert.equal(await Bun.file(join(workspace.root, 'src', name)).text(), name);
+          }
+          assert.equal((await readdir(workspace.root)).includes('.agents'), false);
+        } finally {
+          await workspace.cleanup();
+        }
+      `,
+      ],
+      { cwd: source, env: isolatedEnvironment(), timeout: 10_000 },
+    );
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+  } finally {
+    await rm(source, { recursive: true, force: true });
+  }
+}, 30_000);
 
 const graphSchema = z.object({
   graph: z.object({

@@ -25,7 +25,7 @@ export async function createWorkspace(): Promise<Workspace> {
   try {
     const files = await runCommand(
       ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
-      { cwd: sourceRoot },
+      { cwd: sourceRoot, maxOutput: Infinity },
     );
     if (files.code !== 0) throw new Error(files.stderr);
     const roots = new Set([

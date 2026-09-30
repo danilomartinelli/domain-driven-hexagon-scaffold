@@ -7,11 +7,18 @@ export interface CommandResult {
   timedOut: boolean;
 }
 
-/** Run a bounded process group, including shell wrappers and their descendants. */
+/** Run a process group with a deadline and a configurable output limit. */
 export async function runCommand(
   args: string[],
-  options: { cwd: string; timeout?: number; env?: NodeJS.ProcessEnv },
+  options: {
+    cwd: string;
+    timeout?: number;
+    env?: NodeJS.ProcessEnv;
+    /** Characters per stream; Infinity retains complete Git file inventories. */
+    maxOutput?: number;
+  },
 ): Promise<CommandResult> {
+  const maxOutput = options.maxOutput ?? 64_000;
   const child = spawn(args[0], args.slice(1), {
     cwd: options.cwd,
     env: options.env ?? process.env,
@@ -39,11 +46,11 @@ export async function runCommand(
     terminate();
   }, options.timeout ?? 30_000);
   const capture = (current: string, data: string): string => {
-    if (current.length + data.length > 64_000) {
+    if (current.length + data.length > maxOutput) {
       termination.outputOverflow = true;
       terminate();
     }
-    return (current + data).slice(-64_000);
+    return (current + data).slice(-maxOutput);
   };
   child.stdout.setEncoding('utf8').on('data', (data: string) => {
     stdout = capture(stdout, data);
@@ -62,8 +69,7 @@ export async function runCommand(
       });
     });
     if (termination.outputOverflow)
-      stderr +=
-        '\nCommand output exceeded 64,000 characters; result is incomplete.';
+      stderr += `\nCommand output exceeded ${maxOutput.toLocaleString('en-US')} characters; result is incomplete.`;
     return {
       code: termination.timedOut
         ? 124

@@ -19,7 +19,7 @@ The three improvements approved after issue #17 are implemented locally:
 ## Validation
 
 Bun 1.4.2 on macOS arm64 was used. Frozen installation remained valid without
-new dependencies. The new guardrail suite has nine passing cases:
+new dependencies. The guardrail suite has eleven passing cases:
 
 - Command timeout kills its descendant; excessive output cannot become a
   truncated successful result.
@@ -33,6 +33,18 @@ new dependencies. The new guardrail suite has nine passing cases:
   public audit command distinguishes them as statuses 1 and 2.
 - An unavailable Git base, mixed staged dependency edits and a staged lockfile
   deletion with an untracked replacement cannot pass as completed audits.
+- Git inventories above 64,000 characters preserve every copied source file and
+  still filter excluded directories. Large untracked, staged and committed file
+  lists skip audits only when no dependency files changed; changed manifests
+  still query the registry.
+
+PR #37 review reproduced a shared output-limit failure in workspace creation and
+audit change detection using temporary repositories with long file inventories.
+The same scenarios passed below the 64,000-character threshold. Git commands now
+opt into complete output while other subprocesses keep the existing limit and
+all commands retain their deadlines. The two regressions pass with large lists.
+The developer guide also distinguishes the application-only `test:debug` command
+from the explicit package inspector targets.
 
 The audit tests use real Git repositories, native `bun audit --json` and a local
 registry implementing the advisory endpoint, including Bun's compressed request.
