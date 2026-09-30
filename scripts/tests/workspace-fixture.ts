@@ -1,5 +1,5 @@
 import { cp, mkdir, mkdtemp, readdir, rm, symlink } from 'node:fs/promises';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { runCommand, type CommandResult } from '../lib/command';
@@ -48,23 +48,33 @@ export async function createWorkspace(): Promise<Workspace> {
     const modules = join(root, 'node_modules');
     await mkdir(modules);
     for (const entry of await readdir(join(sourceRoot, 'node_modules'))) {
-      if (entry === '@starter') continue;
-      await symlink(
-        join(sourceRoot, 'node_modules', entry),
-        join(modules, entry),
-      );
+      const source = join(sourceRoot, 'node_modules', entry);
+      const destination = join(modules, entry);
+      if (entry === '@starter') {
+        // Keep Bun's relative workspace links pointing at the copied source.
+        await cp(source, destination, {
+          recursive: true,
+          verbatimSymlinks: true,
+        });
+      } else {
+        await symlink(source, destination);
+      }
     }
-    await mkdir(join(modules, '@starter'));
-    for (const name of ['core', 'nest-support', 'example']) {
-      await symlink(
-        join(root, 'src/packages', name),
-        join(modules, '@starter', name),
-      );
+    const packages = join(sourceRoot, 'src/packages');
+    if (existsSync(packages)) {
+      for (const name of await readdir(packages)) {
+        const packageModules = join(packages, name, 'node_modules');
+        if (!existsSync(packageModules)) continue;
+        await cp(
+          packageModules,
+          join(root, 'src/packages', name, 'node_modules'),
+          {
+            recursive: true,
+            verbatimSymlinks: true,
+          },
+        );
+      }
     }
-    await symlink(
-      join(root, 'tooling/config'),
-      join(modules, '@starter/config'),
-    );
     return {
       root,
       run: (args): Promise<CommandResult> =>

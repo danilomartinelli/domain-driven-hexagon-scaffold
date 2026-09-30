@@ -1,10 +1,122 @@
 import { expect, test } from 'bun:test';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
+
+test.each(['new package', 'package-only dependency'])(
+  'copied workspaces typecheck with a %s',
+  async (scenario) => {
+    const source = await createWorkspace();
+    try {
+      const name = scenario === 'new package' ? 'copied-example' : 'example';
+      const packageRoot = join(source.root, 'src/packages', name);
+      await mkdir(packageRoot, { recursive: true });
+      await writeFile(
+        join(packageRoot, 'package.json'),
+        JSON.stringify({
+          name: `@starter/${name}`,
+          exports: { '.': './index.ts' },
+          ...(scenario === 'package-only dependency'
+            ? { dependencies: { '@fixture/package-only': '1.0.0' } }
+            : {}),
+        }),
+      );
+      await writeFile(
+        join(packageRoot, 'index.ts'),
+        'export const value = 42;\n',
+      );
+      const packageLink = join(source.root, 'node_modules/@starter', name);
+      await rm(packageLink, { force: true });
+      await symlink(`../../src/packages/${name}`, packageLink);
+      await writeFile(
+        join(source.root, 'src/modules/workspace-fixture.ts'),
+        `export { value } from '@starter/${name}';\n`,
+      );
+      if (scenario === 'package-only dependency') {
+        // Model Bun's isolated layout: this dependency has no root package link.
+        const dependency = join(
+          source.root,
+          'node_modules/.fixture-store/package-only',
+        );
+        await mkdir(dependency, { recursive: true });
+        await writeFile(
+          join(dependency, 'package.json'),
+          JSON.stringify({
+            name: '@fixture/package-only',
+            types: './index.d.ts',
+          }),
+        );
+        await writeFile(
+          join(dependency, 'index.d.ts'),
+          'export const value: number;\n',
+        );
+        const scope = join(packageRoot, 'node_modules/@fixture');
+        await mkdir(scope, { recursive: true });
+        await symlink(relative(scope, dependency), join(scope, 'package-only'));
+        await writeFile(
+          join(packageRoot, 'index.ts'),
+          "export { value } from '@fixture/package-only';\n",
+        );
+      }
+      const initialized = await source.run(['git', 'init', '--quiet']);
+      expect(initialized.code, initialized.stderr).toBe(0);
+      const typecheck = [
+        process.execPath,
+        'run',
+        'nx',
+        'run',
+        'legacy-app:typecheck',
+        '--output-style=static',
+      ];
+      const baseline = await source.run(typecheck);
+      expect(baseline.code, baseline.stdout + baseline.stderr).toBe(0);
+      const originalEntryPoint = await Bun.file(
+        join(packageRoot, 'index.ts'),
+      ).text();
+      const copied = await source.run([
+        process.execPath,
+        '-e',
+        `
+        import { strict as assert } from 'node:assert';
+        import { appendFile } from 'node:fs/promises';
+        import { join } from 'node:path';
+        import { createWorkspace } from './scripts/tests/workspace-fixture.ts';
+        const workspace = await createWorkspace();
+        try {
+          const result = await workspace.run(${JSON.stringify(typecheck)});
+          assert.equal(result.code, 0, result.stdout + result.stderr);
+          await appendFile(
+            join(workspace.root, 'src/packages', ${JSON.stringify(name)}, 'index.ts'),
+            '\\nexport const copyOnlyInvalid: string = 42;\\n',
+          );
+          const invalid = await workspace.run(${JSON.stringify(typecheck)});
+          assert.notEqual(invalid.code, 0, invalid.stdout + invalid.stderr);
+          assert.match(invalid.stdout + invalid.stderr, /TS2322/);
+        } finally {
+          await workspace.cleanup();
+        }
+        `,
+      ]);
+      expect(copied.code, copied.stdout + copied.stderr).toBe(0);
+      expect(await Bun.file(join(packageRoot, 'index.ts')).text()).toBe(
+        originalEntryPoint,
+      );
+    } finally {
+      await source.cleanup();
+    }
+  },
+  60_000,
+);
 
 test('large Git file inventories preserve all workspace source files', async () => {
   const source = await mkdtemp(join(tmpdir(), 'ddh-large-workspace-'));
