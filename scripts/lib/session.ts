@@ -5,7 +5,12 @@ import { constants } from 'node:os';
 interface Session {
   execute(
     args: string[],
-    options?: { env?: NodeJS.ProcessEnv; timeout?: number; capture?: boolean },
+    options?: {
+      env?: NodeJS.ProcessEnv;
+      /** null disables the deadline for long-lived development commands. */
+      timeout?: number | null;
+      capture?: boolean;
+    },
   ): Promise<{ code: number; stdout: string }>;
   log(message: string): void;
   readonly interrupted: number;
@@ -59,7 +64,7 @@ export function commandSession(
     args: string[],
     options: {
       env?: NodeJS.ProcessEnv;
-      timeout?: number;
+      timeout?: number | null;
       capture?: boolean;
     } = {},
   ): Promise<{ code: number; stdout: string }> {
@@ -75,13 +80,16 @@ export function commandSession(
     let stdout = '';
     let timedOut = false;
     let forceKill: ReturnType<typeof setTimeout> | undefined;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      killGroup(child, 'SIGTERM');
-      forceKill = setTimeout(() => {
-        killGroup(child, 'SIGKILL');
-      }, 5_000);
-    }, options.timeout ?? 60_000);
+    const timeout =
+      options.timeout === null
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            killGroup(child, 'SIGTERM');
+            forceKill = setTimeout(() => {
+              killGroup(child, 'SIGKILL');
+            }, 5_000);
+          }, options.timeout ?? 60_000);
     const cancelKill = (): void => {
       if (!cleaning)
         forceKill ??= setTimeout(() => {

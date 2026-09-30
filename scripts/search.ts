@@ -1,10 +1,15 @@
 import { runCommand } from './lib/command';
 
-/** UTF-8 prefix without splitting a multibyte code point. */
+/** Keep complete leading lines within the UTF-8 byte budget. */
 function clip(text: string, bytes: number): string {
-  return new TextDecoder().decode(Buffer.from(text).subarray(0, bytes), {
-    stream: true,
-  });
+  if (Buffer.byteLength(text) <= bytes) return text;
+  const prefix = new TextDecoder().decode(
+    Buffer.from(text).subarray(0, bytes),
+    {
+      stream: true,
+    },
+  );
+  return prefix.slice(0, prefix.lastIndexOf('\n') + 1);
 }
 
 async function main(): Promise<number> {
@@ -39,7 +44,12 @@ async function main(): Promise<number> {
       '--max-columns-preview',
       ...query,
     ],
-    { cwd: process.cwd(), timeout, maxOutput: maxBytes },
+    {
+      cwd: process.cwd(),
+      timeout,
+      maxOutput: maxBytes,
+      outputRetention: 'head',
+    },
   );
   // Reserve room for the status message inside the combined stream budget.
   const budget = maxBytes - 160;

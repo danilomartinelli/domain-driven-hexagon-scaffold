@@ -75,6 +75,42 @@ function namedEnvironment(kind: 'test' | 'development', name: string) {
     );
 }
 
+test('development exec survives command deadlines while test exec stays bounded', async () => {
+  const name = `deadline-${randomUUID().slice(0, 8)}`;
+  const dev = namedEnvironment('development', name);
+  const regression = namedEnvironment('test', name);
+  await withCleanup(async () => {
+    await succeeded(dev('prepare'));
+    await succeeded(regression('prepare'));
+    const execute = (kind: 'development' | 'test') =>
+      runCommand(
+        [
+          process.execPath,
+          '--no-env-file',
+          '--preload',
+          './scripts/tests/fixtures/fast-command-deadline.ts',
+          'scripts/environment-cli.ts',
+          '--nx',
+          'exec',
+          `--environment=${kind}`,
+          `--run=${name}`,
+          '--',
+          process.execPath,
+          '-e',
+          "await Bun.sleep(400); console.log('COMMAND_SURVIVED');",
+        ],
+        { cwd: root, timeout: 10_000 },
+      );
+    const development = await execute('development');
+    expect(development.code, development.stdout + development.stderr).toBe(0);
+    expect(development.stdout).toContain('\nCOMMAND_SURVIVED\n');
+    const testRun = await execute('test');
+    expect(testRun.code, testRun.stdout + testRun.stderr).toBe(124);
+    expect(testRun.timedOut).toBe(false);
+    expect(testRun.stdout).not.toContain('\nCOMMAND_SURVIVED\n');
+  }, [() => succeeded(dev('down')), () => succeeded(regression('down'))]);
+}, 180_000);
+
 const seedProbe = `
   const {Client} = await import('pg');
   const client = new Client({host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_NAME});

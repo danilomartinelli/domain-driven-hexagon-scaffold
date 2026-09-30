@@ -97,6 +97,8 @@ it never derives a Compose project from a caller's database URL.
 
 Readiness has a 60-second Compose deadline within a 90-second process deadline.
 Migrations and seeds each have 60 seconds; test commands have five minutes.
+`env:exec --environment=development` has no command deadline, so watch servers
+keep running until they exit or receive a signal.
 Each ownership inspection/log command has 15 seconds; Compose shutdown has 30
 seconds. SIGINT/SIGTERM terminate the active process group, with forced
 termination after five seconds, then attempt cleanup and return 130/143.

@@ -249,7 +249,11 @@ export async function operateEnvironment(
       }
     }
     if (command.length) {
-      const result = await session.execute(command, { env, timeout: 300_000 });
+      const result = await session.execute(command, {
+        env,
+        timeout:
+          action === 'exec' && environment === 'development' ? null : 300_000,
+      });
       commandExitCode = result.code;
       code = result.code;
     } else code = 0;

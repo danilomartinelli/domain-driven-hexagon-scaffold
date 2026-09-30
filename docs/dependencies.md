@@ -145,3 +145,12 @@ The root override pins stable **1.9.0**, beyond the advisory's first fixed
 version 1.7.1. No advisory is ignored. The conditional `audit:changed` gate runs in `check:full` and for staged
 dependency changes in pre-commit; registry failures block with a distinct status.
 Use `bun audit` for an unconditional manual query.
+
+The September 30, 2026 audit also identified three advisories in the resolved
+`brace-expansion` 5.0.9 pinned by Nx:
+[nested recursion](https://github.com/advisories/GHSA-qhr7-859c-m2p7),
+[comma parsing](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p), and
+[quadratic expansion](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr).
+The root override pins **5.0.12**, which includes all three fixes. This stays
+within the same major version but overrides Nx's exact 5.0.9 dependency;
+the full gate validates the resulting resolution without advisory ignores.

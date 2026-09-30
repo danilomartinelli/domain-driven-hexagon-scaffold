@@ -23,7 +23,13 @@ test('search output is bounded in UTF-8 bytes and marks incomplete results as fa
       Buffer.byteLength(result.stdout + result.stderr),
     ).toBeLessThanOrEqual(1024);
     expect(result.stderr).toContain('search:truncated');
-    expect(result.stdout).toContain('matches.txt:');
+    const lines = result.stdout.trimEnd().split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines).toEqual(
+      lines.map(
+        (_, index) => `./matches.txt:${String(index + 1)}:needle configuração`,
+      ),
+    );
     expect(result.stdout + result.stderr).not.toContain('\uFFFD');
   }, [() => rm(directory, { recursive: true, force: true })]);
 });

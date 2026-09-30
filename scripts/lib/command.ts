@@ -16,6 +16,8 @@ export async function runCommand(
     env?: NodeJS.ProcessEnv;
     /** Characters per stream; Infinity retains complete Git file inventories. */
     maxOutput?: number;
+    /** Keep the first output for previews; diagnostics default to the tail. */
+    outputRetention?: 'head' | 'tail';
   },
 ): Promise<CommandResult> {
   const maxOutput = options.maxOutput ?? 64_000;
@@ -50,7 +52,9 @@ export async function runCommand(
       termination.outputOverflow = true;
       terminate();
     }
-    return (current + data).slice(-maxOutput);
+    return options.outputRetention === 'head'
+      ? (current + data).slice(0, maxOutput)
+      : (current + data).slice(-maxOutput);
   };
   child.stdout.setEncoding('utf8').on('data', (data: string) => {
     stdout = capture(stdout, data);

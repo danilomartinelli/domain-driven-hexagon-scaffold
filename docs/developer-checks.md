@@ -2,18 +2,21 @@
 
 ## Setup
 
-Use the Bun version pinned in `.bun-version`. Installation runs the `prepare`
+Use the Bun version pinned in `.bun-version` and install ripgrep (`rg`) on
+`PATH` (on macOS: `brew install ripgrep`). The bounded search helper and its
+pre-commit tests require ripgrep. Installation runs the `prepare`
 script to install Husky for this checkout. Confirm the installed tools before
 the first test, formatter or Nx task:
 
 ```sh
 bun --version # must match .bun-version
+rg --version
 bun install --frozen-lockfile
 bun --bun ./node_modules/.bin/nx --version
 bun --bun ./node_modules/.bin/prettier --version
 ```
 
-Setup is complete when installation and all three version commands succeed;
+Setup is complete when installation and all four version commands succeed;
 repeat it after dependency or lockfile changes.
 
 ## Gates
