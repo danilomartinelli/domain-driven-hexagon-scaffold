@@ -10,7 +10,7 @@ function runtimeRoleScript(role: { username: string; password: string }) {
   const literal = `'${role.password.replaceAll("'", "''")}'`;
   return `CREATE ROLE ${identifier} LOGIN PASSWORD ${literal};\n`.replaceAll(
     '$',
-    '$$',
+    () => '$$',
   );
 }
 

@@ -1,17 +1,112 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
 import {
   environmentLocation,
   readEnvironment,
 } from '../../database/environment';
 import { runCommand } from '../lib/command';
+import { composeConfiguration } from '../lib/compose';
 import { availablePort } from '../lib/environments';
 import { withCleanup } from './cleanup';
 
 const root = new URL('../../', import.meta.url).pathname;
 const run = `probe-${randomUUID().slice(0, 8)}`;
+
+test.each([
+  {
+    username: 'runtime',
+    password: 'a$ROLE_SCRIPT_PROBE',
+    sql: 'CREATE ROLE "runtime" LOGIN PASSWORD \'a$$ROLE_SCRIPT_PROBE\';\n',
+  },
+  {
+    username: 'run"$ROLE_SCRIPT_PROBE',
+    password: "a'${ROLE_SCRIPT_PROBE}$$$",
+    sql: 'CREATE ROLE "run""$$ROLE_SCRIPT_PROBE" LOGIN PASSWORD \'a\'\'$${ROLE_SCRIPT_PROBE}$$$$$$\';\n',
+  },
+  {
+    username: 'run${ROLE_SCRIPT_MISSING}',
+    password: '$ROLE_SCRIPT_MISSING',
+    sql: 'CREATE ROLE "run$${ROLE_SCRIPT_MISSING}" LOGIN PASSWORD \'$$ROLE_SCRIPT_MISSING\';\n',
+  },
+])(
+  'Compose preserves dollar signs in runtime role SQL %#',
+  async ({ username, password, sql }) => {
+    const directory = await mkdtemp(join(tmpdir(), 'starter-compose-'));
+    await withCleanup(async () => {
+      const configuration = composeConfiguration({
+        environment: 'test',
+        run: 'compose-probe',
+        project: 'compose-probe',
+        owner: randomUUID(),
+        status: 'starting',
+        databases: [
+          {
+            app: 'wallet',
+            prefix: 'WALLET_DB',
+            host: '127.0.0.1',
+            port: 5432,
+            username: 'owner',
+            password: 'fixture-owner',
+            database: 'wallet',
+            runtime: { username, password },
+          },
+        ],
+        broker: {
+          port: 5672,
+          managementPort: 15672,
+          username: 'fixture',
+          password: 'fixture-broker',
+          vhost: 'compose-probe',
+        },
+        gateway: {
+          name: 'compose-probe-gateway',
+          host: 'host.docker.internal',
+          proxyPort: 8000,
+          adminPort: 8001,
+          userPort: 3000,
+          walletPort: 3001,
+        },
+      });
+      const file = join(directory, 'compose.json');
+      await writeFile(file, JSON.stringify(configuration), { mode: 0o600 });
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        ROLE_SCRIPT_PROBE: 'interpolated',
+      };
+      delete env.ROLE_SCRIPT_MISSING;
+      const result = await runCommand(
+        [
+          'docker',
+          'compose',
+          '--env-file',
+          '/dev/null',
+          '-p',
+          'compose-probe',
+          '-f',
+          file,
+          'config',
+          '--format',
+          'json',
+        ],
+        { cwd: directory, env },
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const resolved = z
+        .object({
+          configs: z.object({
+            'wallet-runtime-role': z.object({ content: z.string() }),
+          }),
+        })
+        .parse(JSON.parse(result.stdout));
+      // Canonical Compose output re-escapes literal dollars for reuse as input.
+      expect(resolved.configs['wallet-runtime-role'].content).toBe(sql);
+    }, [() => rm(directory, { recursive: true, force: true })]);
+  },
+);
 
 function environment(
   command: string,
