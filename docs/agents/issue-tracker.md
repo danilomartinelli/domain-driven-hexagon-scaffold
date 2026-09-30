@@ -17,16 +17,25 @@ ranges before relying on it. For source navigation, use `rg --files` or
 `rg -n '<symbol>' <directory>`, followed by the relevant line range. Read a whole
 file when the question requires its complete contract.
 
-For bounded source searches, use the repository helper:
+For bounded source searches and selected file ranges, use the repository helper:
 
 ```sh
 bun run search -- --files scripts
 bun run search -- 'assertTestEnvironment' database tests
 bun run search --max-bytes=8000 -- 'invocation' node_modules/nx/dist/src/tasks-runner
+bun scripts/search.ts --read --max-bytes=6000 -- src/modules/user/application/create-user.ts 20 54 src/modules/user/application/delete-user.ts 18 33
 ```
 
-The helper previews long matching lines at 240 columns and caps combined output
-at 16,000 UTF-8 bytes (including status text), with a 10-second deadline.
+The helper previews long matching lines at 240 columns. Read mode accepts
+`<file> <first-line> <last-line>` triples, emits `file:line:content` in argument
+order, and reads inclusive positive ranges. Quote paths containing spaces.
+Ranges extending past EOF stop at EOF. A missing file or malformed range fails
+with exit 2; a selected line too large for the budget produces exit 125.
+
+One invocation shares a 16,000 UTF-8 byte cap across stdout, stderr and status
+text, plus a 10-second deadline, including all ranges in a read batch.
+Use `bun scripts/search.ts` when the budget must exclude the package runner's
+own command echo and error messages.
 `--max-bytes=<n>` and `--timeout-ms=<n>` before `--` change those bounds.
 Exit 125 marks incomplete output; exit 124 marks timeout. Narrow the path/pattern
 and retry. Complete results retain ripgrep's 0/1/2 exit codes. Use the Git inventory
@@ -38,8 +47,10 @@ locate its headings with `rg -n '^##'`, and read the referenced acceptance crite
 and relevant decision ranges. Expand to other sections only when they affect the
 selected work.
 
-Batch independent bounded reads; keep large issue bodies, source files and
-registry manifests in separate outputs.
+Batch selected ranges in one `--read` invocation so they share one output
+budget. Split larger batches into smaller ranges when exit 125 reports an
+incomplete read; separate invocations each have their own budget. Keep large
+issue bodies and registry manifests in separate outputs.
 For registry metadata, select only fields needed for the decision (version,
 engines and peer dependencies); save a full response under `.context/` when the
 CLI cannot select fields.

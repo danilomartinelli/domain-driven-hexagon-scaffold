@@ -32,19 +32,19 @@ is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files, `bun run check:docs`, and verification of changed commands.
 
-| Check             | Command                   | Scope                                                                                                                            |
-| ----------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                            |
-| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                                  |
-| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                        |
-| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                          |
-| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                         |
-| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias               |
-| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                                         |
-| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs seven Gherkin cases and ten integration regressions, cleans up |
-| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup            |
-| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents    |
-| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                        |
+| Check             | Command                   | Scope                                                                                                                                      |
+| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                                      |
+| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                                            |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                  |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                    |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                   |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                         |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                                                   |
+| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                      |
+| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents              |
+| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                                  |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -56,6 +56,20 @@ Run `bun --bun lint-staged` before capturing a staged review snapshot. If a hook
 changes the committed tree, review the resulting difference before publishing.
 `bun run prepare` reinstalls hooks when needed. The hook needs Bun on the Git
 process's `PATH`; it invokes the installed local tools without downloading them.
+
+## Focused feedback
+
+After each implementation slice, run focused tests, typechecking and lint on
+the changed code; resolve failures before broadening validation. Pass the actual
+changed TypeScript or JavaScript paths explicitly; for example:
+
+```sh
+bun --bun eslint scripts/search.ts scripts/lib/read-ranges.ts scripts/tests/search.test.ts --max-warnings 0
+```
+
+Use the full gate above for final validation. Record exact test totals in the
+dated execution records under `docs/validation/`; operational guides describe
+coverage so adding a regression does not require updating copied totals.
 
 ## Documentation references
 

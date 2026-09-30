@@ -95,7 +95,7 @@ close the application.
 ```sh
 bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts # six cases
 bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/delete-user/delete-user.test.ts # one case
-bun run test:e2e # seven Gherkin cases plus ten real-database regressions
+bun run test:e2e # seven original Gherkin cases and database/API regressions
 bun run test:watch # core only
 bun run test:cov # core only
 bun run test:debug # inspector pauses before execution

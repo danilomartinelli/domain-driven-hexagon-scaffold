@@ -17,8 +17,9 @@ lockfile or dependency manifests.
 
 Use /tdd where possible, at pre-agreed seams.
 
-Run typechecking and focused tests during implementation. Before declaring code
-ready, run the complete gate documented in `AGENTS.md` and
+During implementation, follow `docs/developer-checks.md#focused-feedback` for
+the focused lint, test and type loop. Before declaring code ready, run the
+complete gate documented in `AGENTS.md` and
 `docs/developer-checks.md`.
 
 Stage only the intended changes, including new files. Run `bun --bun lint-staged`
