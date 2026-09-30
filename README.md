@@ -25,7 +25,9 @@ The [dependency inventory](docs/dependencies.md) records compatible versions and
 security fixes; [combined upgrade evidence](docs/validation/issue-8-upgrade.md)
 records the clean installation and real application/database checks. Run
 `bun audit` separately to recheck the complete dependency tree.
-Remaining migration work includes Nx, application-owned transactions and durable
+The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the transitional application,
+private technical packages and regressions. Remaining migration work includes
+independent services, application-owned transactions and durable
 service integration, as defined in [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md).
 
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
@@ -323,10 +325,10 @@ In Application Core **dependencies point inwards**. Outer layers can depend on i
 
 Example files:
 
-- [repository.port.ts](src/libs/ddd/repository.port.ts) - generic port for repositories
+- [repository.port.ts](src/packages/core/lib/ddd/repository.port.ts) - generic port for repositories
 - [user.repository.port.ts](src/modules/user/database/user.repository.port.ts) - a port for user repository
 - [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - notice how query handler depends on a port instead of concrete repository implementation, and an implementation is injected
-- [logger.port.ts](src/libs/ports/logger.port.ts) - another example of a port for application logger
+- [logger.port.ts](src/packages/core/lib/ports/logger.port.ts) - another example of a port for application logger
 
 Read more:
 
@@ -404,7 +406,7 @@ In summary, if you combine multiple related entities and value objects inside on
 
 Example files:
 
-- [aggregate-root.base.ts](src/libs/ddd/aggregate-root.base.ts) - abstract base class.
+- [aggregate-root.base.ts](src/packages/core/lib/ddd/aggregate-root.base.ts) - abstract base class.
 - [user.entity.ts](src/modules/user/domain/user.entity.ts) - aggregates are just entities that have to follow a set of specific rules described above.
 
 Read more:
@@ -442,8 +444,8 @@ Examples:
 
 - [user-created.domain-event.ts](src/modules/user/domain/events/user-created.domain-event.ts) - simple object that holds data related to published event.
 - [create-wallet-when-user-is-created.domain-event-handler.ts](src/modules/wallet/application/event-handlers/create-wallet-when-user-is-created.domain-event-handler.ts) - this is an example of Domain Event Handler that executes some actions when a domain event is raised (in this case, when user is created it also creates a wallet for that user).
-- [publish-domain-events.ts](src/libs/application/publish-domain-events.ts) - the adapter dispatches recorded facts with publication identity and correlation metadata; aggregates do not publish.
-- [sql-repository.base.ts](src/libs/db/sql-repository.base.ts) - repositories temporarily invoke this adapter after persistence, awaiting handlers inside the existing shared transaction. Explicit application transactions and a durable outbox are later migration work.
+- [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - the adapter dispatches recorded facts with publication identity and correlation metadata; aggregates do not publish.
+- [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts) - repositories temporarily invoke this adapter after persistence, awaiting handlers inside the existing shared transaction. Explicit application transactions and a durable outbox are later migration work.
 - [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - in a service we execute a global transaction to make sure all the changes done by Domain Events across the application are stored atomically (all or nothing).
 
 To have a better understanding on domain events and implementation read this:
@@ -712,7 +714,7 @@ Domain classes should always guard themselves against becoming invalid.
 
 For preventing null/undefined values, empty objects and arrays, incorrect input length etc. a library of [guards](<https://en.wikipedia.org/wiki/Guard_(computer_science)>) can be created.
 
-Example file: [guard.ts](src/libs/guard.ts)
+Example file: [guard.ts](src/packages/core/lib/guard.ts)
 
 **Keep in mind** that not all validations/guarding can be done in a single domain object, it should validate only rules shared by all contexts. There are cases when validation may be different depending on a context, or one field may involve another field, or even a different entity. Handle those cases accordingly.
 
@@ -834,7 +836,7 @@ Example files:
 - [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - notice how `Err(new UserAlreadyExistsError())` is returned instead of throwing it.
 - [create-user.http.controller.ts](src/modules/user/commands/create-user/create-user.http.controller.ts) - in a user http controller we match an error and decide what to do with it. If an error is `UserAlreadyExistsError` we throw a `Conflict Exception` which a user will receive as `409 - Conflict`. If an error is unknown we just throw it and our framework will return it to the user as `500 - Internal Server Error`.
 - [create-user.cli.controller.ts](src/modules/user/commands/create-user/create-user.cli.controller.ts) - in a CLI controller we don't care about returning a correct status code so we just `.unwrap()` a result, which will just throw in case of an error.
-- [exceptions](src/libs/exceptions) folder contains some generic app exceptions (not domain specific)
+- [exceptions](src/packages/core/lib/exceptions) folder contains some generic app exceptions (not domain specific)
 
 Read more:
 
@@ -1001,11 +1003,11 @@ The data flow here looks something like this: repository receives a domain `Enti
 
 Application's core usually is not allowed to depend on repositories directly, instead it depends on abstractions (ports/interfaces). This makes data retrieval technology-agnostic.
 
-**Note**: in theory, most publications out there recommend abstracting a database with interfaces. In practice, it's not always useful. Most of the projects out there never change database technology (or rewrite most of the code anyway if they do). Another downside is that if you abstract a database you are more likely not using its full potential. This project abstracts repositories with a generic port to make a practical example [repository.port.ts](src/libs/ddd/repository.port.ts), but this doesn't mean you should do that too. Think carefully before using abstractions. More info on this topic: [Should you Abstract the Database?](https://enterprisecraftsmanship.com/posts/should-you-abstract-database/)
+**Note**: in theory, most publications out there recommend abstracting a database with interfaces. In practice, it's not always useful. Most of the projects out there never change database technology (or rewrite most of the code anyway if they do). Another downside is that if you abstract a database you are more likely not using its full potential. This project abstracts repositories with a generic port to make a practical example [repository.port.ts](src/packages/core/lib/ddd/repository.port.ts), but this doesn't mean you should do that too. Think carefully before using abstractions. More info on this topic: [Should you Abstract the Database?](https://enterprisecraftsmanship.com/posts/should-you-abstract-database/)
 
 Example files:
 
-This project contains abstract repository class that allows to make basic CRUD operations: [sql-repository.base.ts](src/libs/db/sql-repository.base.ts). This base class is then extended by a specific repository, and all specific operations that an entity may need are implemented in that specific repo: [user.repository.ts](src/modules/user/database/user.repository.ts).
+This project contains abstract repository class that allows to make basic CRUD operations: [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts). This base class is then extended by a specific repository, and all specific operations that an entity may need are implemented in that specific repo: [user.repository.ts](src/modules/user/database/user.repository.ts).
 
 Read more:
 
@@ -1262,7 +1264,7 @@ Classes that can be extended should be designed for extensibility and usually sh
 
 **Note**: in TypeScript, unlike other languages, there is no default way to make class `final`. But there is a way around it using a custom decorator.
 
-Example file: [final.decorator.ts](src/libs/decorators/final.decorator.ts)
+Example file: [final.decorator.ts](src/packages/core/lib/decorators/final.decorator.ts)
 
 Read more:
 

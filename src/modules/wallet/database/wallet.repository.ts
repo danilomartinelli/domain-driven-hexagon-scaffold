@@ -1,8 +1,8 @@
 import { Inject } from '@nestjs/common';
-import { DATABASE_POOL } from '@libs/db/database.module';
+import { DATABASE_POOL } from '@src/infrastructure/database.module';
 import type { DatabasePool } from 'slonik';
 import { type WalletModel, walletSchema } from './wallet.schema';
-import { SqlRepositoryBase } from '@src/libs/db/sql-repository.base';
+import { SqlRepositoryBase } from '@starter/nest-support/persistence';
 import type { WalletRepositoryPort } from './wallet.repository.port';
 import { WalletEntity } from '../domain/wallet.entity';
 import { WalletMapper } from '../wallet.mapper';

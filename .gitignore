@@ -3,7 +3,7 @@
 
 # compiled output
 /dist
-/node_modules
+node_modules/
 /package-lock.json
 
 # Logs
@@ -40,3 +40,6 @@ lerna-debug.log*
 
 # Per-run validation artifacts
 /.context/
+
+# Local Nx graph and task caches
+/.nx/

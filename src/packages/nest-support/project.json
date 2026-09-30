@@ -1,0 +1,31 @@
+{
+  "name": "nest-support",
+  "projectType": "library",
+  "tags": ["scope:shared", "type:adapter"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint src/packages/nest-support --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project src/packages/nest-support/tsconfig.json",
+        "cwd": "."
+      }
+    },
+    "lint-fix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --bun eslint src/packages/nest-support --max-warnings 0 --fix",
+        "cwd": "."
+      }
+    }
+  }
+}

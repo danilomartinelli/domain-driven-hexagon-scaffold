@@ -1,0 +1,48 @@
+{
+  "name": "e2e",
+  "projectType": "application",
+  "tags": ["scope:tooling"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint tests --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project tests/tsconfig.json",
+        "cwd": "."
+      }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts -- bun run test:e2e:prepared",
+        "cwd": "."
+      }
+    },
+    "e2e-prepared": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --preload ./tests/setup/preload.ts ./tests/user ./tests/integration",
+        "cwd": "."
+      }
+    },
+    "lint-fix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --bun eslint tests --max-warnings 0 --fix",
+        "cwd": "."
+      }
+    }
+  },
+  "implicitDependencies": ["test-runner"]
+}

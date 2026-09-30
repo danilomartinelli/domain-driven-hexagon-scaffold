@@ -1,4 +1,4 @@
-import type { Mapper } from '@libs/ddd';
+import type { Mapper } from '@starter/core/domain';
 import { Injectable } from '@nestjs/common';
 import { WalletEntity } from './domain/wallet.entity';
 import { type WalletModel, walletSchema } from './database/wallet.schema';

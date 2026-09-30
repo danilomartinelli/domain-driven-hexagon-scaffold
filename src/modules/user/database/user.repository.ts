@@ -1,11 +1,11 @@
 import { Inject } from '@nestjs/common';
-import { DATABASE_POOL } from '@libs/db/database.module';
+import { DATABASE_POOL } from '@src/infrastructure/database.module';
 import { type DatabasePool, sql } from 'slonik';
 import type { UserRepositoryPort } from './user.repository.port';
 import { type UserModel, userSchema } from './user.schema';
 import { UserMapper } from '../user.mapper';
 import { UserEntity } from '../domain/user.entity';
-import { SqlRepositoryBase } from '@src/libs/db/sql-repository.base';
+import { SqlRepositoryBase } from '@starter/nest-support/persistence';
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 

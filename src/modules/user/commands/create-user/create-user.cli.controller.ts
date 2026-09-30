@@ -1,11 +1,11 @@
-import { createCommandContext } from '@libs/application/command-context';
+import { createCommandContext } from '@starter/nest-support/commands';
 import type { Result } from 'oxide.ts';
 import type { UserAlreadyExistsError } from '../../domain/user.errors';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Command } from 'commander';
 import { CommandBus } from '@nestjs/cqrs';
 import { CreateUserCommand } from './create-user.command';
-import type { LoggerPort } from '@libs/ports/logger.port';
+import type { LoggerPort } from '@starter/core/logger';
 
 // CLI command definition only; this example has no bootstrap or context setup.
 @Injectable()

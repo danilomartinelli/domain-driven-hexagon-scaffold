@@ -29,9 +29,7 @@ const domainLayerPaths = [
 
 // A closed set prevents indirect escapes through shared barrels as well.
 const corePaths = [
-  '^src/libs/(ddd|exceptions|types|decorators)/',
-  '^src/libs/guard\\.ts$',
-  '^src/libs/utils/(index|convert-props-to-object\\.util)\\.ts$',
+  '^src/packages/core/(?!tests/)',
   '^src/modules/[^/]+/domain/',
   '^src/modules/[^/]+/commands/.*\\.command\\.ts$',
 ];
@@ -43,6 +41,12 @@ const PACKAGE_INTERNALS = `^${PACKAGES_ROOT}/[^/]+/[^/]+/`;
 /** @type {import('dependency-cruiser').IConfiguration} */
 const config = {
   forbidden: [
+    {
+      name: 'shared-is-technical',
+      severity: 'error',
+      from: { path: '^src/packages/(core|nest-support)/' },
+      to: { path: '^(src/(?!packages/)|tests/|scripts/|database/)' },
+    },
     {
       name: 'entrypoint-boundary-from-app',
       severity: 'error',
@@ -82,7 +86,13 @@ const config = {
         'Domain, commands and shared primitives may only import the plain TypeScript core.',
       severity: 'error',
       from: { path: corePaths },
-      to: { pathNot: [...corePaths, '^node_modules/oxide\\.ts/'] },
+      to: {
+        pathNot: [
+          ...corePaths,
+          '^node_modules/oxide\\.ts/',
+          '^node_modules/\\.bun/oxide\\.ts@[^/]+/node_modules/oxide\\.ts/',
+        ],
+      },
     },
     /* user defined rules */
     {
@@ -261,10 +271,11 @@ const config = {
         "or there's something in the test folder that isn't a test.",
       severity: 'error',
       from: {
-        pathNot: '^(tests)',
+        pathNot:
+          '^(tests|src/tests|src/type-tests|scripts/tests|src/packages/[^/]+/tests)',
       },
       to: {
-        path: '^(tests)',
+        path: '^(tests|src/tests|src/type-tests|scripts/tests|src/packages/[^/]+/tests)',
       },
     },
     {
@@ -290,8 +301,11 @@ const config = {
         'from.pathNot re of the not-to-dev-dep rule in the dependency-cruiser configuration',
       from: {
         path: '^(src)',
-        pathNot:
+        pathNot: [
+          '/tests/',
+          '/type-tests/',
           '\\.(spec|test)\\.(js|mjs|cjs|ts|ls|coffee|litcoffee|coffee\\.md)$',
+        ],
       },
       to: {
         dependencyTypes: ['npm-dev'],
@@ -383,7 +397,7 @@ const config = {
        folder the cruise is initiated from. Useful for how (some) mono-repos
        manage dependencies & dependency definitions.
      */
-    // combinedDependencies: false,
+    combinedDependencies: true,
 
     /* if true leave symlinks untouched, otherwise use the realpath */
     // preserveSymlinks: false,

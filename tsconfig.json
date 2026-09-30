@@ -1,37 +1,21 @@
 {
   "compilerOptions": {
-    "strict": true,
-    "module": "preserve",
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "allowSyntheticDefaultImports": true,
-    "target": "ES2022",
-    "skipLibCheck": true,
     "paths": {
       "@src/*": ["./src/*"],
       "@modules/*": ["./src/modules/*"],
       "@config/*": ["./src/configs/*"],
-      "@libs/*": ["./src/libs/*"],
       "@tests/*": ["./tests/*"]
-    },
-    "moduleResolution": "bundler",
-    "noEmit": true,
-    "types": ["bun"],
-    "esModuleInterop": true,
-    "verbatimModuleSyntax": true,
-    "useDefineForClassFields": false,
-    "forceConsistentCasingInFileNames": true,
-    "noFallthroughCasesInSwitch": true,
-    "allowJs": true,
-    "checkJs": true,
-    "allowImportingTsExtensions": true
+    }
   },
   "include": [
     "src/**/*.ts",
     "tests/**/*.ts",
     "scripts/**/*.ts",
     "database/**/*.mjs",
+    "tooling/**/*.mjs",
     "eslint.config.mjs",
+    "prettier.config.mjs",
     ".dependency-cruiser.mjs"
-  ]
+  ],
+  "extends": "./tooling/config/typescript.json"
 }

@@ -1,0 +1,57 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "master",
+  "useDaemonProcess": false,
+  "neverConnectToCloud": true,
+  "parallel": 3,
+  "namedInputs": {
+    "sharedGlobals": [
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/bun.lock",
+      "{workspaceRoot}/bunfig.toml",
+      "{workspaceRoot}/.bun-version",
+      "{workspaceRoot}/tsconfig.json",
+      "{workspaceRoot}/nx.json",
+      "{workspaceRoot}/eslint.config.mjs",
+      "{workspaceRoot}/prettier.config.mjs",
+      "{workspaceRoot}/.dependency-cruiser.mjs",
+      "{workspaceRoot}/tooling/config/**/*",
+      {
+        "runtime": "bun --version"
+      }
+    ],
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "workspaceSources": [
+      "{workspaceRoot}/src/**/*",
+      "{workspaceRoot}/tests/**/*",
+      "{workspaceRoot}/scripts/**/*",
+      "{workspaceRoot}/database/**/*",
+      "{workspaceRoot}/docker/**/*",
+      "sharedGlobals"
+    ]
+  },
+  "targetDefaults": {
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "^default"],
+      "outputs": []
+    },
+    "typecheck": {
+      "cache": true,
+      "inputs": ["default", "^default"],
+      "outputs": []
+    },
+    "test": {
+      "cache": true,
+      "inputs": ["default", "^default"],
+      "outputs": []
+    }
+  },
+  "pluginsConfig": {
+    "@nx/js": {
+      "analyzeSourceFiles": true,
+      "analyzePackageJson": true,
+      "analyzeLockfile": true
+    }
+  }
+}

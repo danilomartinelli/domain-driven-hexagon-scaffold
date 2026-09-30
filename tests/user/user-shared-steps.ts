@@ -1,4 +1,4 @@
-import type { Mutable } from '@src/libs/types';
+import type { Mutable } from '@starter/core/types';
 import { CreateUserRequestDto } from '@src/modules/user/commands/create-user/create-user.request.dto';
 import type { DefineStepFunction } from 'jest-cucumber';
 import { TestContext } from '@tests/test-utils/TestContext';

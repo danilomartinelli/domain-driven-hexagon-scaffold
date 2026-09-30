@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from '@src/app.module';
-import { DATABASE_POOL } from '@libs/db/database.module';
+import { DATABASE_POOL } from '@src/infrastructure/database.module';
 import { sql } from 'slonik';
 import type { DatabasePool } from 'slonik';
 import request from 'supertest';

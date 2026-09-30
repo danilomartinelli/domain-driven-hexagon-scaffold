@@ -1,5 +1,5 @@
 import { Field, ObjectType } from '@nestjs/graphql';
-import { PaginatedGraphqlResponse } from '../../../../libs/api/graphql/paginated.graphql-response.base';
+import { PaginatedGraphqlResponse } from '@starter/nest-support/graphql';
 
 import { UserGraphqlResponseDto } from './user.graphql-response.dto';
 

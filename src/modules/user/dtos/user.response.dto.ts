@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ResponseBase } from '@libs/api/response.base';
+import { ResponseBase } from '@starter/nest-support/http';
 
 // Response mappers populate the fields; no runtime defaults are introduced.
 export class UserResponseDto extends ResponseBase {

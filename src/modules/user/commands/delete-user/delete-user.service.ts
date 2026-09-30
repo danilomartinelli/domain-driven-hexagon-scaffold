@@ -1,5 +1,5 @@
 import { DeleteUserCommand } from './delete-user.command';
-import { NotFoundException } from '@libs/exceptions';
+import { NotFoundException } from '@starter/core/errors';
 import type { UserRepositoryPort } from '@modules/user/database/user.repository.port';
 import { Inject } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';

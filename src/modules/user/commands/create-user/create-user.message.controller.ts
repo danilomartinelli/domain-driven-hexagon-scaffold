@@ -1,4 +1,4 @@
-import { createCommandContext } from '@libs/application/command-context';
+import { createCommandContext } from '@starter/nest-support/commands';
 import type { Result } from 'oxide.ts';
 import type { UserAlreadyExistsError } from '../../domain/user.errors';
 import { Controller } from '@nestjs/common';
@@ -6,7 +6,7 @@ import { MessagePattern } from '@nestjs/microservices';
 import { CommandBus } from '@nestjs/cqrs';
 import { CreateUserCommand } from './create-user.command';
 import { CreateUserRequestDto } from './create-user.request.dto';
-import { IdResponse } from '@libs/api/id.response.dto';
+import { IdResponse } from '@starter/nest-support/http';
 
 @Controller()
 export class CreateUserMessageController {

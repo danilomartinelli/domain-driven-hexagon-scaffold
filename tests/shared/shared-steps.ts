@@ -1,5 +1,5 @@
 import { expect } from 'bun:test';
-import { ApiErrorResponse } from '@src/libs/api/api-error.response';
+import { ApiErrorResponse } from '@starter/nest-support/http';
 import { TestContext } from '@tests/test-utils/TestContext';
 import type { CreateUserTestContext } from '@tests/user/user-shared-steps';
 import type { DefineStepFunction } from 'jest-cucumber';

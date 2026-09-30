@@ -1,7 +1,9 @@
 # Deep modules
 
-New packages live here; the existing `src/modules` structure remains until the
-planned Nx migration. `example/` is a starter template to copy or delete.
+Private Bun workspace packages and nested Nx projects live here. `core/` owns
+framework-free technical primitives; `nest-support/` owns framework helpers.
+User/Wallet business code remains in the transitional `src/modules` application.
+`example/` is a starter template to copy or delete. See [the Nx guide](../../docs/nx-workspace.md).
 
 ```text
 src/packages/
@@ -14,7 +16,8 @@ src/packages/
 ```
 
 **Entry points:** Import only through a package's entry points (its root files).
-Every subfolder is private, regardless of its name or depth. Discourage barrel
+Declare explicit `package.json` exports for those entry points and import them
+using the workspace package name. Every subfolder is private, regardless of its name or depth. Discourage barrel
 files: expose several small entry points instead of re-exporting a whole subtree
 through one index. An interface should hide useful behavior, keeping callers
 independent of the implementation.
@@ -30,5 +33,5 @@ not import tests or fixtures. Run `bun run test:unit` for package and core tests
 without infrastructure.
 
 **No cycles:** Dependencies must be acyclic, including type-only imports and
-code outside this folder. Run `bun run lint:boundaries`; it checks `src`, `tests`
-and `scripts`, and is included in `check:code`, `check:full` and pre-commit.
+code outside this folder. Run `bun run lint:boundaries`; it checks `src`, `tests`,
+`scripts` and `database`, and is included in `check:code`, `check:full` and pre-commit.

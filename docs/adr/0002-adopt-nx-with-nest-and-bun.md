@@ -182,6 +182,15 @@ old data, adding GitHub Actions, introducing GraphQL federation, completing the
 separate CLI example, exposing additional wallet business operations or deploying
 to production.
 
+## Implementation status
+
+[Issue #17](https://github.com/danilomartinelli/vibecoding-starter-js/issues/17)
+delivers the [Nx/Bun baseline](../nx-workspace.md) around the transitional
+application and its existing regressions. It keeps this decision and the
+[User/Wallet glossary](../../GLOSSARY.md) as the migration contract. Independent
+applications, durable integration, distributions and generators remain subsequent
+slices; the shared transaction is still present in this baseline.
+
 ## References
 
 - [Implementation specification: hexagonal User and Wallet services — issue #15](https://github.com/danilomartinelli/vibecoding-starter-js/issues/15)

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": [
+    "*.mjs",
+    "../../eslint.config.mjs",
+    "../../prettier.config.mjs",
+    "../../.dependency-cruiser.mjs"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -3,25 +3,27 @@
 Use **Bun 1.4.2** and install with `bun install --frozen-lockfile`. The `prepare`
 script installs Husky for this checkout. Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
-core/package tests). The hook runs without Docker. A failure blocks the commit.
+core/package tests). When dependency manifests or Bun lockfiles are staged, the
+hook also audits them against the registry. The hook runs without Docker. A
+failure blocks the commit.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files and verification of changed links/commands.
 
-| Check             | Command                   | Scope                                                                                                         |
-| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                  |
-| Full gate         | `bun run check:full`      | Fast gate, runner lifecycle tests and provisioned application E2E                                             |
-| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                     |
-| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                       |
-| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                      |
-| Architecture      | `bun run lint:boundaries` | `src/`, `tests/` and `scripts/`, including type-only imports and aliases; `deps:validate` is an alias         |
-| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                      |
-| Live behavior     | `bun run test:e2e`        | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up |
-| Runner lifecycle  | `bun run test:tooling`    | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                |
-| Dependencies      | `bun audit`               | Complete locked tree; no advisory ignores                                                                     |
+| Check             | Command                   | Scope                                                                                                              |
+| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Fast gate         | `bun run check`           | Formatting plus `check:code`                                                                                       |
+| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                    |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                          |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                            |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                           |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                           |
+| Live behavior     | `bun run test:e2e`        | Provisions its own PostgreSQL, migrates, runs seven Gherkin cases and four integration regressions, cleans up      |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: concurrent isolation, failure status, signal handling and cleanup                                     |
+| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                          |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -33,6 +35,52 @@ Run `bun --bun lint-staged` before capturing a staged review snapshot. If a hook
 changes the committed tree, review the resulting difference before publishing.
 `bun run prepare` reinstalls hooks when needed. The hook needs Bun on the Git
 process's `PATH`; it invokes the installed local tools without downloading them.
+
+## Nx orchestration
+
+Package scripts delegate to Nx targets; see [the workspace guide](nx-workspace.md)
+for all ten projects, private exports, absent suites and cache inputs. Shared
+quality settings live in `tooling/config`, with native root entry points for
+editors. The compile-time fixture is `src/type-tests/final.decorator.ts`.
+`test:unit` runs the existing application, core primitive and example suites.
+`test:debug` opens the application unit suite; package inspector targets are
+`core:test-debug` and `example:test-debug`. Live targets always execute.
+
+## Workspace and dependency guardrails
+
+`bun run check:workspace` starts directly with Bun, before any Nx command in
+`check:code`, `check` or `check:full`. It exercises the supported Nx CLI in a
+unique temporary workspace, checks real project edges and warms typecheck's
+cache before introducing invalid dependency source, shared TypeScript settings
+and decorator-fixture types. Each mutation must fail, and restored source must
+pass. Installed external tools are shared; workspace package links and Nx cache
+paths point into the temporary copy. The checkout and its cache remain untouched.
+
+Subprocesses have a deadline and a default output limit of 64,000 characters per
+stream. Git file inventories retain their complete output so repository or branch
+growth cannot truncate the files being checked. Timeout kills the owned process
+group; other commands fail explicitly on output overflow rather than treating
+truncated output as a successful result. Test fixtures remove their temporary
+directories in `finally`. The guardrail suite also tests the audit CLI with real Git and Bun
+against a local HTTP registry fixture, with no external registry or Docker.
+The existing real-Docker runner suite remains `test:tooling`.
+
+`bun run audit:changed` compares dependency files against the merge-base of
+`HEAD` and `origin/master`, including branch commits, staged/unstaged changes and
+untracked manifests. Use `--base <ref>` for another comparison. It runs during
+`check:full`. The hook uses `bun run audit:changed --staged`, considering only the
+pending commit. All `package.json`, `bun.lock` and `bun.lockb` paths are covered.
+Documentation-only changes skip the registry. Dependency changes always query
+it; there is no Nx target or cached audit result. `bun audit` remains the command
+for an unconditional manual audit.
+
+Audit status is explicit: `audit:clean` or `audit:skipped` returns 0,
+`audit:vulnerable` returns 1, and `audit:unavailable` returns 2 for registry,
+timeout, invalid-report or Git-comparison failures. An unavailable comparison
+base never becomes a skipped/successful audit. Staged dependency files must
+match their working copies; mixed staged/unstaged dependency edits fail before
+querying, so a different lockfile cannot validate the pending commit. Registry
+queries are bounded to 60 seconds and include development dependencies.
 
 ## Isolated database checks
 
@@ -115,8 +163,8 @@ and `oxide.ts`. This includes type-only imports and paths through barrel exports
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/README.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
-fixtures, and dependency cycles are errors throughout the checked graph. The
-existing `src/modules` layout stays in place until the planned Nx migration.
+fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; private technical
+packages now live under `src/packages`.
 Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was
@@ -128,12 +176,15 @@ Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
 name. Both commands use the same ESM architecture configuration.
 
 Run every applicable check above, including the live suite, before declaring code
-ready. `bun run test`, `test:unit`, `test:watch`, `test:cov` and `test:debug` include
-`tests/unit` and colocated tests under `src/packages`. Bare `bun test` retains its
-`tests/unit` default. The E2E preload is opt-in via the live commands. Nx orchestration and independent
-service suites belong to later tickets in [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
+ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` include
+`src/tests` and colocated tests under `src/packages`. `test:debug` runs only
+`src/tests`; use `bun run nx run core:test-debug` or
+`bun run nx run example:test-debug` for package suites. Bare `bun test` retains its
+`src/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline;
+independent service and contract/distribution suites belong to later tickets in
+[the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
 
-The remaining objectives are Nx, application-owned ports/transactions and durable
+The remaining objectives are independent applications, application-owned ports/transactions and durable
 service integration. See the
 [dependency inventory](dependencies.md) for version decisions and security overrides,
 and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for

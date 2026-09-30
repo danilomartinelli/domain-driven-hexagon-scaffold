@@ -1,5 +1,9 @@
 {
   "cucumberautocomplete.steps": ["tests/**/*.ts"],
   "cucumberautocomplete.strictGherkinCompletion": true,
-  "cSpell.words": ["instanceof", "Slonik"]
+  "cSpell.words": ["instanceof", "Slonik"],
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "eslint.workingDirectories": ["."],
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "prettier.configPath": "prettier.config.mjs"
 }

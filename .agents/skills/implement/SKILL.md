@@ -6,6 +6,10 @@ disable-model-invocation: true
 
 Implement the work described by the user in the spec or tickets.
 
+Before exploring issues, source or registry metadata, follow the bounded-reading
+workflow in `docs/agents/issue-tracker.md`. For a parent issue, start with the
+acceptance criteria referenced by the selected child.
+
 Use /tdd where possible, at pre-agreed seams.
 
 Run typechecking and focused tests during implementation. Before declaring code

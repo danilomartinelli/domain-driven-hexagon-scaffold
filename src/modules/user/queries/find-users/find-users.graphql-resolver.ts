@@ -1,9 +1,9 @@
 import { QueryBus } from '@nestjs/cqrs';
 import { Args, Query, Resolver } from '@nestjs/graphql';
 import { Result } from 'oxide.ts';
-import { ResponseBase } from '../../../../libs/api/response.base';
-import { Paginated } from '../../../../libs/ddd';
-import type { PaginatedParams } from '../../../../libs/ddd/query.base';
+import { ResponseBase } from '@starter/nest-support/http';
+import { Paginated } from '@starter/core/domain';
+import type { PaginatedParams } from '@starter/core/domain';
 import type { UserModel } from '../../database/user.schema';
 import { UserPaginatedGraphqlResponseDto } from '../../dtos/graphql/user.paginated-gql-response.dto';
 import { FindUsersQuery } from './find-users.query-handler';

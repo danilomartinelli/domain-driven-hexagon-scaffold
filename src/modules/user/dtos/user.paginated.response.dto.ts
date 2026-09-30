@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { PaginatedResponseDto } from '@src/libs/api/paginated.response.base';
+import { PaginatedResponseDto } from '@starter/nest-support/http';
 import { UserResponseDto } from './user.response.dto';
 
 // The base constructor initializes the decorated inherited fields.

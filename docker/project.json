@@ -1,0 +1,23 @@
+{
+  "name": "infrastructure",
+  "projectType": "library",
+  "tags": ["scope:tooling"],
+  "targets": {
+    "up": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres",
+        "cwd": "."
+      }
+    },
+    "up-test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "docker compose --project-name ddh --file docker/docker-compose.yml up -d --wait postgres-test",
+        "cwd": "."
+      }
+    }
+  }
+}

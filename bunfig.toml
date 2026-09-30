@@ -3,4 +3,4 @@
 env = false
 
 [test]
-root = "./tests/unit"
+root = "./src/tests"

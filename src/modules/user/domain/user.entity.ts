@@ -1,4 +1,4 @@
-import { AggregateRoot, type AggregateID } from '@libs/ddd';
+import { AggregateRoot, type AggregateID } from '@starter/core/domain';
 import { UserCreatedDomainEvent } from './events/user-created.domain-event';
 import { Address } from './value-objects/address.value-object';
 import {
@@ -10,7 +10,7 @@ import {
 import { UserDeletedDomainEvent } from './events/user-deleted.domain-event';
 import { UserRoleChangedDomainEvent } from './events/user-role-changed.domain-event';
 import { UserAddressUpdatedDomainEvent } from './events/user-address-updated.domain-event';
-import type { CreateEntityProps } from '@libs/ddd';
+import type { CreateEntityProps } from '@starter/core/domain';
 
 export class UserEntity extends AggregateRoot<UserProps> {
   // Assigned by the Entity constructor through setId.

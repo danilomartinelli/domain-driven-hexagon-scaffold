@@ -1,4 +1,4 @@
-import type { Mapper } from '@libs/ddd';
+import type { Mapper } from '@starter/core/domain';
 import { type UserModel, userSchema } from './database/user.schema';
 import { Address } from './domain/value-objects/address.value-object';
 import { UserEntity } from './domain/user.entity';

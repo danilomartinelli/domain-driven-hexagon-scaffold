@@ -1,5 +1,5 @@
-import { RequestContextService } from '@libs/application/context/AppRequestContext';
-import { createCommandContext } from '@libs/application/command-context';
+import { RequestContextService } from '@starter/nest-support/context';
+import { createCommandContext } from '@starter/nest-support/commands';
 import {
   Body,
   ConflictException as ConflictHttpException,
@@ -14,9 +14,9 @@ import { match, Result } from 'oxide.ts';
 import { CreateUserCommand } from './create-user.command';
 import { CreateUserRequestDto } from './create-user.request.dto';
 import { UserAlreadyExistsError } from '@modules/user/domain/user.errors';
-import { IdResponse } from '@libs/api/id.response.dto';
-import type { AggregateID } from '@libs/ddd';
-import { ApiErrorResponse } from '@src/libs/api/api-error.response';
+import { IdResponse } from '@starter/nest-support/http';
+import type { AggregateID } from '@starter/core/domain';
+import { ApiErrorResponse } from '@starter/nest-support/http';
 
 @Controller(routesV1.version)
 export class CreateUserHttpController {

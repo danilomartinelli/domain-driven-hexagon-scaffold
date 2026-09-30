@@ -1,5 +1,5 @@
-import { createCommandContext } from '@libs/application/command-context';
-import { RequestContextService } from '@libs/application/context/AppRequestContext';
+import { createCommandContext } from '@starter/nest-support/commands';
+import { RequestContextService } from '@starter/nest-support/context';
 import {
   Controller,
   Delete,
@@ -11,9 +11,9 @@ import { routesV1 } from '@config/app.routes';
 import { CommandBus } from '@nestjs/cqrs';
 import { DeleteUserCommand } from './delete-user.command';
 import { match, Result } from 'oxide.ts';
-import { NotFoundException } from '@libs/exceptions';
+import { NotFoundException } from '@starter/core/errors';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { ApiErrorResponse } from '@src/libs/api/api-error.response';
+import { ApiErrorResponse } from '@starter/nest-support/http';
 
 @Controller(routesV1.version)
 export class DeleteUserHttpController {
