@@ -207,3 +207,34 @@ test('TypeScript queries navigate imported files outside tsconfig roots and reje
     await workspace.cleanup();
   }
 }, 30_000);
+
+test('every client forwards the Context7 key from the environment and stores none', async () => {
+  const root = new URL('../../', import.meta.url).pathname;
+  const [claude, codex, opencode] = await Promise.all(
+    ['.mcp.json', '.codex/config.toml', 'opencode.json'].map((file) =>
+      readFile(join(root, file), 'utf8'),
+    ),
+  );
+  const servers = {
+    claude: (JSON.parse(claude) as { mcpServers: Record<string, unknown> })
+      .mcpServers.context7,
+    codex: (Bun.TOML.parse(codex) as { mcp_servers: Record<string, unknown> })
+      .mcp_servers.context7,
+    opencode: (JSON.parse(opencode) as { mcp: Record<string, unknown> }).mcp
+      .context7,
+  };
+
+  // An unset variable sends an empty header, which Context7 treats as anonymous.
+  expect(servers.claude).toMatchObject({
+    headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' },
+  });
+  expect(servers.codex).toMatchObject({
+    env_http_headers: { CONTEXT7_API_KEY: 'CONTEXT7_API_KEY' },
+  });
+  expect(servers.opencode).toMatchObject({
+    headers: { CONTEXT7_API_KEY: '{env:CONTEXT7_API_KEY}' },
+  });
+  for (const text of [claude, codex, opencode]) {
+    expect(text).not.toMatch(/ctx7sk-/);
+  }
+});
