@@ -113,10 +113,7 @@ Dispatch includes generated publication identity plus explicit operation time,
 correlation and causation as a separate listener argument. It remains before
 commit, so arbitrary listener side effects cannot be rolled back. This temporary
 bridge must be replaced by an outbox and independent Wallet consumption at the
-asynchronous cutover. See the [write-path explanation](runtime.md#persistence-and-transaction-review)
-and [current execution evidence](validation/issue-19-user-writes.md).
-The [core](validation/issue-16-core.md) and
-[Nest upgrade](validation/issue-6-adapters.md) records describe earlier slices.
+asynchronous cutover. See the [write-path explanation](runtime.md#persistence-and-transaction-review).
 
 Remaining work follows [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md):
 application-owned read ports and independent services with durable messaging.

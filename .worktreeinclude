@@ -1,0 +1,5 @@
+/.env*
+/.secrets/**
+/secrets/**
+/certs/local/**
+/.conductor/settings.local.toml

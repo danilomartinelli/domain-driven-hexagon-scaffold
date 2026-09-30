@@ -11,7 +11,7 @@ bun run env:exec --environment=development --run=default -- bun run migration:up
 bun run env:exec --environment=development --run=default -- bun run start:dev
 ```
 
-The server listens on port 3000: REST at `/v1/users`, OpenAPI at `/docs` and
+The server listens on port 3000 by default, overridable with `PORT`: REST at `/v1/users`, OpenAPI at `/docs` and
 `/docs-json`, GraphQL at `/graphql`. `start:dev` uses `bun --watch` to restart
 the complete application on source changes. `bun run start` runs once;
 `start:debug` adds Bun's inspector; `start:prod` sets `NODE_ENV=production` and
@@ -26,7 +26,8 @@ Outside a prepared environment, the shared dotenv 18 loader selects `.env.test` 
 otherwise `.env`; shell-provided values take precedence. Its new startup banner
 is disabled so database status output remains readable. Bun's automatic env
 loading stays disabled in `bunfig.toml`. See [database settings](database.md#isolation-and-configuration)
-before using custom ports or database names. Application HTTP port remains 3000.
+before using custom ports or database names. Set `PORT` to override the default
+application HTTP port of 3000.
 
 `bun run typecheck` runs TypeScript **6.0.3** with `noEmit`. Native execution is
 not type checking. Type-only imports are explicit so Bun does not try to load
@@ -172,11 +173,7 @@ independent broker/service startup belong to later work.
 The seven original Gherkin cases remain unchanged. Real PostgreSQL regressions
 cover REST/GraphQL compatibility, Wallet write failure/recovery, persistence
 without dispatch, metadata without ambient context, rollback after dispatch
-failure on creation/deletion, and direct CLI/message delegation. See the
-[User write execution record](validation/issue-19-user-writes.md).
-The [core-decoupling](validation/issue-16-core.md),
-[original runtime](validation/issue-5-runtime.md) and
-[Nest upgrade](validation/issue-6-adapters.md) records are historical evidence.
+failure on creation/deletion, and direct CLI/message delegation.
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the
 runtime alias hook and Nest's build toolchain have been removed. `@types/jest`
@@ -188,8 +185,7 @@ has been removed.
 The Nest/adapters upgrade is documented in [adapter compatibility](adapters.md).
 Strict lint/type settings and architecture tooling are documented in
 [developer checks](developer-checks.md). The [dependency inventory](dependencies.md)
-and [combined validation record](validation/issue-8-upgrade.md) cover the completed
-remediation, clean frozen install and real application checks. The remaining Nx/service separation and application-core decoupling follow
+records compatible versions and security fixes. The remaining Nx/service separation and application-core decoupling follow
 [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md). Domain primitives are now
 context-independent; command handlers and repository orchestration are still
 Nest/Slonik adapters. CLI bootstrap remains outside the migration scope.

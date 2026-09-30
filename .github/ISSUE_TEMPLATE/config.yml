@@ -1,0 +1,6 @@
+# Blank issues stay enabled: agent-written specs and tickets don't fit the forms.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/danilomartinelli/vibecoding-starter-js/security/policy
+    about: Report vulnerabilities privately, never in a public issue

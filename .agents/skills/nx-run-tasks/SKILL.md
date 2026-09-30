@@ -1,0 +1,25 @@
+---
+name: nx-run-tasks
+description: Select and execute existing Bun/Nx tasks with this repository's test, cache and isolated-environment contracts.
+---
+
+Finish [developer setup](../../../docs/developer-checks.md#setup), then inspect the
+requested project's resolved targets with `bun run nx show project <name> --json`.
+Use package scripts for quality gates and `bun run nx run <project>:<target>` for
+focused feedback. Use `bun run nx`; direct `npx nx` bypasses repository settings.
+
+- Unit feedback: `bun run test:unit`, or an existing project's `test` target.
+  Bare `bun test` only discovers `src/tests`.
+- Code feedback: focused lint/typecheck targets and `bun run lint:boundaries`.
+- Final code validation: `bun run check:full`, with Docker running.
+- Documentation-only work: format changed files, run `bun run check:docs` and
+  verify changed commands.
+- Live behavior: `bun run test:e2e` owns provision/migrate/seed/test/cleanup;
+  prepared targets require the selected environment through `env:exec`.
+
+Affected runs are focused feedback, not a replacement for the full gate. Use
+`origin/master` as the comparison base and include unstaged/new files when that
+is the task's scope. Use `--skip-nx-cache` when fresh execution evidence is needed.
+Live targets are intentionally uncached. Preserve a failed command's status and
+report cleanup failures separately. Nx Cloud is disabled; do not enable it or
+start CI repair/publishing merely because an upstream skill mentions it.

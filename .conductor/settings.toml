@@ -1,0 +1,16 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = "bash -o pipefail -c 'bash scripts/conductor/setup.sh 2>&1 | tee .conductor/setup.log'"
+archive = "bash scripts/conductor/archive.sh"
+run_mode = "concurrent"
+
+[scripts.run.dev]
+command = "bash scripts/conductor/run.sh"
+default = true
+icon = "play"
+available_in = ["local"]
+
+[scripts.run.unit]
+command = "bun run test:watch"
+icon = "test-tube"

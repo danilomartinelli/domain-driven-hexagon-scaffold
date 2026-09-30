@@ -25,7 +25,9 @@ Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
 core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
-failure blocks the commit.
+failure blocks the commit. Continuous integration runs `bun run check` on pull
+requests and pushes to `master`; the `protect-master` ruleset requires it to
+pass before merging.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
@@ -67,9 +69,9 @@ changed TypeScript or JavaScript paths explicitly; for example:
 bun --bun eslint scripts/search.ts scripts/lib/read-ranges.ts scripts/tests/search.test.ts --max-warnings 0
 ```
 
-Use the full gate above for final validation. Record exact test totals in the
-dated execution records under `docs/validation/`; operational guides describe
-coverage so adding a regression does not require updating copied totals.
+Use the full gate above for final validation. Operational guides describe test
+coverage without copying execution totals, so adding a regression does not
+require updating those guides unless the coverage changes.
 
 ## Documentation references
 
@@ -213,7 +215,7 @@ the conversion and decorator helpers have been removed.
 foundation helpers, User/Wallet domain, User write use cases and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
 The domain request-context exception is removed. New packages follow
-[the deep-module convention](../src/packages/README.md): root files are public
+[the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
 fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; private technical
 packages now live under `src/packages`.
@@ -238,7 +240,4 @@ independent service and contract/distribution suites belong to later tickets in
 
 The remaining objectives are independent applications, application-owned read ports and durable
 service integration. See the
-[dependency inventory](dependencies.md) for version decisions and security overrides,
-and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for
-final validation. The [issue #7 record](validation/issue-7-checks.md) retains the
-historical diagnostics and audit finding before remediation.
+[dependency inventory](dependencies.md) for version decisions and security overrides.

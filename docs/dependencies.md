@@ -16,7 +16,7 @@ tests and migrations.
 | `@nestjs/platform-express`          | 12.1.1   | Nest HTTP adapter using Express 5                                                        |
 | `@nestjs/microservices`             | 12.1.1   | Existing message-controller decorators; no transport/bootstrap added                     |
 | `@nestjs/cqrs`                      | 12.1.0   | Command/query buses and handlers                                                         |
-| `@nestjs/event-emitter`             | 12.0.1   | Awaited domain publication and wallet listener                                           |
+| `@nestjs/event-emitter`             | 12.0.1   | Awaited in-process domain publication                                                    |
 | `@nestjs/swagger`                   | 12.0.2   | OpenAPI DTO metadata and `/docs`                                                         |
 | `@nestjs/graphql`, `@nestjs/apollo` | 14.0.3   | Code-first schema, resolvers and Apollo driver                                           |
 | `@apollo/server`                    | 5.5.1    | Server loaded by the Nest Apollo driver                                                  |
@@ -122,12 +122,12 @@ bun pm ls --all
 bun why uuid
 bun why glob
 bun why reflect-metadata
+bun why axios
 bun outdated
 bun audit
 ```
 
-The [combined execution record](validation/issue-8-upgrade.md) records actual
-results. Next objectives remain **Nx monorepo; correction of hexagonal coupling;
+Next objectives remain **Nx monorepo; correction of hexagonal coupling;
 completion of CLI and messaging examples**, as required by
 [ADR 0001](adr/0001-modernize-with-bun.md).
 
@@ -154,3 +154,18 @@ The September 30, 2026 audit also identified three advisories in the resolved
 The root override pins **5.0.12**, which includes all three fixes. This stays
 within the same major version but overrides Nx's exact 5.0.9 dependency;
 the full gate validates the resulting resolution without advisory ignores.
+
+The same day's audit reported seven advisories in Axios 1.18.1, which Nx 23.2.1
+pins exactly. The root override selects **Axios 1.20.0**, the first fixed 1.x
+release for all seven: prototype-pollution gadgets in
+[fetch options](https://github.com/advisories/GHSA-vh66-26gq-q6x8),
+[the default HTTP method](https://github.com/advisories/GHSA-9fr6-4gfg-395g), and
+[form serialization](https://github.com/advisories/GHSA-x97p-jq2g-jp4f);
+denial of service in
+[data URI parsing](https://github.com/advisories/GHSA-c29m-xwm3-cm6r),
+[proxy bypass host normalization](https://github.com/advisories/GHSA-mghh-pgcx-3jjj), and
+[HTTP/2 session errors](https://github.com/advisories/GHSA-542g-h47m-68v8); and
+[HTTP/2 DNS/proxy control bypass](https://github.com/advisories/GHSA-3pq3-5fj3-cg6v).
+This overrides Nx's exact dependency while retaining Axios's major version.
+Keep the override until Nx resolves a fixed version without it and the audit
+and full gate pass with that resolution.

@@ -1,5 +1,10 @@
 # Domain-Driven Hexagon
 
+< English | [Português (Brasil)](README.pt-BR.md) >
+
+[![CI](https://github.com/danilomartinelli/vibecoding-starter-js/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/danilomartinelli/vibecoding-starter-js/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Check out my other repositories**:
 
 - [Backend best practices](https://github.com/Sairyss/backend-best-practices) - Best practices, tools and guidelines for backend development.
@@ -16,15 +21,13 @@ Install dependencies with **Bun 1.4.2** using `bun install --frozen-lockfile`.
 Run the individual [developer checks](docs/developer-checks.md) for strict types,
 lint, formatting and architecture.
 Database commands also execute directly under Bun. See the [database guide](docs/database.md)
-for local PostgreSQL, SQL migrations, seeds, and the recorded validation results.
+for local PostgreSQL, SQL migrations and seeds.
 Run the application with `bun run start:dev` and the existing Gherkin cases with
 `bun run test:e2e`. `bun test` runs the infrastructure-free core suite. See the
 [runtime guide](docs/runtime.md) for setup, type checking, and the seven original
 Gherkin cases plus the real-database rollback regressions.
 The [dependency inventory](docs/dependencies.md) records compatible versions and
-security fixes; [combined upgrade evidence](docs/validation/issue-8-upgrade.md)
-records the clean installation and real application/database checks. Run
-`bun audit` separately to recheck the complete dependency tree.
+security fixes. Run `bun audit` separately to recheck the complete dependency tree.
 The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the transitional application,
 private technical packages and regressions. Remaining migration work includes
 independent services, application-owned read ports and durable
@@ -327,7 +330,7 @@ Example files:
 
 - [repository.port.ts](src/packages/core/lib/ddd/repository.port.ts) - generic port for repositories
 - [user.repository.port.ts](src/modules/user/database/user.repository.port.ts) - a port for user repository
-- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - notice how query handler depends on a port instead of concrete repository implementation, and an implementation is injected
+- [user-write.port.ts](src/modules/user/application/user-write.port.ts) - application-owned ports for user persistence and fact recording within one atomic scope; the User use cases depend on these interfaces
 - [logger.port.ts](src/packages/core/lib/ports/logger.port.ts) - another example of a port for application logger
 
 Read more:
