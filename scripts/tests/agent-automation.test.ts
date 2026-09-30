@@ -159,3 +159,51 @@ test('TypeScript queries resolve workspace exports and references across applica
     await workspace.cleanup();
   }
 }, 30_000);
+
+test('TypeScript queries navigate imported files outside tsconfig roots and reject files outside the program', async () => {
+  const workspace = await createWorkspace();
+  try {
+    await writeFile(
+      join(workspace.root, 'database/navigation-imported.ts'),
+      'export const navigationValue = 42;\n',
+    );
+    await writeFile(
+      join(workspace.root, 'scripts/navigation-consumer.ts'),
+      "import { navigationValue } from '../database/navigation-imported';\nexport const copied = navigationValue;\n",
+    );
+    await writeFile(
+      join(workspace.root, 'database/navigation-unimported.ts'),
+      'export const unimportedValue = 42;\n',
+    );
+    const query = (...args: string[]) =>
+      workspace.run([process.execPath, 'scripts/typescript-query.ts', ...args]);
+    const definition = await query(
+      'definition',
+      'scripts/navigation-consumer.ts',
+      '2',
+      '24',
+    );
+    expect(definition.code, definition.stderr).toBe(0);
+    expect(definition.stdout).toContain('database/navigation-imported.ts');
+    const references = await query(
+      'references',
+      'database/navigation-imported.ts',
+      '1',
+      '15',
+    );
+    expect(references.code, references.stderr).toBe(0);
+    expect(references.stdout).toContain('scripts/navigation-consumer.ts');
+    const unimported = await query(
+      'references',
+      'database/navigation-unimported.ts',
+      '1',
+      '15',
+    );
+    expect(unimported.code).toBe(1);
+    expect(unimported.stderr).toContain(
+      'File is outside the root TypeScript project',
+    );
+  } finally {
+    await workspace.cleanup();
+  }
+}, 30_000);

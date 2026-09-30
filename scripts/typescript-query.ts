@@ -59,8 +59,6 @@ function main(): void {
         getNewLine: () => '\n',
       }),
     );
-  if (!parsed.fileNames.includes(path))
-    throw new Error('File is outside the root TypeScript project');
   const host: ts.LanguageServiceHost = {
     ...ts.sys,
     useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
@@ -79,8 +77,7 @@ function main(): void {
   const service = ts.createLanguageService(host);
   try {
     const source = service.getProgram()?.getSourceFile(path);
-    if (!source)
-      throw new Error('TypeScript could not load the requested file');
+    if (!source) throw new Error('File is outside the root TypeScript project');
     const lines = source.getLineStarts();
     const start = lines.at(line - 1);
     const end = lines[line] ?? source.text.length;

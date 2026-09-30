@@ -11,7 +11,7 @@ bun run env:exec --environment=development --run=default -- bun run migration:up
 bun run env:exec --environment=development --run=default -- bun run start:dev
 ```
 
-The server listens on port 3000: REST at `/v1/users`, OpenAPI at `/docs` and
+The server listens on port 3000 by default, overridable with `PORT`: REST at `/v1/users`, OpenAPI at `/docs` and
 `/docs-json`, GraphQL at `/graphql`. `start:dev` uses `bun --watch` to restart
 the complete application on source changes. `bun run start` runs once;
 `start:debug` adds Bun's inspector; `start:prod` sets `NODE_ENV=production` and
@@ -26,7 +26,8 @@ Outside a prepared environment, the shared dotenv 18 loader selects `.env.test` 
 otherwise `.env`; shell-provided values take precedence. Its new startup banner
 is disabled so database status output remains readable. Bun's automatic env
 loading stays disabled in `bunfig.toml`. See [database settings](database.md#isolation-and-configuration)
-before using custom ports or database names. Application HTTP port remains 3000.
+before using custom ports or database names. Set `PORT` to override the default
+application HTTP port of 3000.
 
 `bun run typecheck` runs TypeScript **6.0.3** with `noEmit`. Native execution is
 not type checking. Type-only imports are explicit so Bun does not try to load

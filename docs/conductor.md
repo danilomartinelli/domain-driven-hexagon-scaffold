@@ -82,3 +82,51 @@ manual `default` run. Restarting **dev** reuses its manifest and data, then
 applies pending migrations. Archive does nothing in cloud workspaces. Logs and
 credential-bearing manifests remain under `.context/test-runs/`; never commit
 them. See the [database workflow](database.md) for ownership checks and recovery.
+
+### When archiving deletes the workspace directory
+
+Retained volumes outlive the workspace, but its ignored manifest does not.
+Restoring or reusing the workspace path without the original manifest generates
+a new owner ID. The next **dev** run then fails with
+`Refusing resource owned by another environment.` No repository command deletes
+these volumes or adopts them under a new owner.
+
+To keep the data, stop **dev**, run the archive script, and back up the entire
+`.context/test-runs/<project>/` directory outside the workspace before archiving.
+Keep that backup private: it contains database and broker credentials. Restore
+it to the same workspace path before preparing **dev** again. If a failed
+preparation already generated a replacement manifest, replace that run directory
+with the original backup first.
+
+To discard the data instead, stop **dev** and run the archive script while the
+original manifest is still available. Record its project and owner without
+printing credentials:
+
+```sh
+bun --no-env-file -e 'import { readEnvironment } from "./database/environment"; const { project, owner } = readEnvironment("development", "conductor"); console.log(JSON.stringify({ project, owner }, null, 2));'
+```
+
+Set `project` and `owner` to those recorded values, then list only that project's
+volumes:
+
+```sh
+docker volume ls --filter "label=com.docker.compose.project=$project"
+```
+
+For each exact volume name from that list, set `volume` and verify both labels
+before removing it. This permanently deletes that volume's data; the ordinary
+stop/archive scripts continue to preserve it.
+
+```sh
+docker volume inspect "$volume" --format '{{json .Labels}}'
+if [ "$(docker volume inspect "$volume" --format '{{index .Labels "com.docker.compose.project"}}')" = "$project" ] &&
+  [ "$(docker volume inspect "$volume" --format '{{index .Labels "dev.starter.owner"}}')" = "$owner" ]; then
+  docker volume rm "$volume"
+fi
+```
+
+If the workspace has already been deleted, prefer restoring the original backup.
+Without it, inspect the surviving volumes' project and owner labels and confirm
+which archived workspace they belong to before recording those values for manual
+removal. A newly generated manifest cannot authorize cleanup of the old volumes.
+Keep volumes for other workspaces and runs, including `default`.
