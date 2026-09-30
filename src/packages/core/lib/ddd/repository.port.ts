@@ -36,6 +36,4 @@ export interface RepositoryPort<Entity> {
   findAll(): Promise<Entity[]>;
   findAllPaginated(params: PaginatedQueryParams): Promise<Paginated<Entity>>;
   delete(entity: Entity): Promise<boolean>;
-
-  transaction<T>(handler: () => Promise<T>): Promise<T>;
 }

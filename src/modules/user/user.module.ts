@@ -13,6 +13,10 @@ import { UserMapper } from './user.mapper';
 import { CqrsModule } from '@nestjs/cqrs';
 import { USER_REPOSITORY } from './user.di-tokens';
 import { FindUsersGraphqlResolver } from './queries/find-users/find-users.graphql-resolver';
+import { CreateUser } from './application/create-user';
+import { DeleteUser } from './application/delete-user';
+import { SlonikUserWriteTransaction } from '@src/infrastructure/user-write-transaction';
+import { WalletModule } from '../wallet/wallet.module';
 
 const httpControllers = [
   CreateUserHttpController,
@@ -40,10 +44,23 @@ const repositories: Provider[] = [
 ];
 
 @Module({
-  imports: [CqrsModule],
+  imports: [CqrsModule, WalletModule],
   controllers: [...httpControllers, ...messageControllers],
   providers: [
     Logger,
+    SlonikUserWriteTransaction,
+    {
+      provide: CreateUser,
+      useFactory: (transaction: SlonikUserWriteTransaction) =>
+        new CreateUser(transaction),
+      inject: [SlonikUserWriteTransaction],
+    },
+    {
+      provide: DeleteUser,
+      useFactory: (transaction: SlonikUserWriteTransaction) =>
+        new DeleteUser(transaction),
+      inject: [SlonikUserWriteTransaction],
+    },
     ...cliControllers,
     ...repositories,
     ...graphqlResolvers,

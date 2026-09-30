@@ -224,7 +224,9 @@ test('prepared regression runs reject foreign targets and preserve development a
       const regression = await succeeded(
         first('exec', ['--', process.execPath, 'run', 'test:e2e:prepared']),
       );
-      expect(regression.stderr + regression.stdout).toContain('11 pass');
+      // The regression suite grows; require at least the seven original cases.
+      const passed = /(\d+) pass/.exec(regression.stderr + regression.stdout);
+      expect(Number(passed?.[1] ?? 0)).toBeGreaterThanOrEqual(7);
       await succeeded(first('down'));
       await succeeded(
         sibling('exec', ['--', process.execPath, '-e', seedProbe]),

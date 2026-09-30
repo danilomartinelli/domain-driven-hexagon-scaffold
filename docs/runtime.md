@@ -45,10 +45,12 @@ the `core` and `example` package tests under `src/packages`. Bare `bun test` dis
 preload, app bootstrap, dotenv loader, Nest, database or broker. These native
 Bun tests cover User roles and address invariants, Wallet balances, commands,
 recorded events and serializable exceptions through their public interfaces.
+User creation/deletion also run against small atomic port implementations,
+covering duplicate email, missing profiles and rollback when recording facts fails.
 
 Entity creation receives identity and creation time as explicit values. Commands
 receive operation identity and tracing metadata from transport adapters. Domain
-events contain facts; dispatch identity, correlation and publication time live in
+events contain facts; dispatch identity, correlation, causation and operation time live in
 the adapter's `DomainEventPublication`, passed as the listener's second argument.
 Core exceptions keep their code, cause and metadata; the exception interceptor
 adds request correlation to API errors.
@@ -93,7 +95,7 @@ close the application.
 ```sh
 bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts # six cases
 bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/delete-user/delete-user.test.ts # one case
-bun run test:e2e # seven Gherkin cases plus four real-database regressions
+bun run test:e2e # seven Gherkin cases plus ten real-database regressions
 bun run test:watch # core only
 bun run test:cov # core only
 bun run test:debug # inspector pauses before execution
@@ -122,40 +124,58 @@ means untyped results, not interpolated SQL strings. The provider's async result
 parser validates rows and returns parsed values, including coerced timestamps;
 schemas are not merely TypeScript annotations. Mappers still validate writes.
 
-The transaction remains the existing request-context flow:
+User writes now request an application-owned atomic scope:
 
 ```text
-HTTP request -> isolated AsyncLocalStorage context
-  CreateUserService -> userRepo.transaction(connection)
-    context.transactionConnection = connection
-    userRepo.insert -> connection.query
-      await publishDomainEvents adapter -> await eventEmitter.emitAsync
-        wallet handler -> walletRepo.insert -> same connection.query
+transport validates/maps input and supplies command metadata
+  Nest CQRS handler -> plain CreateUser / DeleteUser
+    UserWriteTransaction.run({ users, recordEvents })
+      users.insert/delete -> persistence only
+      recordEvents(facts, explicit metadata)
+        transitional adapter persists Wallet on UserCreated
+        adapter awaits in-process fact dispatch
     callback resolves -> Slonik commits
     callback rejects -> Slonik rolls back
-    finally clears the context connection
 ```
 
-Both repositories' `pool` accessor prefers the request's transaction connection
-over the injected pool. The local `RequestContextMiddleware` starts a distinct
-`AsyncLocalStorage.run()` store for each HTTP request, including GraphQL, using
-Express 5's named wildcard route. There is no shared fallback store outside a
-request. The asynchronous wallet listener returns the insertion promise.
-Nest event-emitter **12.0.1** suppresses listener errors by default, so the wallet
-listener explicitly sets `suppressErrors: false`. `emitAsync`, adapter
-publication, repository insertion and the transaction callback all await it.
-The repository rethrows failures (mapping
-uniqueness errors to the existing conflict type), so commit cannot precede the
-wallet write. The repositories still invoke dispatch and use ambient transaction state as
-transitional adapter orchestration. Explicit application transactions and a durable
-outbox are later migration slices; this step does not provide durable messaging.
+[CreateUser](../src/modules/user/application/create-user.ts) and
+[DeleteUser](../src/modules/user/application/delete-user.ts) own their input/result
+models and use the [User write ports](../src/modules/user/application/user-write.port.ts).
+They import only the plain core, domain and result types. Creation receives
+identity/time explicitly; both operations supply correlation/causation metadata
+when requesting fact recording. A duplicate email retains the existing conflict
+result; missing deletion retains the not-found result.
 
-The seven original Gherkin cases remain unchanged. The separate integration
-suite forces a real Wallet constraint failure and verifies that neither row
-persists, then retries successfully. It also checks zero-balance creation,
-Wallet survival after User deletion, GraphQL response shape and REST error
-correlation. See the [core-decoupling execution record](validation/issue-16-core.md).
-The [original runtime](validation/issue-5-runtime.md) and
+[SlonikUserWriteTransaction](../src/infrastructure/user-write-transaction.ts)
+creates repositories bound to its local connection. Connections never enter
+the use cases or request context. Repository insert/delete only persist, and
+neither publish nor clear facts. The application explicitly requests recording
+after persistence and clears the aggregate's pending facts after that succeeds.
+
+The adapter temporarily coordinates zero-balance Wallet creation in the same
+transaction before dispatching facts with `publishDomainEvents`. It replaces
+the ambient-context Wallet listener. Deletion never touches Wallets.
+The adapter is the only publication authority for this write path; a failed
+Wallet write or awaited dispatcher rejects the transaction. This in-process
+dispatch occurs **before commit** and is neither a durable record nor an atomic
+external side effect: a listener that already ran cannot be undone by PostgreSQL.
+The asynchronous cutover must replace this bridge with a User-owned outbox and
+post-commit publication, plus an independent Wallet consumer
+([ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md)). No outbox or broker-delivery
+guarantee is introduced in this slice.
+
+HTTP/GraphQL context remains only for request correlation and API errors.
+CLI and message adapters explicitly validate their request DTOs and supply command
+metadata; their direct calls work without HTTP context. A CLI bootstrap and
+independent broker/service startup belong to later work.
+
+The seven original Gherkin cases remain unchanged. Real PostgreSQL regressions
+cover REST/GraphQL compatibility, Wallet write failure/recovery, persistence
+without dispatch, metadata without ambient context, rollback after dispatch
+failure on creation/deletion, and direct CLI/message delegation. See the
+[User write execution record](validation/issue-19-user-writes.md).
+The [core-decoupling](validation/issue-16-core.md),
+[original runtime](validation/issue-5-runtime.md) and
 [Nest upgrade](validation/issue-6-adapters.md) records are historical evidence.
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the

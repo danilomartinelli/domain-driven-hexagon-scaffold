@@ -21,7 +21,7 @@ part of that design.
 | `database`       | `database`                        | Existing migration history and seeds; exercised by live checks, no standalone unit suite                                                                                      |
 | `infrastructure` | `docker`                          | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                         |
 | `test-runner`    | `scripts`                         | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                             |
-| `e2e`            | `tests`                           | Seven original Gherkin cases plus four real-database regressions, with opt-in setup                                                                                           |
+| `e2e`            | `tests`                           | Seven original Gherkin cases plus ten real-database regressions, with opt-in setup                                                                                            |
 | `workspace`      | `.`                               | Repository formatting and architecture checks                                                                                                                                 |
 
 `core`, `nest-support`, `example` and `config` are private Bun workspace packages.

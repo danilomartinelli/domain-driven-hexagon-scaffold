@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import { CommandBus } from '@nestjs/cqrs';
 import { CreateUserCommand } from './create-user.command';
 import type { LoggerPort } from '@starter/core/logger';
+import { validateCreateUserRequest } from './create-user.request.dto';
 
 // CLI command definition only; this example has no bootstrap or context setup.
 @Injectable()
@@ -36,6 +37,7 @@ export class CreateUserCliController {
     postalCode: string,
     street: string,
   ): Promise<void> {
+    await validateCreateUserRequest({ email, country, postalCode, street });
     const command = new CreateUserCommand({
       ...createCommandContext(),
       email,

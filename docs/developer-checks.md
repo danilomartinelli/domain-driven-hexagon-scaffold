@@ -32,19 +32,19 @@ is the suites below; future service, contract and distribution suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files, `bun run check:docs`, and verification of changed commands.
 
-| Check             | Command                   | Scope                                                                                                                             |
-| ----------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                             |
-| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                                   |
-| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                         |
-| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                           |
-| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                          |
-| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                |
-| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                                          |
-| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs seven Gherkin cases and four integration regressions, cleans up |
-| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup             |
-| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents     |
-| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                         |
+| Check             | Command                   | Scope                                                                                                                            |
+| ----------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                            |
+| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests and provisioned application E2E                                  |
+| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                        |
+| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                          |
+| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                         |
+| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias               |
+| Core and packages | `bun run test:unit`       | Infrastructure-free User/Wallet domain, commands, exceptions and colocated package tests                                         |
+| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs seven Gherkin cases and ten integration regressions, cleans up |
+| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup            |
+| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents    |
+| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                        |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -144,7 +144,7 @@ under `.context/test-runs/<project>/`.
 
 `test:tooling` proves that independently named runs cannot redirect cleanup to
 each other's targets, development seeds survive all seven Gherkin cases plus
-four database regressions, development volumes survive restart, occupied Docker
+the database regressions, development volumes survive restart, occupied Docker
 ports cause owned cleanup, and failure/signal statuses are preserved. Its
 unique development fixtures deliberately retain their volumes after shutdown.
 The infrastructure-free workspace checks also exercise direct test/migration/seed
@@ -196,7 +196,7 @@ the conversion and decorator helpers have been removed.
 ## Architecture and deferred work
 
 `.dependency-cruiser.mjs` closes the import graph of shared DDD, exceptions,
-foundation helpers, User/Wallet domain and command inputs to plain core modules
+foundation helpers, User/Wallet domain, User write use cases and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/README.md): root files are public
@@ -222,7 +222,7 @@ ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` include
 independent service and contract/distribution suites belong to later tickets in
 [the migration](adr/0002-adopt-nx-with-nest-and-bun.md).
 
-The remaining objectives are independent applications, application-owned ports/transactions and durable
+The remaining objectives are independent applications, application-owned read ports and durable
 service integration. See the
 [dependency inventory](dependencies.md) for version decisions and security overrides,
 and the [combined issue #8 execution record](validation/issue-8-upgrade.md) for

@@ -96,37 +96,32 @@ and [migration from Apollo Server 3](https://www.apollographql.com/docs/apollo-s
 
 ## Request isolation and transaction participation
 
-The middleware enters a fresh `AsyncLocalStorage` store before each HTTP/GraphQL
-request. The existing context interceptor assigns the request ID. Repositories
-use the store's transaction connection when present and otherwise their shared
-Slonik pool. The middleware does not reuse a store with `enterWith()` or invent
-a global context for direct CLI/message calls.
+The middleware enters a fresh `AsyncLocalStorage` store for HTTP/GraphQL
+correlation, and the interceptor assigns the request ID. Database connections
+are no longer stored there. CQRS handlers map commands and explicit metadata
+into plain User use cases; CLI and message adapters validate their DTOs before
+delegating, including when called without HTTP context.
 
-The user transaction awaits the adapter `publishDomainEvents` and `emitAsync`, which
-awaits the wallet insert using the same connection. The wallet listener retains
-`async: true` and `promisify: true` and adds **`suppressErrors: false`**, because
-the updated Nest event wrapper otherwise catches listener rejections. A failed
-wallet insert must reject the enclosing transaction callback. Its existing
-`finally` clears the stored connection. The local database provider still awaits
-pool creation and shutdown.
+The use cases own `UserWriteTransaction` and explicitly request persistence
+and fact recording inside its atomic scope. The Slonik adapter binds User and
+Wallet repositories to the same local connection and awaits temporary Wallet
+coordination and in-process dispatch. Repositories only persist; they never
+publish facts. Exceptions reject the transaction callback without any ambient
+connection cleanup. The database provider still awaits pool creation and shutdown.
 
-Aggregates only record facts. Entity identity/time and command operation metadata
-are supplied explicitly by adapters; core exceptions do not consult request
-state. Dispatch supplies publication identity, timestamp and request correlation
-as a separate listener argument. This in-process publication remains awaited
-before commit; it is transitional and does not promise durable delivery.
-
-The seven existing Gherkin cases remain intact. A separate real-database suite
-now proves rollback under a forced Wallet write failure and successful recovery,
-as well as REST/GraphQL payload compatibility. See the
-[current execution evidence](validation/issue-16-core.md); the
-[Nest upgrade record](validation/issue-6-adapters.md) describes the earlier slice.
+Dispatch includes generated publication identity plus explicit operation time,
+correlation and causation as a separate listener argument. It remains before
+commit, so arbitrary listener side effects cannot be rolled back. This temporary
+bridge must be replaced by an outbox and independent Wallet consumption at the
+asynchronous cutover. See the [write-path explanation](runtime.md#persistence-and-transaction-review)
+and [current execution evidence](validation/issue-19-user-writes.md).
+The [core](validation/issue-16-core.md) and
+[Nest upgrade](validation/issue-6-adapters.md) records describe earlier slices.
 
 Remaining work follows [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md):
-Nx, application-owned ports/transactions and independent services with durable
-messaging. CLI bootstrap remains outside that migration scope. See [developer checks](developer-checks.md)
-and the [combined upgrade validation](validation/issue-8-upgrade.md) for the final
-strict-tooling and dependency-remediation results.
+application-owned read ports and independent services with durable messaging.
+CLI bootstrap remains outside that migration scope. See [developer checks](developer-checks.md)
+for the complete validation gate.
 
 References: [Nest 12 migration guide](https://docs.nestjs.com/migration-guide),
 [Nest GraphQL installation](https://docs.nestjs.com/graphql/quick-start),

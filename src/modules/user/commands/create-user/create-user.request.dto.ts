@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ValidationPipe } from '@nestjs/common';
 import {
   IsAlphanumeric,
   IsEmail,
@@ -37,4 +38,17 @@ export class CreateUserRequestDto {
   @MinLength(5)
   @Matches(/^[a-zA-Z ]*$/)
   readonly street!: string;
+}
+
+/** CLI and direct message adapters do not run through the HTTP validation pipe. */
+export async function validateCreateUserRequest(
+  input: CreateUserRequestDto,
+): Promise<void> {
+  await new ValidationPipe({ transform: true, whitelist: true }).transform(
+    input,
+    {
+      type: 'body',
+      metatype: CreateUserRequestDto,
+    },
+  );
 }
