@@ -221,14 +221,20 @@ test('prepared regression runs reject foreign targets and preserve development a
         ),
       );
       expect(shell.code).toBe(0);
+      // Agent mode (such as CLAUDECODE=1) omits the per-file headers checked
+      // below; on Bun 1.4.2, AGENT=0 takes precedence over agent detection.
+      // https://bun.com/docs/test#ai-agent-integration
       const regression = await succeeded(
-        first('exec', ['--', process.execPath, 'run', 'test:e2e:prepared']),
+        first('exec', ['--', process.execPath, 'run', 'test:e2e:prepared'], {
+          AGENT: '0',
+        }),
       );
       // The regression suite grows; require both Gherkin and database coverage.
       const output = Bun.stripANSI(regression.stderr + regression.stdout);
       for (const file of [
         'tests/user/create-user/create-user.test.ts',
         'tests/user/delete-user/delete-user.test.ts',
+        'tests/integration/find-users.test.ts',
         'tests/integration/user-wallet.test.ts',
         'tests/integration/user-writes.test.ts',
       ]) {

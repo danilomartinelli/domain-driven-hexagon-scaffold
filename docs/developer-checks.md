@@ -163,6 +163,10 @@ each other's targets, development seeds survive all seven Gherkin cases plus
 the database regressions, development volumes survive restart, occupied Docker
 ports cause owned cleanup, and failure/signal statuses are preserved. Its
 unique development fixtures deliberately retain their volumes after shutdown.
+Its regression run checks per-file `bun test` headers, which
+[agent mode](https://bun.com/docs/test#ai-agent-integration) (for example
+`CLAUDECODE=1`) omits, so it sets `AGENT=0`. On Bun 1.4.2 that value takes
+precedence over agent detection; this precedence is verified, not documented.
 The infrastructure-free workspace checks also exercise direct test/migration/seed
 refusal without an owned manifest and Bun's shell/file environment precedence.
 
