@@ -29,9 +29,8 @@ originais, além das regressões de rollback com banco de dados real.
 O [inventário de dependências](docs/dependencies.md) registra as versões compatíveis e as
 correções de segurança. Execute `bun audit` separadamente para verificar novamente toda a árvore de dependências.
 A [baseline Nx/Bun](docs/nx-workspace.md) agora orquestra a aplicação transitória,
-os pacotes técnicos privados e as regressões. O trabalho de migração restante inclui
-serviços independentes, portas de leitura pertencentes à aplicação e integração
-durável entre serviços, conforme definido no [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md).
+os pacotes técnicos privados e as regressões. O trabalho de migração entregue e
+restante é acompanhado no [status de implementação do ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
 
 Os padrões e princípios apresentados aqui são **agnósticos de framework/linguagem**. Portanto, as tecnologias acima podem ser facilmente substituídas por qualquer alternativa. Não importa a linguagem ou o framework utilizado: qualquer aplicação pode se beneficiar dos princípios descritos abaixo.
 
@@ -282,13 +281,15 @@ Leia mais:
 
 `Query` é parecida com um `Command`. Ela pertence a um modelo de leitura, sinaliza a intenção do usuário de encontrar algo e descreve como fazer isso.
 
-`Query` é apenas uma operação de leitura de dados e não deve fazer nenhuma alteração de estado (como escritas no banco de dados, em arquivos, em APIs de terceiros etc.). Por esse motivo, no modelo de leitura podemos ignorar completamente as camadas de domínio e de repositório e consultar o banco de dados diretamente a partir de um query handler.
+`Query` é apenas uma operação de leitura de dados e não deve fazer nenhuma alteração de estado (como escritas no banco de dados, em arquivos, em APIs de terceiros etc.). Por esse motivo, no modelo de leitura podemos ignorar completamente as camadas de domínio e de repositório: uma query retorna um modelo de leitura dedicado por meio de uma porta de leitura pertencente à aplicação, e somente o adaptador de saída executa SQL.
 
 Assim como os Commands, as Queries podem usar um `Query Bus` se necessário. Dessa forma, você pode consultar qualquer coisa de qualquer lugar sem importar classes diretamente e evita acoplamento.
 
 Arquivos de exemplo:
 
-- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - um query handler. Repare como consultamos o banco de dados diretamente, sem usar objetos de domínio ou repositórios (mais informações [aqui](https://codeopinion.com/should-you-use-the-repository-pattern-with-cqrs-yes-and-no/)).
+- [find-users.ts](src/modules/user/application/find-users.ts) - uma query e um caso de uso simples. Ela é dona da sua [porta de leitura e do modelo de leitura](src/modules/user/application/user-read.port.ts), sem usar objetos de domínio ou repositórios (mais informações [aqui](https://codeopinion.com/should-you-use-the-repository-pattern-with-cqrs-yes-and-no/)).
+- [user-read.adapter.ts](src/modules/user/database/user-read.adapter.ts) - o adaptador de saída que executa SQL, valida as linhas e as mapeia para o modelo de leitura.
+- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - um query handler do Nest CQRS que delega ao caso de uso. Os adaptadores REST e GraphQL mapeiam o modelo de leitura, nunca o modelo de persistência.
 
 ---
 

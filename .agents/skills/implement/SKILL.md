@@ -7,7 +7,7 @@ disable-model-invocation: true
 Implement the work described by the user in the spec or tickets.
 
 Before exploring issues, source or registry metadata, follow the bounded-reading
-workflow in `docs/agents/issue-tracker.md`. For a parent issue, start with the
+workflow in `docs/agents/issue-tracker.md#conventions`. For a parent issue, start with the
 acceptance criteria referenced by the selected child.
 
 Before the first test, formatter or Nx task, complete the setup in
@@ -15,7 +15,12 @@ Before the first test, formatter or Nx task, complete the setup in
 local Nx/Prettier executables run successfully. Recheck after changing the
 lockfile or dependency manifests.
 
-Use /tdd where possible, at pre-agreed seams.
+Use /tdd where possible. The seams named by the selected issue's acceptance
+criteria are pre-agreed; agree any other seam with the user.
+
+When the work preserves existing behavior, first write tests at its external
+seams and run them against the base with `bun run characterize -- <files>`;
+they must pass there and after your change.
 
 During implementation, follow `docs/developer-checks.md#focused-feedback` for
 the focused lint, test and type loop. Before declaring code ready, run the

@@ -12,6 +12,13 @@ const apiLayerPaths = [
 
 const applicationLayerPaths = ['application', '\\.service\\.ts$'];
 
+// Nest CQRS handlers are input adapters that delegate to plain use cases.
+const cqrsHandlerPaths = [
+  'query-handler\\.ts$',
+  'command-handler\\.ts$',
+  'service\\.ts$',
+];
+
 const infrastructureLayerPaths = [
   'infrastructure',
   'infra',
@@ -90,8 +97,9 @@ const config = {
       to: {
         pathNot: [
           ...corePaths,
-          '^node_modules/oxide\\.ts/',
-          '^node_modules/\\.bun/oxide\\.ts@[^/]+/node_modules/oxide\\.ts/',
+          // The package, wherever node_modules resolves (including linked copies).
+          '(^|/)node_modules/oxide\\.ts/',
+          '(^|/)node_modules/\\.bun/oxide\\.ts@[^/]+/node_modules/oxide\\.ts/',
         ],
       },
     },
@@ -134,17 +142,18 @@ const config = {
       },
     },
     {
+      name: 'no-input-adapter-to-persistence-deps',
+      comment:
+        'Controllers, resolvers and CQRS handlers use application results, not persistence models or repositories',
+      severity: 'error',
+      from: { path: [...apiLayerPaths, ...cqrsHandlerPaths] },
+      to: { path: '^src/modules/[^/]+/database/' },
+    },
+    {
       name: 'no-command-query-to-api-deps',
       comment: 'Commands and Queries cannot depend on api layer',
       severity: 'error',
-      from: {
-        path: [
-          'query-handler\\.ts$',
-          'command-handler\\.ts$',
-          'command\\.ts$',
-          'service\\.ts$',
-        ],
-      },
+      from: { path: [...cqrsHandlerPaths, 'command\\.ts$'] },
       to: {
         path: apiLayerPaths,
       },

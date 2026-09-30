@@ -13,6 +13,8 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { FindUsersGraphqlResolver } from './queries/find-users/find-users.graphql-resolver';
 import { CreateUser } from './application/create-user';
 import { DeleteUser } from './application/delete-user';
+import { FindUsers } from './application/find-users';
+import { SlonikUserReadAdapter } from './database/user-read.adapter';
 import { SlonikUserWriteTransaction } from '@src/infrastructure/user-write-transaction';
 import { WalletModule } from '../wallet/wallet.module';
 
@@ -54,6 +56,12 @@ const mappers: Provider[] = [UserMapper];
       useFactory: (transaction: SlonikUserWriteTransaction) =>
         new DeleteUser(transaction),
       inject: [SlonikUserWriteTransaction],
+    },
+    SlonikUserReadAdapter,
+    {
+      provide: FindUsers,
+      useFactory: (reads: SlonikUserReadAdapter) => new FindUsers(reads),
+      inject: [SlonikUserReadAdapter],
     },
     ...cliControllers,
     ...graphqlResolvers,

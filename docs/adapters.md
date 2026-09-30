@@ -99,7 +99,8 @@ and [migration from Apollo Server 3](https://www.apollographql.com/docs/apollo-s
 The middleware enters a fresh `AsyncLocalStorage` store for HTTP/GraphQL
 correlation, and the interceptor assigns the request ID. Database connections
 are no longer stored there. CQRS handlers map commands and explicit metadata
-into plain User use cases; CLI and message adapters validate their DTOs before
+into plain User use cases, and `FindUsersQuery` into the plain
+[Find Users read path](runtime.md#find-users-read-path); CLI and message adapters validate their DTOs before
 delegating, including when called without HTTP context.
 
 The use cases own `UserWriteTransaction` and explicitly request persistence
@@ -115,8 +116,7 @@ commit, so arbitrary listener side effects cannot be rolled back. This temporary
 bridge must be replaced by an outbox and independent Wallet consumption at the
 asynchronous cutover. See the [write-path explanation](runtime.md#persistence-and-transaction-review).
 
-Remaining work follows [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md):
-application-owned read ports and independent services with durable messaging.
+Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
 CLI bootstrap remains outside that migration scope. See [developer checks](developer-checks.md)
 for the complete validation gate.
 

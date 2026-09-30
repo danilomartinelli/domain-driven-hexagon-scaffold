@@ -10,6 +10,8 @@ interface Session {
       /** null disables the deadline for long-lived development commands. */
       timeout?: number | null;
       capture?: boolean;
+      /** false keeps output in the run log only. */
+      echo?: boolean;
     },
   ): Promise<{ code: number; stdout: string }>;
   log(message: string): void;
@@ -66,6 +68,7 @@ export function commandSession(
       env?: NodeJS.ProcessEnv;
       timeout?: number | null;
       capture?: boolean;
+      echo?: boolean;
     } = {},
   ): Promise<{ code: number; stdout: string }> {
     if (interrupted && !cleaning) return { code: interrupted, stdout: '' };
@@ -99,12 +102,12 @@ export function commandSession(
     process.once('SIGINT', cancelKill);
     process.once('SIGTERM', cancelKill);
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
-      process.stdout.write(chunk);
+      if (options.echo !== false) process.stdout.write(chunk);
       appendFileSync(logPath, chunk);
       if (options.capture) stdout += chunk;
     });
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
-      process.stderr.write(chunk);
+      if (options.echo !== false) process.stderr.write(chunk);
       appendFileSync(logPath, chunk);
     });
     try {

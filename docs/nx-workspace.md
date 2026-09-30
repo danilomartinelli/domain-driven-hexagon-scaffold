@@ -57,8 +57,9 @@ configuration is also an input of every deterministic target.
 ## Commands
 
 Run commands from the repository root. `check:workspace` bootstraps guardrail
-tests directly under Bun before the Nx quality commands, and `audit:changed`
-runs the conditional registry check directly. `bun run nx` invokes the installed local
+tests directly under Bun before the Nx quality commands; `audit:changed`
+runs the conditional registry check and `characterize` runs selected tests
+against a base worktree, both directly. `bun run nx` invokes the installed local
 Nx binary using Bun, without downloading a CLI. It disables Nx's automatic
 `.env` loading, preserving the existing explicit environment selection, and
 turns off the daemon. Native root `eslint.config.mjs`, `prettier.config.mjs` and

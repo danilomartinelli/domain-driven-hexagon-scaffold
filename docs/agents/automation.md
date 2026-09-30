@@ -75,9 +75,12 @@ bun run agents:opencode debug config --pure
 It preserves other global/profile settings. Debug configuration can contain
 private values from those settings; do not publish its complete output.
 
-Context7 uses its public HTTP endpoint without a checked-in API key. If an account
-needs a key for higher limits, configure it privately in the client. Query library
-versions from `package.json` rather than assuming the newest documentation matches.
+Context7 uses its public HTTP endpoint. Each client forwards `CONTEXT7_API_KEY`
+from its process environment as the `CONTEXT7_API_KEY` header; without the
+variable, requests use the small anonymous quota ("Monthly quota exceeded").
+Export the key privately, outside the repository; a client opened from the Dock
+inherits `launchctl` environment, not your shell's. Query library versions from
+`package.json` rather than assuming the newest documentation matches.
 
 Nx's official plugin and `nx mcp` bootstrap the official Nx MCP package on first
 use. The shared skills use `bun run nx`, preserve explicit environment selection,
