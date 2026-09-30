@@ -130,8 +130,10 @@ REST GET body filters + query pagination, or GraphQL options string
 [FindUsers](../src/modules/user/application/find-users.ts) owns the plain
 query, its result and the [User read port](../src/modules/user/application/user-read.port.ts),
 and imports only the plain core. [SlonikUserReadAdapter](../src/modules/user/database/user-read.adapter.ts)
-is the only Find Users code that executes SQL: it selects the listed columns,
-parses rows with the stored-profile rules and maps them into `UserSummary`.
+is the only Find Users code that executes SQL. Each returned row must satisfy
+the complete stored-profile schema, including `role`, before only its listed
+fields are mapped into `UserSummary`. As before, an invalid returned row fails
+the listing: REST responds 500 and GraphQL reports `INTERNAL_SERVER_ERROR`.
 REST and GraphQL map that read model; the architecture check rejects API and
 CQRS handler imports from a module's `database/` folder.
 

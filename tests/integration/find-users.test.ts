@@ -222,3 +222,39 @@ test('GraphQL findUsers keeps its unparsed string options and response fields', 
     { id: rue, ...profiles.rue },
   ]);
 });
+
+test('a returned profile with a stored role outside the User roles fails the listing, as before', async () => {
+  const admin = await create(profiles.rue);
+  const corrupt = await create(profiles.baker);
+  const pool = getTestDatabase();
+  await pool.query(
+    sql.unsafe`UPDATE users SET role = 'admin' WHERE id = ${admin}`,
+  );
+  expect(emails(await list())).toEqual([
+    'baker@example.com',
+    'rue@example.com',
+  ]);
+
+  await pool.query(
+    sql.unsafe`UPDATE users SET role = 'superuser' WHERE id = ${corrupt}`,
+  );
+  const rest = await getHttpServer().get('/v1/users').send({}).expect(500);
+  expect(rest.body).toMatchObject({
+    statusCode: 500,
+    message: 'Internal server error',
+  });
+  const graphql = await getHttpServer()
+    .post('/graphql')
+    .send({ query: '{ findUsers(options: "") { count } }' })
+    .expect(200);
+  expect(graphql.body).toMatchObject({
+    data: null,
+    errors: [
+      { path: ['findUsers'], extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+    ],
+  });
+  // Only returned rows are validated.
+  expect(emails(await list({ country: 'France' }))).toEqual([
+    'rue@example.com',
+  ]);
+});

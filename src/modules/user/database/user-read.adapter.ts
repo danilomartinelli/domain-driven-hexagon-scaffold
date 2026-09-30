@@ -8,9 +8,10 @@ import type {
 } from '../application/user-read.port';
 import { userSchema } from './user.schema';
 
-/** Rows are parsed with the stored-profile rules, limited to listed columns. */
-const userSummaryRow = userSchema.omit({ role: true });
-
+/**
+ * Each returned row must be a valid stored profile, role included, before
+ * only its listed fields are mapped.
+ */
 @Injectable()
 export class SlonikUserReadAdapter implements UserReadPort {
   constructor(@Inject(DATABASE_POOL) private readonly pool: DatabasePool) {}
@@ -22,8 +23,8 @@ export class SlonikUserReadAdapter implements UserReadPort {
     limit,
     offset,
   }: FindUsersCriteria): Promise<readonly UserSummary[]> {
-    const rows = await this.pool.any(sql.type(userSummaryRow)`
-      SELECT id, "createdAt", "updatedAt", email, country, "postalCode", street
+    const rows = await this.pool.any(sql.type(userSchema)`
+      SELECT id, "createdAt", "updatedAt", email, country, "postalCode", street, role
       FROM users
       WHERE
         ${country === undefined ? true : sql.fragment`country = ${country}`} AND
