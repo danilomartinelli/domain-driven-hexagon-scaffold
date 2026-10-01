@@ -65,10 +65,11 @@ CreateUserGqlRequestDto!)` and `findUsers(options: String!)`. The existing
   `CommandBus.execute`, unwraps the result and logs the ID. Nothing calls
   `parseAsync()` or starts a CLI application. A future bootstrap still needs
   application initialization, context setup and awaited cleanup.
-- **Messaging:** `@MessagePattern('user.create')` still accepts
-  `CreateUserRequestDto`, awaits the same command bus, unwraps the result and
-  returns `IdResponse`. There is no connected microservice, transport, or
-  message-context lifecycle. Framework registration is not end-to-end execution.
+- **Messaging:** the independent [User command consumer](user-commands.md)
+  validates the versioned `user.create` envelope, supplies operation metadata
+  explicitly and calls the same plain creation use case as REST/GraphQL. It
+  returns a correlated RabbitMQ response after commit, retains malformed commands
+  and recovers independently of HTTP and the outbox publisher.
 
 CQRS is initialized with `CqrsModule.forRoot()`, and handlers supply their
 command/query type to the new conditional handler interfaces. Domain classes

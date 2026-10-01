@@ -89,6 +89,12 @@ export default defineConfig(
           message:
             'Use nested withCleanup so an earlier cleanup failure cannot skip closing this resource.',
         },
+        {
+          selector:
+            "CallExpression[callee.name='withCleanup'] > ArrayExpression.arguments > :matches(ArrowFunctionExpression, FunctionExpression) :matches(ForOfStatement, ForInStatement, ForStatement, WhileStatement, DoWhileStatement) AwaitExpression > CallExpression[callee.property.name='purgeQueue']",
+          message:
+            'Register each queue purge separately with withCleanup and its own channel so a failure cannot skip other queues.',
+        },
       ],
     },
   },

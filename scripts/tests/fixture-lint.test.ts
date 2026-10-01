@@ -149,3 +149,37 @@ test('dependent restore steps stay sequential and resource cleanup uses nested w
     ),
   ).toEqual([]);
 });
+
+test('independent queue purges cannot abandon later queues after a failure', async () => {
+  const messages = await restrictions(
+    `export async function fixture(): Promise<void> {
+      await withCleanup(use, [() => withCleanup(async () => {
+          for (const queue of ['user.create', 'user.create.failed']) {
+            await channel.purgeQueue(queue);
+          }
+        }, [() => connection.close()])]);
+    }`,
+    'src/apps/user/tests/component/command-fixture.ts',
+  );
+  expect(messages).toHaveLength(1);
+  expect(messages[0].message).toContain('withCleanup');
+});
+
+test('queue setup loops and separately registered purges remain allowed', async () => {
+  expect(
+    await restrictions(
+      `export async function fixture(): Promise<void> {
+      await withCleanup(async () => {
+        for (const queue of queues) {
+          await channel.purgeQueue(queue);
+        }
+        await use();
+      }, queues.map(queue => async () => {
+        const cleanupChannel = await connection.createChannel();
+        await withCleanup(() => cleanupChannel.purgeQueue(queue), [() => cleanupChannel.close()]);
+      }));
+    }`,
+      'src/apps/user/tests/component/command-fixture.ts',
+    ),
+  ).toEqual([]);
+});

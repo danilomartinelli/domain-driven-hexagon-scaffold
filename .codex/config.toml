@@ -1,6 +1,12 @@
 [features]
 hooks = true
 
+[mcp_servers.codegraph]
+command = "sh"
+args = ["-c", 'cd "$(git rev-parse --show-toplevel)" && exec codegraph serve --mcp --path "$PWD"']
+env = { "CODEGRAPH_TELEMETRY" = "0" }
+startup_timeout_sec = 60
+
 [mcp_servers.context7]
 url = "https://mcp.context7.com/mcp"
 env_http_headers = { "CONTEXT7_API_KEY" = "CONTEXT7_API_KEY" }

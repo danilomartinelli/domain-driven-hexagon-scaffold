@@ -12,10 +12,20 @@ Issues and specs for this repo live in [GitHub Issues](https://github.com/danilo
 - **Close**: `gh issue close <number> --comment "..."`
 
 Keep exploration output bounded: list identifiers first, then read selected
-records. If a result is truncated, narrow the query or read a saved result in
-ranges before relying on it. For source navigation, use `rg --files` or
-`rg -n '<symbol>' <directory>`, followed by the relevant line range. Read a whole
-file when the question requires its complete contract.
+records. For tool discovery, filter by the required capability and inspect only
+the matching tool names/descriptions; do not dump the whole registry. For source
+structure and relationships, use CodeGraph's `codegraph_explore` MCP tool with a
+specific question and a small `maxFiles` budget (for example, 5), or its CLI:
+`codegraph explore --max-files 5 'runCommand'`. Setup and client activation are in
+[agent automation](automation.md#codegraph).
+
+Use `rg --files` or `rg -n '<symbol>' <directory>` for exact text and paths,
+then read the relevant line range. Use TypeScript navigation for semantic
+definitions and references. Check CodeGraph staleness warnings against the live
+file before relying on them; if the graph is unavailable, use scoped searches.
+Read a whole file when the question requires its complete contract. If a result
+is truncated, narrow the question before paging through a large answer; continue
+the read only when the missing content affects the decision.
 
 For bounded source searches and selected file ranges, use the repository helper:
 

@@ -41,7 +41,7 @@ Wallet configuration. Database tooling alone uses `USER_DB_MIGRATION_USERNAME`
 and `USER_DB_MIGRATION_PASSWORD` for migrations and seeds.
 
 ```text
-REST / GraphQL -> command handler (assign User and event identities once)
+REST / GraphQL / RabbitMQ -> input adapter (assign User and event identities once)
   CreateUser -> explicit UserWriteTransaction
     insert profile
     map pending fact to user.created v1 and insert its envelope in user_outbox
@@ -110,6 +110,7 @@ at most 5s; database connection/statement waits are bounded at 5s. Shutdown
 interrupts messaging before closing the pool; restart resumes persisted work.
 Deleting a profile never cancels its outbox item or removes a Wallet.
 
-See [distributed recovery](recovery.md) for commands and actual broker/database
-evidence. Message-command activation, gateway routing and independent distribution
+See [User commands](user-commands.md) for executable `user.create` requests and
+diagnostics, and [distributed recovery](recovery.md) for broker/database evidence.
+Gateway routing and independent distribution
 artifacts remain later slices of [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).

@@ -1,0 +1,12 @@
+{
+  "type": "user.create",
+  "version": 1,
+  "commandId": "create-profile-001",
+  "correlationId": "signup-001",
+  "data": {
+    "email": "command@example.com",
+    "country": "England",
+    "street": "Baker street",
+    "postalCode": "NW16XE"
+  }
+}

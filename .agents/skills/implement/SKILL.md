@@ -6,20 +6,10 @@ disable-model-invocation: true
 
 Implement the work described by the user in the spec or tickets.
 
-Before exploring issues, source or registry metadata, follow
-`docs/agents/issue-tracker.md#conventions`. For a parent issue, start with the
-acceptance criteria referenced by the selected child. Locate files and matching
-lines first, then read selected ranges with the existing bounded helper:
-
-```sh
-bun run search -- --files scripts/tests
-bun run search -- 'withCleanup' scripts/tests
-bun scripts/search.ts --read --max-bytes=6000 -- scripts/tests/cleanup.ts 1 35
-```
-
-Adapt the scope, query and ranges to the task. For incomplete reads, follow the
-continuation and outer-tool budget rules in
-`docs/agents/issue-tracker.md#conventions` before relying on missing content.
+Before exploring issues, source, tools or registry metadata, follow
+`docs/agents/issue-tracker.md#conventions`. Start with the selected child's
+acceptance criteria, then use structural navigation or scoped text searches
+to select the source ranges needed for the decision.
 
 Before the first test, formatter or Nx task, complete the setup in
 `docs/developer-checks.md#setup`. Continue when the checkout's pinned Bun and
@@ -47,6 +37,8 @@ Do not overlap this final gate with reviews that may require changes. If the
 gate requires a fix, rerun affected checks, stage and review the new snapshot,
 then rerun the final gate.
 
-Commit the reviewed and validated changes to the current branch. Verify the
-index still matches the reviewed tree before committing. If the commit hook
-changes the snapshot, review and validate that difference before publishing.
+Commit only when the user has explicitly authorized a commit. Otherwise, leave
+the reviewed and validated changes staged and report the result. When authorized,
+commit to the current branch after verifying the index still matches the reviewed
+tree. If the commit hook changes the snapshot, review and validate that difference
+before publishing. Push only when explicitly authorized.

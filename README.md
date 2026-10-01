@@ -269,7 +269,7 @@ Avoid command handlers executing other commands in this fashion: Command → Com
 Example files:
 
 - [create-user.command.ts](src/apps/user/commands/create-user/create-user.command.ts) - a command Object
-- [create-user.message.controller.ts](src/apps/user/commands/create-user/create-user.message.controller.ts) - controller executes a command using a command bus. This decouples it from a command handler.
+- [create-user.http.controller.ts](src/apps/user/commands/create-user/create-user.http.controller.ts) - controller executes a command using a command bus. This decouples it from a command handler.
 - [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts) - a command handler.
 
 Read more:
@@ -895,8 +895,8 @@ Contains `Controllers` and `Request`/`Response` DTOs (can also contain `Views`, 
 One controller per trigger type can be used to have a clearer separation. For example:
 
 - [create-user.http.controller.ts](src/apps/user/commands/create-user/create-user.http.controller.ts) for http requests ([NestJS Controllers](https://docs.nestjs.com/controllers)),
-- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) for a CLI command definition using [Commander](https://github.com/tj/commander.js), with Nest dependency injection. CLI startup and messaging transport remain unfinished; see [adapter compatibility and limits](docs/adapters.md).
-- [create-user.message.controller.ts](src/apps/user/commands/create-user/create-user.message.controller.ts) for external messages ([NestJS Microservices](https://docs.nestjs.com/microservices/basics)).
+- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) for a CLI command definition using [Commander](https://github.com/tj/commander.js), with Nest dependency injection. CLI startup remains unfinished; see [adapter compatibility and limits](docs/adapters.md).
+- [rabbit-user-command-consumer.ts](src/apps/user/messaging/rabbit-user-command-consumer.ts) for validated RabbitMQ commands with explicit metadata and independent recovery; see the [executable contract](docs/user-commands.md).
 - etc.
 
 ### Resolvers
