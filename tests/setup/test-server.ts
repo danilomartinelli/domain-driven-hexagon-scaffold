@@ -1,64 +1,85 @@
 import { assertTestEnvironment } from '../../database/environment';
 import { afterAll, afterEach, beforeAll } from 'bun:test';
-import { Test } from '@nestjs/testing';
-import type { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
-import { AppModule } from '@src/app.module';
-import { DATABASE_POOL } from '@src/infrastructure/database.module';
-import { sql } from 'slonik';
-import type { DatabasePool } from 'slonik';
+import { createPool, sql, type DatabasePool } from 'slonik';
+import { connect } from 'amqplib';
 import request from 'supertest';
+import { withCleanup } from '../../scripts/tests/cleanup';
+import { ServiceProcess } from './service-process';
 
-let app: NestExpressApplication | undefined;
-let pool: DatabasePool | undefined;
-
-/** Input adapters can be exercised through the real composition without HTTP context. */
-export function getTestApplication(): NestExpressApplication {
-  if (!app) throw new Error('Test application has not started.');
-  return app;
-}
-
+export const user = new ServiceProcess('user');
+export const wallet = new ServiceProcess('wallet');
+let userPool: DatabasePool | undefined;
+let walletPool: DatabasePool | undefined;
 export function getHttpServer(): ReturnType<typeof request> {
-  if (!app) throw new Error('Test application has not started.');
-  return request(app.getHttpServer());
+  return request(user.url);
 }
-
-/** Only available after the guarded E2E preload starts the disposable database. */
+export function getWalletServer(): ReturnType<typeof request> {
+  return request(wallet.url);
+}
 export function getTestDatabase(): DatabasePool {
-  if (!pool) throw new Error('Test database has not started.');
-  return pool;
+  if (!userPool) throw new Error('User test database unavailable');
+  return userPool;
+}
+export function getWalletDatabase(): DatabasePool {
+  if (!walletPool) throw new Error('Wallet test database unavailable');
+  return walletPool;
 }
 
-async function cleanDatabase(): Promise<void> {
+function uri(app: string): string {
+  const setting = (key: string) =>
+    encodeURIComponent(String(process.env[`${app}_DB_${key}`]));
+  return `postgres://${setting('MIGRATION_USERNAME')}:${setting('MIGRATION_PASSWORD')}@${setting('HOST')}:${setting('PORT')}/${setting('NAME')}`;
+}
+
+async function reset(): Promise<void> {
   assertTestEnvironment();
-  await pool?.query(sql.unsafe`TRUNCATE "users", "wallets"`);
+  // Quiesce both producers and consumers before purging/truncating. No delivery
+  // from this scenario can arrive after the next scenario's ownership starts.
+  await withCleanup(async () => {
+    await user.stop();
+  }, [() => wallet.stop()]);
+  const connection = await connect(
+    {
+      hostname: process.env.RABBITMQ_HOST,
+      port: Number(process.env.RABBITMQ_PORT),
+      username: process.env.RABBITMQ_USERNAME,
+      password: process.env.RABBITMQ_PASSWORD,
+      vhost: process.env.RABBITMQ_VHOST,
+    },
+    { timeout: 2_000 },
+  );
+  await withCleanup(async () => {
+    const channel = await connection.createChannel();
+    for (const queue of ['wallet.user-created', 'wallet.user-created.failed']) {
+      await channel.assertQueue(queue, { durable: true });
+      await channel.purgeQueue(queue);
+    }
+    await getTestDatabase().query(sql.unsafe`TRUNCATE users, user_outbox`);
+    await getWalletDatabase().query(
+      sql.unsafe`TRUNCATE wallets, wallet_consumed_events`,
+    );
+  }, [() => connection.close()]);
+  await user.start();
+  await wallet.start();
+}
+
+async function close(): Promise<void> {
+  await withCleanup(async () => {
+    await withCleanup(() => user.stop(), [() => wallet.stop()]);
+  }, [() => userPool?.end(), () => walletPool?.end()]);
 }
 
 beforeAll(async () => {
-  const testingModule = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
-
-  app = testingModule.createNestApplication<NestExpressApplication>();
-  pool = app.get<DatabasePool>(DATABASE_POOL);
-  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
-
   try {
-    await app.init();
-    await cleanDatabase();
+    assertTestEnvironment();
+    userPool = await createPool(uri('USER'));
+    walletPool = await createPool(uri('WALLET'));
+    await reset();
   } catch (error) {
-    await app.close();
-    app = undefined;
-    pool = undefined;
-    throw error;
+    await withCleanup(() => {
+      throw error;
+    }, [close]);
   }
-});
-
-afterEach(cleanDatabase);
-
-afterAll(async () => {
-  // DatabaseModule owns the same pool used by the app and cleanup.
-  await app?.close();
-  app = undefined;
-  pool = undefined;
-});
+}, 30_000);
+afterEach(reset, 30_000);
+afterAll(close, 30_000);

@@ -3,10 +3,12 @@ import type { Subprocess } from 'bun';
 import pg from 'pg';
 import { assertTestEnvironment } from '../../../../../database/environment';
 import request from 'supertest';
+import { brokerGate } from '../../../../../scripts/tests/broker-gate';
 import { withCleanup } from '../../../../../scripts/tests/cleanup';
 
 const root = new URL('../../../../../', import.meta.url).pathname;
 let user: Subprocess<'ignore', 'pipe', 'pipe'> | undefined;
+let gate: Awaited<ReturnType<typeof brokerGate>> | undefined;
 let output = '';
 let owner: pg.Client | undefined;
 
@@ -48,14 +50,15 @@ async function cleanDatabase(): Promise<void> {
 }
 
 /**
- * User knows only its runtime database settings, with no broker, sibling
+ * User knows only its runtime database settings, with broker settings but no sibling
  * database, environment manifest or migration owner credentials.
  */
 export function userEnvironment(): Record<string, string> {
-  const excluded = /^(DB_|WALLET_|RABBITMQ_|USER_DB_MIGRATION_|DDH_)/;
+  const excluded = /^(DB_|WALLET_|USER_DB_MIGRATION_|DDH_)/;
   const env: Record<string, string> = { NO_COLOR: '1' };
   for (const [name, value] of Object.entries(process.env))
     if (value !== undefined && !excluded.test(name)) env[name] = value;
+  if (gate) env.RABBITMQ_PORT = gate.port;
   return env;
 }
 
@@ -115,6 +118,10 @@ export async function startUser(
 
 beforeAll(async () => {
   try {
+    gate = await brokerGate({
+      hostname: setting('RABBITMQ_HOST'),
+      port: Number(setting('RABBITMQ_PORT')),
+    });
     owner = new pg.Client(userDatabase('owner'));
     await owner.connect();
     await cleanDatabase();
@@ -126,10 +133,15 @@ beforeAll(async () => {
   }
 });
 
-afterEach(cleanDatabase);
+afterEach(async () => {
+  await stopUser();
+  await cleanDatabase();
+  await startUser();
+});
 
 async function closeResources(): Promise<void> {
   await withCleanup(stopUser, [
+    () => gate?.close(),
     async () => {
       const connection = owner;
       owner = undefined;

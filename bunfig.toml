@@ -3,4 +3,4 @@
 env = false
 
 [test]
-root = "./src/tests"
+root = "./src/packages/core/tests"

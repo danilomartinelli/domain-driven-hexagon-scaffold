@@ -7,27 +7,28 @@ directly, without producing `dist/`:
 ```sh
 bun install --frozen-lockfile
 bun run env:prepare --environment=development --run=default
-bun run env:exec --environment=development --run=default -- bun run migration:up
+for app in user wallet; do
+  DATABASE_APP="$app" bun run env:exec --environment=development --run=default -- bun run migration:up
+done
 bun run env:exec --environment=development --run=default -- bun run start:dev
 ```
 
-The server listens on port 3000 by default, overridable with `PORT`: REST at `/v1/users`, OpenAPI at `/docs` and
-`/docs-json`, GraphQL at `/graphql`. `start:dev` uses `bun --watch` to restart
-the complete application on source changes. `bun run start` runs once;
-`start:debug` adds Bun's inspector; `start:prod` sets `NODE_ENV=production` and
-runs the same source. Deployments need the source and runtime dependencies, not
-an emitted JavaScript build. CLI and messaging controllers remain registered
-examples; they still have no CLI bootstrap or messaging transport.
-See [adapter compatibility](adapters.md) for the Nest/Apollo versions, CLI
-command definition, and the limits of each example. The start scripts invoke Nx targets that execute the full application under Bun.
-See [the Nx baseline](nx-workspace.md) for projects, commands and cache policy.
+`start` runs the independent User and Wallet processes; `start:dev` watches both,
+`start:debug` opens their Bun inspectors, and `start:prod` sets `NODE_ENV=production`.
+Listeners use `USER_HTTP_PORT` and `WALLET_HTTP_PORT` allocated by the selected
+environment. Each exposes its own `/docs`, `/docs-json` and `/graphql`; User
+REST is `/v1/users`, Wallet lookup is `/v1/wallets/by-user/:userId`.
+Use `start:user` or `start:wallet` to run one service. Applications require only
+their own database credentials plus broker settings; HTTP startup never waits
+for broker availability. Source and runtime dependencies are still required for
+execution; independent distributions remain later work.
 
-Outside a prepared environment, the legacy application's and database tooling's dotenv 18 loaders select `.env.test` only when `NODE_ENV=test`,
-otherwise `.env`; shell-provided values take precedence. Their new startup banner
-is disabled so database status output remains readable. Bun's automatic env
-loading stays disabled in `bunfig.toml`. See [database settings](database.md#isolation-and-configuration)
-before using custom ports or database names. Set `PORT` to override the default
-application HTTP port of 3000.
+CLI and User message-command controllers remain registered examples without a
+CLI bootstrap or command consumer. Wallet's integration-event consumer and
+User's outbox publisher are active. See [adapter compatibility](adapters.md).
+Both applications load no dotenv file; database tooling alone reads `.env`
+outside a prepared environment. See [database settings](database.md#isolation-and-configuration)
+and [the Nx guide](nx-workspace.md) for environment and cache rules.
 
 `bun run typecheck` runs TypeScript **6.0.3** with `noEmit`. Native execution is
 not type checking. Type-only imports are explicit so Bun does not try to load
@@ -42,8 +43,8 @@ type, lint, format and architecture commands.
 ## Infrastructure-free core
 
 `bun run test:unit` (also `bun run test`) runs every project's `test` target,
-including `src/tests`, the colocated package tests and each application's core
-tests. Bare `bun test` discovers only `src/tests`. Neither has a
+including `src/packages/core/tests`, the colocated package tests and each application's core
+tests. Bare `bun test` discovers only `src/packages/core/tests`. Neither has a
 preload, app bootstrap, dotenv loader, Nest, database or broker. These native
 Bun tests cover User roles and address invariants, Wallet balances, commands,
 recorded events and serializable exceptions through their public interfaces.
@@ -55,7 +56,7 @@ explicit pages, forwarded filters and blank filters.
 Entity creation receives identity and creation time as explicit values. Commands
 receive operation identity and tracing metadata from transport adapters. Domain
 events contain facts; dispatch identity, correlation, causation and operation time live in
-the adapter's `DomainEventPublication`, passed as the listener's second argument.
+the User-owned pending integration envelope. Publication reuses that identity.
 Core exceptions keep their code, cause and metadata; the exception interceptor
 adds request correlation to API errors.
 
@@ -128,9 +129,9 @@ REST GET body filters + query pagination, or GraphQL options string
   adapter maps UserSummary into its existing response DTO
 ```
 
-[FindUsers](../src/modules/user/application/find-users.ts) owns the plain
-query, its result and the [User read port](../src/modules/user/application/user-read.port.ts),
-and imports only the plain core. [SlonikUserReadAdapter](../src/modules/user/database/user-read.adapter.ts)
+[FindUsers](../src/apps/user/application/find-users.ts) owns the plain
+query, its result and the [User read port](../src/apps/user/application/user-read.port.ts),
+and imports only the plain core. [SlonikUserReadAdapter](../src/apps/user/database/user-read.adapter.ts)
 is the only Find Users code that executes SQL. Each returned row must satisfy
 the complete stored-profile schema, including `role`, before only its listed
 fields are mapped into `UserSummary`. As before, an invalid returned row fails
@@ -159,56 +160,35 @@ means untyped results, not interpolated SQL strings. The provider's async result
 parser validates rows and returns parsed values, including coerced timestamps;
 schemas are not merely TypeScript annotations. Mappers still validate writes.
 
-User writes now request an application-owned atomic scope:
+User writes request an application-owned atomic scope:
 
 ```text
 transport validates/maps input and supplies command metadata
-  Nest CQRS handler -> plain CreateUser / DeleteUser
-    UserWriteTransaction.run({ users, recordEvents })
-      users.insert/delete -> persistence only
-      recordEvents(facts, explicit metadata)
-        transitional adapter persists Wallet on UserCreated
-        adapter awaits in-process fact dispatch
-    callback resolves -> Slonik commits
-    callback rejects -> Slonik rolls back
+  Nest CQRS handler -> plain CreateUser
+    UserWriteTransaction.run({ users, recordUserCreated })
+      insert profile + pending user.created envelope
+    commit -> API success
+  background publisher -> route + broker confirmation -> record published_at
+  Wallet delivery -> local Wallet + deduplication transaction -> commit -> ACK
 ```
 
-[CreateUser](../src/modules/user/application/create-user.ts) and
-[DeleteUser](../src/modules/user/application/delete-user.ts) own their input/result
-models and use the [User write ports](../src/modules/user/application/user-write.port.ts).
-They import only the plain core, domain and result types. Creation receives
-identity/time explicitly; both operations supply correlation/causation metadata
-when requesting fact recording. A duplicate email retains the existing conflict
-result; missing deletion retains the not-found result.
+[CreateUser](../src/apps/user/application/create-user.ts) and
+[DeleteUser](../src/apps/user/application/delete-user.ts) use the
+[User write ports](../src/apps/user/application/user-write.port.ts).
+[SlonikUserWriteTransaction](../src/apps/user/database/user-write-transaction.ts)
+binds repositories to the User connection. No connection enters request context
+or crosses into Wallet. A duplicate email retains the conflict result; missing
+deletion retains the not-found result. Deletion does not cancel pending creation
+or touch Wallets. See [User publication](user.md#background-publication) and
+[Wallet consumption](wallet.md#delivery-and-recovery) for the separate durable
+transitions and bounded retry/shutdown behavior.
 
-[SlonikUserWriteTransaction](../src/infrastructure/user-write-transaction.ts)
-creates repositories bound to its local connection. Connections never enter
-the use cases or request context. Repository insert/delete only persist, and
-neither publish nor clear facts. The application explicitly requests recording
-after persistence and clears the aggregate's pending facts after that succeeds.
-
-The adapter temporarily coordinates zero-balance Wallet creation in the same
-transaction before dispatching facts with `publishDomainEvents`. It replaces
-the ambient-context Wallet listener. Deletion never touches Wallets.
-The adapter is the only publication authority for this write path; a failed
-Wallet write or awaited dispatcher rejects the transaction. This in-process
-dispatch occurs **before commit** and is neither a durable record nor an atomic
-external side effect: a listener that already ran cannot be undone by PostgreSQL.
-The asynchronous cutover must replace this bridge with a User-owned outbox and
-post-commit publication, plus an independent Wallet consumer
-([ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md)). No outbox or broker-delivery
-guarantee is introduced in this slice.
-
-HTTP/GraphQL context remains only for request correlation and API errors.
-CLI and message adapters explicitly validate their request DTOs and supply command
-metadata; their direct calls work without HTTP context. A CLI bootstrap and
-independent broker/service startup belong to later work.
-
-The seven original Gherkin cases remain unchanged. Real PostgreSQL regressions
-cover Find Users filtering, pagination, validation and REST/GraphQL response
-mapping, REST/GraphQL compatibility, Wallet write failure/recovery, persistence
-without dispatch, metadata without ambient context, rollback after dispatch
-failure on creation/deletion, and direct CLI/message delegation.
+The seven original Gherkin cases run against external services. System checks
+cover API compatibility, eventual Wallet lookup through both APIs, service/broker
+outages, User restart, profile deletion and uncertain publication. The component
+suites prove local transaction rollback, database ownership, commit-before-ACK,
+routing failures and missing confirmations with real infrastructure. HTTP context
+remains only for request correlation and API errors. See [recovery evidence](recovery.md).
 
 Jest's runner, transformation configs, `ts-jest`, `ts-node`, `ts-loader`, the
 runtime alias hook and Nest's build toolchain have been removed. `@types/jest`

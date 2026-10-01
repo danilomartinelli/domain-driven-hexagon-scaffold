@@ -23,7 +23,7 @@ For bounded source searches and selected file ranges, use the repository helper:
 bun run search -- --files scripts
 bun run search -- 'assertTestEnvironment' database tests
 bun run search --max-bytes=8000 -- 'invocation' node_modules/nx/dist/src/tasks-runner
-bun scripts/search.ts --read --max-bytes=6000 -- src/modules/user/application/create-user.ts 20 54 src/modules/user/application/delete-user.ts 18 33
+bun scripts/search.ts --read --max-bytes=6000 -- src/apps/user/application/create-user.ts 20 54 src/apps/user/application/delete-user.ts 18 33
 ```
 
 The helper previews long matching lines at 240 columns. Read mode accepts

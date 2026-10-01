@@ -30,7 +30,7 @@ failure blocks the commit. Continuous integration runs `bun run check`,
 requests and pushes to `master`. All belong to the `check` job required by the
 `protect-master` ruleset. The uncached broker target uses the pinned Docker image
 to force the healthcheck-before-startup ordering and verifies fixture cleanup
-ownership. The broader runner lifecycle and legacy end-to-end suites remain part
+ownership. The broader runner lifecycle and distributed end-to-end suites remain part
 of local `check:full` validation; its lifecycle suite also includes these broker checks.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
@@ -121,7 +121,7 @@ Package scripts delegate to Nx targets; see [the workspace guide](nx-workspace.m
 for projects, private exports, absent suites and cache inputs. Shared
 quality settings live in `tooling/config`, with native root entry points for
 editors. The compile-time fixture is `src/type-tests/final.decorator.ts`.
-`test:debug` opens the legacy application unit suite; every other suite has its
+`test:debug` opens the User application unit suite; every other suite has its
 own `test-debug` target. Live targets always execute.
 
 ## Workspace and dependency guardrails
@@ -269,12 +269,12 @@ Applications under `src/apps` import only their own files and shared package ent
 nothing else imports their implementation, and their production code cannot import database tooling.
 `check:workspace` injects representative violations into a temporary copy
 (core to Nest or Slonik, adapter to persistence, handler to API DTO, a cycle,
-imports between User, Wallet and the transitional application, and service runtime to database tooling) and
+imports between User and Wallet, and service runtime to database tooling) and
 requires each to fail under its rule name.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
-fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; `wallet` owns
+fixtures, and dependency cycles are errors throughout the checked graph. `type-fixtures` owns compile-time fixtures; `wallet` owns
 `src/apps/wallet` and `user` owns `src/apps/user`; private technical packages now live under `src/packages`.
 Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
@@ -288,9 +288,9 @@ name. Both commands use the same ESM architecture configuration.
 
 Run every applicable check above, including the live suite, before declaring code
 ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` run every project's
-unit suite. `test:debug` runs only `src/tests`; use
+unit suite. `test:debug` runs only User unit tests; use
 `bun run nx run <project>:test-debug` for another suite. Bare `bun test` retains its
-`src/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline.
+`src/packages/core/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline.
 
 Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
 See the [dependency inventory](dependencies.md) for version decisions and security overrides.

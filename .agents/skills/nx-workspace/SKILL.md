@@ -12,7 +12,7 @@ Use bounded JSON queries appropriate to the question:
 
 ```sh
 bun run nx show projects --json
-bun run nx show project legacy-app --json
+bun run nx show project user --json
 bun run nx show projects --withTarget test --json
 bun run nx graph --print
 bun run nx show projects --affected --base=origin/master --head=HEAD --json
@@ -23,7 +23,7 @@ claiming a target exists; read the relevant source configuration when explaining
 why it is configured that way. For uncommitted changes, choose the matching Nx
 affected options rather than assuming `--head=HEAD` includes them.
 
-User/Wallet business code remains in `legacy-app`; `core` and `nest-support` hold
+User and Wallet own their business code independently; `core` and `nest-support` hold
 technical packages. Check entry-point and cycle rules in `src/packages/AGENTS.md`.
 Nx Cloud is disabled. There are no installed `@nx/nest` generators or independent
 service applications; do not infer them from upstream examples.

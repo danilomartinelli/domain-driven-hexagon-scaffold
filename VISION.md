@@ -26,21 +26,16 @@ and Nx ([ADR 0001](docs/adr/0001-modernize-with-bun.md),
 
 ## Current state
 
-- User and Wallet still run together in the transitional `legacy-app`.
-- Nx orchestrates the application, private technical packages (`core`,
+- User and Wallet run as independent Nest applications, each owning its
+  PostgreSQL database. User publishes committed outbox events through RabbitMQ;
+  Wallet consumes them idempotently. See [recovery evidence](docs/recovery.md).
+- Nx orchestrates the applications, private technical packages (`core`,
   `nest-support`, `example`), database, tooling and regression projects; see
   [the Nx guide](docs/nx-workspace.md).
 - The original Gherkin cases and database/API regressions run against
   provisioned PostgreSQL and RabbitMQ; see [developer checks](docs/developer-checks.md).
 
 ## Direction
-
-Priority:
-
-- Split User and Wallet into separate Nest applications, each owning its
-  PostgreSQL database and integrating through RabbitMQ.
-- Application-owned read and transaction ports, with integration events
-  published by an outbox after commit.
 
 Next:
 

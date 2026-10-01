@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun scripts/with-test-database.ts --app=legacy -- bun run test:e2e:prepared",
+        "command": "bun scripts/with-test-database.ts -- bun run test:e2e:prepared",
         "cwd": "."
       }
     },

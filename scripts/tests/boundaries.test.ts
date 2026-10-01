@@ -3,7 +3,7 @@ import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createWorkspace } from './workspace-fixture';
 
-const findUsers = 'src/modules/user/queries/find-users';
+const findUsers = 'src/apps/user/queries/find-users';
 const wallet = 'src/apps/wallet';
 
 /** Each import is legal TypeScript that only the architecture rules reject. */
@@ -40,7 +40,7 @@ const violations = [
     rule: 'integration-contract-is-independent',
     file: 'src/packages/integration-contracts/user-created.ts',
     source:
-      "import type { UserCreatedDomainEvent } from '../../modules/user/domain/events/user-created.domain-event';",
+      "import type { UserCreatedDomainEvent } from '../../apps/user/domain/events/user-created.domain-event';",
   },
   {
     rule: 'no-input-adapter-to-persistence-deps',
@@ -49,7 +49,7 @@ const violations = [
   },
   {
     rule: 'core-is-context-independent',
-    file: 'src/modules/user/application/find-users.ts',
+    file: 'src/apps/user/application/find-users.ts',
     source: "import type { Logger } from '@nestjs/common';",
   },
   {
@@ -70,7 +70,7 @@ const violations = [
   },
   {
     rule: 'no-circular',
-    file: 'src/modules/user/application/user-read.port.ts',
+    file: 'src/apps/user/application/user-read.port.ts',
     source: "import type { FindUsers } from './find-users';",
   },
   {
@@ -87,7 +87,7 @@ const violations = [
     rule: 'apps-are-independent',
     file: `${wallet}/application/wallet-read.port.ts`,
     source:
-      "import type { UserSummary } from '../../../modules/user/application/user-read.port';",
+      "import type { UserSummary } from '../../../apps/user/application/user-read.port';",
   },
   {
     rule: 'app-runtime-excludes-tooling',
@@ -102,9 +102,9 @@ const violations = [
   },
   {
     rule: 'app-implementation-is-private',
-    file: 'src/modules/wallet/wallet.module.ts',
+    file: 'tests/test-utils/ApiClient.ts',
     source:
-      "import type { WalletSummary } from '../../apps/wallet/application/wallet-read.port';",
+      "import type { WalletSummary } from '../../src/apps/wallet/application/wallet-read.port';",
   },
 ];
 

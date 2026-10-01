@@ -46,7 +46,7 @@ test('the test-database wrapper parses application selections before provisionin
   for (const [args, message] of [
     [['--app=unknown', '--', 'true'], 'Unknown database application: unknown'],
     [
-      ['--app=legacy', '--app=unknown', '--', 'true'],
+      ['--app=user', '--app=unknown', '--', 'true'],
       'Unknown database application: unknown',
     ],
     [['--app=wallet'], 'A command after -- is required.'],

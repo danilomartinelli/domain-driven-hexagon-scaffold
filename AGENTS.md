@@ -6,9 +6,7 @@ instructions take precedence within their directory and descendants.
 
 ## Project context
 
-This is a Bun/Nx workspace with NestJS applications. The transitional
-`legacy-app` (`src/main.ts`) still runs User and Wallet business code from
-`src/modules/` together. The independent User application in `src/apps/user/` owns profiles and durable
+This is a Bun/Nx workspace with two independent NestJS applications. The User application in `src/apps/user/` owns profiles and durable
 pending integration events in its own database. The independent Wallet application in
 `src/apps/wallet/` owns Wallet creation from integration events, lookup and its own database; read
 [src/apps/AGENTS.md](./src/apps/AGENTS.md) before working there.
@@ -16,7 +14,7 @@ pending integration events in its own database. The independent Wallet applicati
 - `src/packages/core/` contains framework-free technical primitives;
   `src/packages/nest-support/` contains Nest adapters. Keep business entities
   and use cases in the application.
-- `database/` owns the migration/seed tooling and the legacy content;
+- `database/` owns migration/seed tooling; application directories own their SQL;
   `scripts/` owns environment runners and repository checks; `tooling/config/`
   owns shared quality settings.
 
@@ -63,7 +61,7 @@ Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`, created lazily 
 ### Validation
 
 Use `bun run test:unit` for infrastructure-free application and package tests;
-bare `bun test` only discovers `src/tests`.
+bare `bun test` only discovers `src/packages/core/tests`.
 
 Before declaring code changes ready, run `bun run check:full` with Docker
 running. For documentation-only changes, format the affected files, run

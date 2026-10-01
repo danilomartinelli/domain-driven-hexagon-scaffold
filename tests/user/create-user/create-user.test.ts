@@ -1,6 +1,6 @@
 import { expect } from 'bun:test';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { UserResponseDto } from '@modules/user/dtos/user.response.dto';
+import type { UserResponseDto } from '@tests/test-utils/ApiClient';
 import { TestContext } from '@tests/test-utils/TestContext';
 import { IdResponse } from '@starter/nest-support/http';
 import {

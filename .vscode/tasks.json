@@ -32,7 +32,7 @@
       "group": "test"
     },
     {
-      "label": "Watch transitional application",
+      "label": "Watch User and Wallet",
       "type": "shell",
       "command": "bun run start:dev",
       "options": {

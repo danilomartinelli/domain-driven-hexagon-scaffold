@@ -8,8 +8,8 @@ the same project's TypeScript language service through the read-only CLI below.
 Complete [developer setup](../../../docs/developer-checks.md#setup) first.
 
 ```sh
-bun run typescript:query definition src/main.ts 1 10
-bun run typescript:query references src/main.ts 1 10
+bun run typescript:query definition src/apps/user/main.ts 1 10
+bun run typescript:query references src/apps/user/main.ts 1 10
 bun run typecheck
 ```
 

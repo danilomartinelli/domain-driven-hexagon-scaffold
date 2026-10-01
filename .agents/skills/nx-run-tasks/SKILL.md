@@ -9,7 +9,7 @@ Use package scripts for quality gates and `bun run nx run <project>:<target>` fo
 focused feedback. Use `bun run nx`; direct `npx nx` bypasses repository settings.
 
 - Unit feedback: `bun run test:unit`, or an existing project's `test` target.
-  Bare `bun test` only discovers `src/tests`.
+  Bare `bun test` only discovers `src/packages/core/tests`.
 - Code feedback: focused lint/typecheck targets and `bun run lint:boundaries`.
 - Final code validation: `bun run check:full`, with Docker running.
 - Documentation-only work: format changed files, run `bun run check:docs` and

@@ -34,7 +34,7 @@ include file replaces Conductor's default Files to copy rule. Copying happens
 when creating a workspace, not as continuous synchronization between workspaces.
 
 No copied files are required for the isolated development environment; a copied
-`.env` is used only by legacy commands outside the selected environment. Keep
+`.env` is used only by database tooling outside the selected environment. Keep
 credentials out of shared settings. Dependency installs, Nx caches and generated
 `.context/test-runs/` manifests remain workspace-local.
 
@@ -48,9 +48,9 @@ bash scripts/conductor/run.sh
 
 The local-only script requires `CONDUCTOR_IS_LOCAL=1` and `CONDUCTOR_PORT`.
 It prepares the named development run `conductor`, applies pending migrations
-and starts the Nest watch server at `http://localhost:$CONDUCTOR_PORT`
-(Swagger at `/docs`). The app accepts `PORT` and defaults to 3000 outside this
-script. Database/broker identities and ports are isolated by the existing
+for both applications, then starts User on `CONDUCTOR_PORT` and Wallet on
+`CONDUCTOR_PORT + 1` (each has Swagger at `/docs`). The environment variables
+are `USER_HTTP_PORT` and `WALLET_HTTP_PORT`; ordinary preparation allocates them. Database/broker identities and ports are isolated by the existing
 [workspace environment runner](database.md#isolation-and-configuration), so
 different workspaces can run concurrently. Keep database/broker shell overrides
 unset to use the generated targets.

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { withCleanup } from '../../../../../scripts/tests/cleanup';
 import {
   destination,
+  brokerOptions,
   eventually,
   publish,
   userCreated,
@@ -15,7 +16,7 @@ import {
   walletUrl,
 } from './wallet-process';
 import { startConsumerWorker } from './worker-fixture';
-import { brokerGate } from './broker-gate';
+import { brokerGate } from '../../../../../scripts/tests/broker-gate';
 
 test('a confirmed RabbitMQ event eventually creates a zero-balance Wallet through both APIs without User', async () => {
   await withBroker(async (channel) => {
@@ -173,7 +174,7 @@ test('broker authentication failure logs its diagnostic while HTTP remains avail
 
 test('a database failure logs its diagnostic and delivery identity, rolls back and retries with backoff', async () => {
   await stopWallet();
-  const gate = await brokerGate();
+  const gate = await brokerGate(brokerOptions());
   gate.allow();
   await withCleanup(async () => {
     await ownerDatabase().query(
@@ -229,7 +230,7 @@ test('a database failure logs its diagnostic and delivery identity, rolls back a
 
 test('Wallet HTTP and GraphQL start and stay usable during broker loss, with backoff and eventual recovery', async () => {
   await stopWallet();
-  const gate = await brokerGate();
+  const gate = await brokerGate(brokerOptions());
   const absent = async () => {
     expect(
       (await fetch(`${walletUrl()}/v1/wallets/by-user/user-offline`)).status,

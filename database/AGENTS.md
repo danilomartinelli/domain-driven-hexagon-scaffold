@@ -1,8 +1,7 @@
 # Database instructions
 
 Read [the database workflow](../docs/database.md) before changing migrations,
-seeds or target selection. The registered applications are `legacy`, which
-owns the shared User/Wallet schema in this directory, and `wallet`, whose
+seeds or target selection. The registered applications are `wallet`, whose
 migrations and seed live in `src/apps/wallet/database/`, and `user`, whose
 profile/outbox baseline and seed live in `src/apps/user/database/`.
 
@@ -19,8 +18,8 @@ profile/outbox baseline and seed live in `src/apps/user/database/`.
   `bun run migration:create add-user-index` (replace the example name).
   Preserve the `-- Up Migration` and `-- Down Migration` sections.
 - Let `node-pg-migrate` manage `public.pgmigrations`, transactions and advisory
-  locking. The baseline expects an empty database; its rollback drops the User
-  and Wallet tables and their data.
+  locking. Each baseline expects its own empty database; rollback removes only
+  the owning application tables and their data.
 - Keep seeds explicit, ordered after migrations and within one transaction.
   Current seeds are not idempotent: repeating them fails and rolls back.
   Environment preparation alone does not migrate or seed.

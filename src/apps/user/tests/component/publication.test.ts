@@ -1,9 +1,16 @@
 import { expect, test } from 'bun:test';
 import { connect } from 'amqplib';
 import { withCleanup } from '../../../../../scripts/tests/cleanup';
-import { getHttpServer, ownerDatabase } from './user-process';
+import {
+  getHttpServer,
+  ownerDatabase,
+  stopUser,
+  startUser,
+} from './user-process';
 
-test('neither rolled-back nor committed creation publishes in the pending-only slice', async () => {
+test('only committed creation is routed persistently and confirmed while Wallet is stopped', async () => {
+  await stopUser();
+  await startUser({ RABBITMQ_PORT: String(process.env.RABBITMQ_PORT) });
   const connection = await connect(
     {
       hostname: process.env.RABBITMQ_HOST,
@@ -50,15 +57,30 @@ test('neither rolled-back nor committed creation publishes in the pending-only s
         postalCode: 'NW16XE',
       })
       .expect(201);
-    expect(
+    const deadline = Date.now() + 8_000;
+    while (
       (
         await owner.query(
           'SELECT * FROM user_outbox WHERE published_at IS NULL',
         )
-      ).rows,
-    ).toHaveLength(1);
+      ).rowCount !== 0
+    ) {
+      if (Date.now() > deadline)
+        throw new Error('Committed event was not published');
+      await Bun.sleep(50);
+    }
+    const message = await channel.get('wallet.user-created', { noAck: true });
+    expect(message).not.toBe(false);
+    if (!message) throw new Error('Missing committed event');
+    const { rows } = await owner.query<{ envelope: unknown }>(
+      'SELECT envelope FROM user_outbox',
+    );
+    expect(JSON.parse(message.content.toString()) as unknown).toEqual(
+      rows[0]?.envelope,
+    );
+    expect(message.properties.deliveryMode).toBe(2);
     expect((await channel.checkQueue('wallet.user-created')).messageCount).toBe(
       0,
     );
   }, [() => connection.close()]);
-});
+}, 20_000);
