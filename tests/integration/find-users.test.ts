@@ -206,7 +206,7 @@ test('GraphQL findUsers keeps its unparsed string options and response fields', 
   const rue = await create(profiles.rue);
   const baker = await create(profiles.baker);
   const response = await getHttpServer()
-    .post('/graphql')
+    .post('/user/graphql')
     .send({
       // The educational string argument is not parsed into filters.
       query: `{ findUsers(options: "{\\"country\\":\\"France\\",\\"limit\\":1}") { count limit page data { id email country postalCode street } } }`,
@@ -244,7 +244,7 @@ test('a returned profile with a stored role outside the User roles fails the lis
     message: 'Internal server error',
   });
   const graphql = await getHttpServer()
-    .post('/graphql')
+    .post('/user/graphql')
     .send({ query: '{ findUsers(options: "") { count } }' })
     .expect(200);
   expect(graphql.body).toMatchObject({

@@ -2,7 +2,7 @@
 
 Use Bun 1.4.2 and Docker from the repository root. Install dependencies with
 `bun install --frozen-lockfile`. The Nx-backed environment commands provision
-PostgreSQL 18.6 and RabbitMQ (official management image pinned by digest).
+PostgreSQL 18.6, RabbitMQ and Kong 3.9.1 (broker and gateway images pinned by digest).
 Each environment belongs to the real workspace path and a named run.
 
 ## Development
@@ -84,11 +84,14 @@ run, or explicitly selected at first preparation with `USER_DB_PORT`, `WALLET_DB
 port fails startup and triggers cleanup. Allocation cannot reserve a port
 across Docker startup; a race also fails closed and can be retried with a fresh run.
 
-The manifest also reserves `GATEWAY_NAME`, `GATEWAY_HOST` (default
+The manifest configures `GATEWAY_NAME`, `GATEWAY_HOST` (default
 `host.docker.internal`), `GATEWAY_PROXY_PORT`, `GATEWAY_ADMIN_PORT`,
-`USER_HTTP_PORT` and `WALLET_HTTP_PORT` for the later Kong routing slice.
-Those ports and host are configurable at preparation. Kong is not started yet;
-User and Wallet listen on `USER_HTTP_PORT` and `WALLET_HTTP_PORT`.
+`USER_HTTP_PORT` and `WALLET_HTTP_PORT`. Those ports and host are configurable
+at first preparation. Kong runs in its own container; User and Wallet keep
+running on the host with Bun, listening on their selected HTTP ports.
+Tests reject overrides of gateway identity, host and ports as well as database
+and broker overrides. Keep development gateway/HTTP settings consistent with
+the prepared manifest; changing only `env:exec` cannot reconfigure Kong.
 
 The generated manifest and Compose configuration live under
 `.context/test-runs/<project>/` with owner-only file permissions. Treat them as
@@ -126,6 +129,52 @@ termination after five seconds, then attempt cleanup and return 130/143.
 A cleanup failure turns a successful wrapped test run into failure. A forcibly
 killed runner or unavailable Docker daemon may leave resources for a later
 `env:down` using the same run ID.
+
+## Gateway URLs
+
+Follow [Development](#development) to start Docker infrastructure, migrate each
+database and start both host applications through the same `env:exec` selection.
+Preparation waits for Kong's own healthcheck; it does not start the applications
+or make their upstreams ready. Requests need the corresponding host application
+running. RabbitMQ delivery to a running Wallet is required for a newly created
+User's Wallet to become visible.
+
+All public HTTP operations use one base URL, `http://127.0.0.1:<GATEWAY_PROXY_PORT>`:
+
+| Operation         | Gateway URL                                                        |
+| ----------------- | ------------------------------------------------------------------ |
+| Create/list Users | `http://127.0.0.1:<GATEWAY_PROXY_PORT>/v1/users`                   |
+| Delete a User     | `http://127.0.0.1:<GATEWAY_PROXY_PORT>/v1/users/:id`               |
+| Look up a Wallet  | `http://127.0.0.1:<GATEWAY_PROXY_PORT>/v1/wallets/by-user/:userId` |
+| User GraphQL      | `http://127.0.0.1:<GATEWAY_PROXY_PORT>/user/graphql`               |
+| Wallet GraphQL    | `http://127.0.0.1:<GATEWAY_PROXY_PORT>/wallet/graphql`             |
+
+Print the exact URLs for the prepared run (use `--run=conductor` for Conductor):
+
+```sh
+bun run env:exec --environment=development --run=default -- bun -e 'const base = "http://127.0.0.1:" + process.env.GATEWAY_PROXY_PORT; for (const path of ["/v1/users", "/v1/wallets/by-user/:userId", "/user/graphql", "/wallet/graphql"]) console.log(base + path);'
+```
+
+The [versioned declarative route template](../docker/kong.json) is rendered with
+the manifest's container-to-host address and application ports. Kong runs in
+[DB-less mode](https://developer.konghq.com/gateway/db-less-mode/). REST paths,
+query strings and bodies are preserved; each GraphQL route maps to its owning
+application's `/graphql`. There is no combined `/graphql` endpoint or federation.
+Kong routes HTTP only; RabbitMQ remains the service-event transport. Pending
+Wallet lookup returns REST 404 or GraphQL `walletByUser: null`. Deleting a User
+does not delete its Wallet or cancel a pending creation event.
+
+Docker Desktop supplies `host.docker.internal`; the Compose `host-gateway` mapping
+also supports Linux Docker Engine. Host applications must listen on an interface
+reachable from the container, as the default Nest listeners do. Set `GATEWAY_HOST`
+at preparation if your Docker environment requires another reachable address.
+The local Admin API is `http://127.0.0.1:<GATEWAY_ADMIN_PORT>`; it is separate from
+the public proxy and bound to loopback. Development and test gateways have
+distinct names, ports and owner labels. Failed setup and normal shutdown use the
+same ownership checks and preserve sibling runs and development volumes.
+
+`bun run test:e2e` runs all seven Gherkin cases and API regressions through Kong;
+component tests continue to address their independent service directly.
 
 ## Application-owned database content
 

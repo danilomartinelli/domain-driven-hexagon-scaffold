@@ -11,10 +11,7 @@ export const wallet = new ServiceProcess('wallet');
 let userPool: DatabasePool | undefined;
 let walletPool: DatabasePool | undefined;
 export function getHttpServer(): ReturnType<typeof request> {
-  return request(user.url);
-}
-export function getWalletServer(): ReturnType<typeof request> {
-  return request(wallet.url);
+  return request(`http://127.0.0.1:${String(process.env.GATEWAY_PROXY_PORT)}`);
 }
 export function getTestDatabase(): DatabasePool {
   if (!userPool) throw new Error('User test database unavailable');

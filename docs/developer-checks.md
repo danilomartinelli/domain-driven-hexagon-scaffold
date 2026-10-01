@@ -31,7 +31,8 @@ requests and pushes to `master`. All belong to the `check` job required by the
 `protect-master` ruleset. The uncached broker target uses the pinned Docker image
 to force the healthcheck-before-startup ordering and verifies fixture cleanup
 ownership. The distributed end-to-end suite verifies the service integration and
-all seven Gherkin cases. The broader runner lifecycle suite remains part of local
+all seven Gherkin cases through Kong, including separate GraphQL schemas and
+pending Wallet/deletion behavior. The broader runner lifecycle suite remains part of local
 `check:full` validation and also includes these broker checks.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
@@ -165,7 +166,7 @@ queries are bounded to 60 seconds and include development dependencies.
 ## Isolated database checks
 
 Start Docker and run `bun run test:e2e`; no environment file is required.
-It creates a unique workspace/run configuration with PostgreSQL and RabbitMQ,
+It creates a unique workspace/run configuration with PostgreSQL, RabbitMQ and Kong,
 applies migrations and seeds explicitly, runs the suite, and shuts down its
 owned containers and network. Tests use tmpfs; no volumes are deleted.
 Explicit shell values are preserved, but unsafe test target overrides fail

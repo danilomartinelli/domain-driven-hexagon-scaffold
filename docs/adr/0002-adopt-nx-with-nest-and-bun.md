@@ -234,8 +234,13 @@ Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-s
   [validated graph](../nx-workspace.md#executable-boundaries) documents composition
   and the test-only tooling edges.
 
-Remaining: operator replay tooling, the Kong gateway, distributions, broader
-diagnostics and generators (#27 to #35).
+- #27: an owned [Kong DB-less gateway](../database.md#gateway-urls) renders
+  versioned routes from each environment's host/ports. System tests preserve the
+  original Gherkin and User API contracts through the proxy, with independent
+  GraphQL schemas, eventual Wallet lookup and deletion during pending delivery.
+
+Remaining: operator replay tooling, distributions, broader diagnostics and
+generators (#28 to #35).
 
 ## References
 

@@ -55,6 +55,10 @@ are `USER_HTTP_PORT` and `WALLET_HTTP_PORT`; ordinary preparation allocates them
 different workspaces can run concurrently. Keep database/broker shell overrides
 unset to use the generated targets.
 
+Preparation also starts an owned Kong gateway with separately allocated proxy
+and Admin ports. See [gateway URLs](database.md#gateway-urls) to print its exact
+URLs with `--run=conductor`; User and Wallet retain separate GraphQL schemas.
+
 Seeds remain explicit because they are not idempotent. To add the example user
 and wallet once, while the development environment is running:
 
