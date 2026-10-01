@@ -60,8 +60,8 @@ test('User starts, creates over REST and GraphQL and restarts with only its own 
     if (service !== 'postgres-user') siblings.push(id);
   }
   expect(siblings).toHaveLength(manifest.databases.length);
-  await stopUser();
   await withCleanup(async () => {
+    await stopUser();
     await docker(['stop', '--time', '3', ...siblings]);
     for (const id of siblings)
       expect(
@@ -103,6 +103,10 @@ test('User starts, creates over REST and GraphQL and restarts with only its own 
     const listed = await getHttpServer().get('/v1/users').expect(200);
     expect(listed.body).toMatchObject({ count: 2 });
   }, [
+    async () => {
+      await stopUser();
+      await startUser();
+    },
     async () => {
       await docker(['start', ...siblings]);
       const deadline = Date.now() + 20_000;
