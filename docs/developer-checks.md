@@ -258,13 +258,13 @@ Applications under `src/apps` import only their own files and shared package ent
 nothing else imports their implementation, and their production code cannot import database tooling.
 `check:workspace` injects representative violations into a temporary copy
 (core to Nest or Slonik, adapter to persistence, handler to API DTO, a cycle,
-imports between the Wallet and transitional applications, and Wallet runtime to database tooling) and
+imports between User, Wallet and the transitional application, and service runtime to database tooling) and
 requires each to fail under its rule name.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
 fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; `wallet` owns
-`src/apps/wallet`; private technical packages now live under `src/packages`.
+`src/apps/wallet` and `user` owns `src/apps/user`; private technical packages now live under `src/packages`.
 Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was

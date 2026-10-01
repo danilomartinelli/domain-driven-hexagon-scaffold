@@ -7,8 +7,8 @@ events and looks them up by User identity through REST and GraphQL. Its APIs
 start without a User process or an available broker and use only its own database.
 The transitional `legacy-app` still creates Wallets in its own database;
 Wallet does not read that data. The User integration mapper defines the producer
-envelope; wiring User persistence and publication through an outbox belongs to
-the later User/outbox slices (#23/#24).
+envelope; the independent [User application](user.md) now persists it in its outbox,
+and background publication belongs to #24.
 
 ## Run it locally
 
@@ -27,7 +27,7 @@ bun run env:exec --environment=development --run=default -- bun run start:wallet
 `start:wallet:debug` adds Bun's inspector. They invoke the `wallet:serve`,
 `wallet:watch` and `wallet:debug` Nx targets. The server listens on
 `WALLET_HTTP_PORT`, allocated per run and logged at startup. The seed adds one
-lookup example: a zero-balance Wallet for the seeded `john@gmail.com` User
+lookup example: a zero-balance Wallet for the transitional `john@gmail.com` User
 identity. It is the fixture's only source; no user-created event is scheduled
 for it. Seeds are not idempotent, so a second run fails and rolls back.
 

@@ -139,14 +139,21 @@ const seedsProbe = `
   await wallets.connect();
   const lookups = (await wallets.query('SELECT "userId", balance FROM wallets')).rows;
   await wallets.end();
-  if (lookups.length !== 1 || lookups[0].userId !== profiles[0].id || lookups[0].balance !== 0) throw new Error('Wallet seed is not consistent with the User seed');
+  if (lookups.length !== 1 || lookups[0].userId !== profiles[0].id || lookups[0].balance !== 0) throw new Error('Wallet seed is not consistent with the legacy User seed');
+  const standalone = new Client({host: process.env.USER_DB_HOST, port: Number(process.env.USER_DB_PORT), user: process.env.USER_DB_USERNAME, password: process.env.USER_DB_PASSWORD, database: process.env.USER_DB_NAME});
+  await standalone.connect();
+  const ownProfiles = (await standalone.query('SELECT id, email FROM users')).rows;
+  const pending = (await standalone.query('SELECT envelope FROM user_outbox WHERE published_at IS NULL')).rows;
+  await standalone.end();
+  if (ownProfiles.length !== 1 || pending.length !== 1 || pending[0].envelope.data.userId !== ownProfiles[0].id) throw new Error('User seed must have exactly one pending creation');
+  if (lookups.some((wallet) => wallet.userId === ownProfiles[0].id)) throw new Error('User seed duplicates direct Wallet insertion');
 `;
 
 test('a named test environment prepares PostgreSQL and RabbitMQ for explicit database tooling', async () => {
   await withCleanup(async () => {
     const prepared = await environment('prepare');
     expect(prepared.code, prepared.stdout + prepared.stderr).toBe(0);
-    for (const app of ['legacy', 'wallet']) {
+    for (const app of ['legacy', 'wallet', 'user']) {
       for (const script of ['migration:up:tests', 'seed:up:tests']) {
         const result = await environment(
           'exec',
@@ -422,7 +429,7 @@ test('a bound database port fails preparation and removes only the failed run', 
   }, [() => succeeded(failed('down')), () => succeeded(sibling('down'))]);
 }, 120_000);
 
-test('preparing a development run created before Wallet was registered adds only its database', async () => {
+test('preparing a development run created before independent apps were registered preserves legacy data', async () => {
   const name = `upgrade-${randomUUID().slice(0, 8)}`;
   const dev = namedEnvironment('development', name);
   const { project, directory, manifestPath } = environmentLocation(
@@ -485,9 +492,10 @@ test('preparing a development run created before Wallet was registered adds only
     );
     expect(upgraded.databases.map((db) => db.app).sort()).toEqual([
       'legacy',
+      'user',
       'wallet',
     ]);
-    for (const app of ['legacy', 'wallet']) {
+    for (const app of ['legacy', 'wallet', 'user']) {
       for (const script of ['migration:up', 'seed:up'])
         await succeeded(
           dev('exec', ['--', process.execPath, 'run', script], {
@@ -496,7 +504,7 @@ test('preparing a development run created before Wallet was registered adds only
         );
     }
     await succeeded(dev('exec', ['--', process.execPath, '-e', seedsProbe]));
-    // Preparing again reuses the upgraded manifest and both databases' data.
+    // Preparing again reuses the upgraded manifest and all databases' data.
     await succeeded(dev('down'));
     await succeeded(dev('prepare'));
     expect(readEnvironment('development', name)).toEqual({

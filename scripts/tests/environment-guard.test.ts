@@ -15,6 +15,12 @@ test('direct test cleanup and database tools reject an unowned target before con
       './src/apps/wallet/tests/component/preload.ts',
       './src/apps/wallet/tests/component',
     ],
+    [
+      'test',
+      '--preload',
+      './src/apps/user/tests/component/preload.ts',
+      './src/apps/user/tests/component',
+    ],
     ['database/migrate.mjs', 'down'],
     ['database/seed.mjs'],
   ]) {

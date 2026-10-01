@@ -240,6 +240,7 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
     for (const [project, dependencies] of Object.entries({
       'legacy-app': ['core', 'nest-support'],
       wallet: ['core', 'nest-support'],
+      user: ['core', 'nest-support', 'integration-contracts'],
       'nest-support': ['core'],
       e2e: ['legacy-app', 'test-runner'],
       'test-runner': ['database', 'infrastructure'],
@@ -261,6 +262,10 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
       graph.dependencies[project].map((edge) => edge.target);
     expect(targets('wallet')).not.toContain('legacy-app');
     expect(targets('legacy-app')).not.toContain('wallet');
+    expect(targets('user')).not.toContain('wallet');
+    expect(targets('user')).not.toContain('legacy-app');
+    expect(targets('wallet')).not.toContain('user');
+    expect(targets('legacy-app')).not.toContain('user');
     // Shared tooling must not link an application to the transitional one.
     expect(targets('database')).not.toContain('legacy-app');
   } finally {

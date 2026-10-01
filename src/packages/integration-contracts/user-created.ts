@@ -29,6 +29,11 @@ const envelope = z.object({
 
 export type UserCreatedEvent = z.infer<typeof envelope>;
 
+/** Request metadata may be reused on the wire only when it fits the identity contract. */
+export function isUserCreatedIdentity(value: unknown): value is string {
+  return identity.safeParse(value).success;
+}
+
 export type UserCreatedDelivery =
   | { accepted: true; event: UserCreatedEvent }
   | { accepted: false; reason: 'invalid-or-unsupported-user-created' };

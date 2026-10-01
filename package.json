@@ -56,7 +56,11 @@
     "check:docs": "bun scripts/check-docs.ts",
     "search": "bun scripts/search.ts",
     "typescript:query": "bun --no-env-file scripts/typescript-query.ts",
-    "agents:opencode": "OPENCODE_DISABLE_PROJECT_CONFIG=false opencode"
+    "agents:opencode": "OPENCODE_DISABLE_PROJECT_CONFIG=false opencode",
+    "start:user": "bun run nx run user:serve",
+    "start:user:dev": "bun run nx run user:watch",
+    "start:user:debug": "bun run nx run user:debug",
+    "test:user:component": "bun run nx run user:test-component"
   },
   "dependencies": {
     "@nestjs/apollo": "14.0.3",

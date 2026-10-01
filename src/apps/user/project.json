@@ -1,0 +1,104 @@
+{
+  "name": "user",
+  "projectType": "application",
+  "tags": ["scope:user", "type:app"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint src/apps/user --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project src/apps/user/tsconfig.json",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun test ./src/apps/user/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-watch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --watch ./src/apps/user/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-coverage": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --coverage ./src/apps/user/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-debug": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --inspect-brk test ./src/apps/user/tests/unit",
+        "cwd": "."
+      }
+    },
+    "test-component": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts --app=user -- bun run nx run user:test-component-prepared",
+        "cwd": "."
+      }
+    },
+    "test-component-prepared": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --preload ./src/apps/user/tests/component/preload.ts ./src/apps/user/tests/component",
+        "cwd": "."
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun src/apps/user/main.ts",
+        "cwd": "."
+      }
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --watch src/apps/user/main.ts",
+        "cwd": "."
+      }
+    },
+    "debug": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --inspect --watch src/apps/user/main.ts",
+        "cwd": "."
+      }
+    },
+    "lint-fix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --bun eslint src/apps/user --max-warnings 0 --fix",
+        "cwd": "."
+      }
+    }
+  },
+  "implicitDependencies": ["test-runner"]
+}
