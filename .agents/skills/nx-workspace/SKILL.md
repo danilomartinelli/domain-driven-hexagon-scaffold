@@ -25,8 +25,9 @@ affected options rather than assuming `--head=HEAD` includes them.
 
 User and Wallet own their business code independently; `core` and `nest-support` hold
 technical packages. Check entry-point and cycle rules in `src/packages/AGENTS.md`.
-Nx Cloud is disabled. There are no installed `@nx/nest` generators or independent
-service applications; do not infer them from upstream examples.
+Keep Nx Cloud disabled. Discover current applications with
+`bun run nx show projects --type app --json`; confirm generator availability
+against the installed plugins.
 
 The minimal Nx MCP supplies current Nx documentation. CLI output and the local
 guides provide workspace and task information. For actual execution,

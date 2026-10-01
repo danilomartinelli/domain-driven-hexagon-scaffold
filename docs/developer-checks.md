@@ -46,7 +46,7 @@ the affected files, `bun run check:docs`, and verification of changed commands.
 | Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                                                                           |
 | Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                                                                             |
 | Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                                                                            |
-| Architecture      | `bun run lint:boundaries` | `src/`, `tests/`, `scripts/` and `database/`, including type-only imports and aliases; `deps:validate` is an alias                                                                                  |
+| Architecture      | `bun run lint:boundaries` | Nx project ownership/cycles plus file-layer checks in `src/`, `tests/`, `scripts/` and `database/`, including type-only imports, exports and aliases; `deps:validate` is an alias                   |
 | Core and packages | `bun run test:unit`       | Every project's infrastructure-free `test` target: domain, use cases, commands, exceptions and colocated package tests                                                                              |
 | Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up                                                          |
 | Components        | `bun run test:component`  | Each application's `test-component` target: provisions an isolated run, migrates/seeds only that application, starts it without sibling services, checks its APIs and database ownership, cleans up |
@@ -260,18 +260,27 @@ two empty Nest module classes and the public query marker base. Wallet creation
 now records its `userId` as part of the domain fact. Unsafe file-wide suppressions in
 the conversion and decorator helpers have been removed.
 
-## Architecture and deferred work
+## Architecture
+
+`workspace:boundaries` combines the resolved Nx project graph with
+dependency-cruiser's file graph. The repository-owned Nx checker rejects imports
+of app implementation, nontechnical shared dependencies, invalid core/contract
+dependencies and project cycles, including manifest and implicit edges. The
+[workspace guide](nx-workspace.md#executable-boundaries) documents the ownership
+matrix and diagrams.
 
 `.dependency-cruiser.mjs` closes the import graph of shared DDD, exceptions,
 foundation helpers, User/Wallet domain, User and Wallet use cases, their ports and command inputs to plain core modules
 and `oxide.ts`. This includes type-only imports and paths through barrel exports.
-API adapters and CQRS handlers may not import a module's or application's `database/` persistence models or repositories.
+API adapters and CQRS handlers may not import an application's `database/` persistence models or repositories.
 Applications under `src/apps` import only their own files and shared package entry points;
 nothing else imports their implementation, and their production code cannot import database tooling.
 `check:workspace` injects representative violations into a temporary copy
-(core to Nest or Slonik, adapter to persistence, handler to API DTO, a cycle,
-imports between User and Wallet, and service runtime to database tooling) and
-requires each to fail under its rule name.
+(core/command inputs to Nest, Slonik, RabbitMQ or ambient context, adapter to
+persistence, handler to API DTO, type-only cycles, private/unexported package
+paths, test-helper aliases, cross-app imports and shared-barrel bypasses) and
+requires each to fail under its rule name. The legal graph passes before and
+after restoration. Declared Nx edges are also mutated after warming the cache.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
@@ -283,9 +292,15 @@ The outdated classification of all `async_hooks` exports as deprecated was
 removed: [AsyncLocalStorage is stable](https://nodejs.org/api/async_context.html#class-asynclocalstorage).
 
 `bun run depcruise --info` reports analyzer capabilities. `bun run deps:graph`
-regenerates `assets/dependency-graph.svg` and requires Graphviz's `dot` executable.
-Ensure `dot -V` identifies Graphviz, not an unrelated executable with the same
-name. Both commands use the same ESM architecture configuration.
+regenerates `assets/dependency-graph.svg`. It checks `dot -V` for each executable
+named `dot` on PATH and uses the first that identifies itself as Graphviz.
+Set `GRAPHVIZ_DOT` to an explicit executable path to override discovery; an invalid
+override fails. Analysis and rendering have separate checked exit statuses and
+30-second deadlines. The SVG is replaced atomically only after both succeed and
+produce SVG output; failures preserve the previous graph and remove temporary
+files. Graphviz is needed for manual rendering, while `check:workspace` exercises
+the CLI with controlled executable fixtures, including a shadowed `dot`, analyzer
+and renderer failures. Both graph commands use the same ESM configuration.
 
 Run every applicable check above, including the live suite, before declaring code
 ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` run every project's

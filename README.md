@@ -1232,20 +1232,20 @@ Read more:
 
 To make sure everyone in the team adheres to defined architectural practices, use tools and libraries that can analyze and validate dependencies between files and layers.
 
-For example:
+This workspace validates Nx project ownership and layer direction with:
 
-```typescript
-  // Dependency cruiser example
-  {
-    name: 'no-domain-deps',
-    comment: 'Domain layer cannot depend on api or database layers',
-    severity: 'error',
-    from: { path: ['domain', 'entity', 'aggregate', 'value-object'] },
-    to: { path: ['api', 'controller', 'dtos', 'database', 'repository'] },
-  },
+```sh
+bun run lint:boundaries
 ```
 
-Snippet of code above will prevent your domain layer to depend on the API layer or database layer. Example config: [.dependency-cruiser.mjs](.dependency-cruiser.mjs)
+The [Nx graph check](scripts/check-project-boundaries.ts) rejects cross-app
+dependencies, shared-library ownership violations and project cycles, including
+implicit edges. [dependency-cruiser](.dependency-cruiser.mjs) checks source
+imports and exports, including type-only imports and aliases. Domain, use cases
+and command inputs cannot import framework/transport/database adapters or ambient
+context, even through a shared barrel. Production code cannot import test helpers.
+The [workspace guide](docs/nx-workspace.md#executable-boundaries) describes the
+allowed graph and executable invalid-import regressions.
 
 You can also generate graphs like this:
 

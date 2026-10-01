@@ -227,8 +227,15 @@ Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-s
   correlated responses, retained failures and commit-before-ACK recovery.
   Component tests exercise the real broker/database without Wallet.
 
+- #26: executable Nx project ownership and cycle checks plus final intra-project
+  layer rules. Real command regressions reject type-only imports, shared-barrel
+  bypasses, test helpers, private exports and declared project edges; command
+  inputs are part of the context-independent core. The
+  [validated graph](../nx-workspace.md#executable-boundaries) documents composition
+  and the test-only tooling edges.
+
 Remaining: operator replay tooling, the Kong gateway, distributions, broader
-diagnostics and generators (#26 to #35).
+diagnostics and generators (#27 to #35).
 
 ## References
 

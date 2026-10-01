@@ -15,9 +15,25 @@ Keep exploration output bounded: list identifiers first, then read selected
 records. For tool discovery, filter by the required capability and inspect only
 the matching tool names/descriptions; do not dump the whole registry. For source
 structure and relationships, use CodeGraph's `codegraph_explore` MCP tool with a
-specific question and a small `maxFiles` budget (for example, 5), or its CLI:
-`codegraph explore --max-files 5 'runCommand'`. Setup and client activation are in
+specific question and a small `maxFiles` budget, or the bounded CLI:
+`bun run explore --max-files=3 -- 'runCommand'`. Setup and client activation are in
 [agent automation](automation.md#codegraph).
+
+The CLI saves CodeGraph stdout/stderr and exit status under
+`.context/codegraph/<capture-id>/`, then emits a page limited to 16,000 UTF-8 bytes
+across both output streams. `--max-bytes=<n>` selects 512..1,048,576 bytes;
+`--timeout-ms=<n>` selects a 1..60,000 ms command deadline (default 10 seconds).
+Exit 125 with `[explore:resume]` means more saved output is available. Continue
+with `bun run explore --resume=<capture-id>:<range>:<line>`, without repeating the
+query. Pages reuse the saved result even if source files change; a fresh query
+creates a new capture. Long lines report the minimum page size. A line exceeding
+the maximum page must be inspected through a narrower read of the saved artifact.
+Successful commands retain their complete output; commands exceeding the
+8,000,000-character per-stream capture limit are stopped and recorded as
+incomplete. Timeout and tool failures remain nonzero and appear in every page's
+status; after the last page, the CLI returns the captured command's exit status.
+For a budget excluding the package runner's command echo, use
+`bun --no-env-file scripts/explore.ts` with the same options.
 
 Use `rg --files` or `rg -n '<symbol>' <directory>` for exact text and paths,
 then read the relevant line range. Use TypeScript navigation for semantic

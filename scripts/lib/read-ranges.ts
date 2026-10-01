@@ -1,4 +1,5 @@
 import { open } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { runCommand, type CommandResult } from './command';
@@ -10,6 +11,7 @@ export function readRanges(
   args: string[],
   options: Parameters<typeof runCommand>[1],
   resume?: string,
+  labels: 'path' | 'basename' = 'path',
 ): Promise<CommandResult> {
   return runCommand(
     [
@@ -17,6 +19,7 @@ export function readRanges(
       fileURLToPath(import.meta.url),
       String(options.maxOutput ?? 64_000),
       resume ?? '',
+      labels,
       ...args,
     ],
     options,
@@ -27,6 +30,7 @@ async function printRanges(
   args: string[],
   maxBytes: number,
   resume: string,
+  labels: string,
 ): Promise<void> {
   const statusBytes = 160;
   const budget = maxBytes - statusBytes;
@@ -84,7 +88,8 @@ async function printRanges(
           for await (const line of lines) {
             lineNumber++;
             if (lineNumber >= selectedStart) {
-              const output = `${file}:${String(lineNumber)}:${line}\n`;
+              const label = labels === 'basename' ? basename(file) : file;
+              const output = `${label}:${String(lineNumber)}:${line}\n`;
               const size = Buffer.byteLength(output);
               if (bytes + size > budget) {
                 if (size + statusBytes > MAX_SEARCH_BYTES) {
@@ -133,5 +138,10 @@ async function printRanges(
 
 if (import.meta.main) {
   const maxBytes = Number(process.argv[2]);
-  await printRanges(process.argv.slice(4), maxBytes, process.argv[3]);
+  await printRanges(
+    process.argv.slice(5),
+    maxBytes,
+    process.argv[3],
+    process.argv[4],
+  );
 }
