@@ -100,3 +100,7 @@ Each run prints its command and cleanup statuses and the path to its retained
 processes before purging queues and truncating their separate databases, so a
 previous scenario cannot deliver work into the next one. See
 [developer checks](developer-checks.md) for the final quality gate.
+
+For retained invalid or unsupported commands/events, use the scoped
+[inspection and replay workflow](failure-queues.md). Broker acceptance, local
+application commit and downstream consumer completion remain separate states.

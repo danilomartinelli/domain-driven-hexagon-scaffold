@@ -1,0 +1,23 @@
+{
+  "name": "rabbitmq",
+  "projectType": "library",
+  "tags": ["scope:shared", "type:technical"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint src/packages/rabbitmq --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project src/packages/rabbitmq/tsconfig.json",
+        "cwd": "."
+      }
+    }
+  }
+}

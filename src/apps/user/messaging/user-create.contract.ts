@@ -54,6 +54,35 @@ export function decodeUserCreateCommand(
   return { accepted: false, reason: 'invalid-or-unsupported-user-create' };
 }
 
+/** The live endpoint and operator replay apply the same wire/property checks. */
+export function decodeUserCreateDelivery(
+  body: string | Uint8Array,
+  properties: {
+    replyTo?: unknown;
+    messageId?: unknown;
+    correlationId?: unknown;
+  },
+):
+  | { accepted: true; command: UserCreateCommand; replyTo: string }
+  | {
+      accepted: false;
+      reason:
+        'invalid-or-unsupported-user-create' | 'invalid-command-properties';
+    } {
+  const decoded = decodeUserCreateCommand(body);
+  if (!decoded.accepted) return decoded;
+  const { replyTo, messageId, correlationId } = properties;
+  if (
+    typeof replyTo !== 'string' ||
+    !replyTo ||
+    replyTo.startsWith('amq.rabbitmq.reply-to') ||
+    messageId !== decoded.command.commandId ||
+    correlationId !== decoded.command.correlationId
+  )
+    return { accepted: false, reason: 'invalid-command-properties' };
+  return { ...decoded, replyTo };
+}
+
 export const userCreateDestination = {
   exchange: 'user.commands',
   routingKey: 'user.create',

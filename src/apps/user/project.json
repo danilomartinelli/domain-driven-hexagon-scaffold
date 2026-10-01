@@ -103,6 +103,22 @@
         "command": "bun --bun eslint src/apps/user --max-warnings 0 --fix",
         "cwd": "."
       }
+    },
+    "failures-inspect": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/failure-queue.ts user inspect",
+        "cwd": "."
+      }
+    },
+    "failures-replay": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/failure-queue.ts user replay",
+        "cwd": "."
+      }
     }
   },
   "implicitDependencies": ["test-runner"]

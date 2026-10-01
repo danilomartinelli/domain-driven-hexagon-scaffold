@@ -151,8 +151,8 @@ management port is in the environment manifest). Inspect `user.create`,
 unacknowledged counts. For **Get messages**, select requeue to preserve evidence.
 Read `user-command-failure-reason`, `messageId`, `correlationId` and the original
 bytes. Correct the producer contract before sending a new command; unsupported
-versions need a compatible consumer. General operator replay tooling is a later
-slice of [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+versions need a compatible consumer. Use the [failure-queue commands](failure-queues.md)
+for scoped local inspection and explicit replay with unchanged identity and reply routing.
 
 Logs distinguish `User command consumer connected`, `User command committed`,
 business rejection, retained validation failure and delivery recovery. Publisher

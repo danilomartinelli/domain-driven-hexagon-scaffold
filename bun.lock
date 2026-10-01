@@ -19,6 +19,7 @@
         "@starter/core": "workspace:*",
         "@starter/integration-contracts": "workspace:*",
         "@starter/nest-support": "workspace:*",
+        "@starter/rabbitmq": "workspace:*",
         "amqplib": "2.2.0",
         "class-transformer": "0.5.1",
         "class-validator": "0.15.1",
@@ -95,6 +96,13 @@
         "rxjs": "7.8.2",
         "slonik": "49.10.10",
         "zod": "4.6.5",
+      },
+    },
+    "src/packages/rabbitmq": {
+      "name": "@starter/rabbitmq",
+      "version": "0.0.0",
+      "dependencies": {
+        "amqplib": "2.2.0",
       },
     },
     "tooling/config": {
@@ -332,6 +340,8 @@
     "@starter/integration-contracts": ["@starter/integration-contracts@workspace:src/packages/integration-contracts"],
 
     "@starter/nest-support": ["@starter/nest-support@workspace:src/packages/nest-support"],
+
+    "@starter/rabbitmq": ["@starter/rabbitmq@workspace:src/packages/rabbitmq"],
 
     "@tokenizer/inflate": ["@tokenizer/inflate@0.4.1", "", { "dependencies": { "debug": "^4.4.3", "token-types": "^6.1.1" } }, "sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA=="],
 
