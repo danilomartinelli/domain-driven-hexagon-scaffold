@@ -3,3 +3,4 @@
 /secrets/**
 /certs/local/**
 /.conductor/settings.local.toml
+/.codegraph/**

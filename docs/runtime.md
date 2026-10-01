@@ -15,6 +15,9 @@ bun run env:exec --environment=development --run=default -- bun run start:dev
 
 `start` runs the independent User and Wallet processes; `start:dev` watches both,
 `start:debug` opens their Bun inspectors, and `start:prod` sets `NODE_ENV=production`.
+The debug targets bind separate loopback endpoints: User uses `127.0.0.1:6499`
+and Wallet uses `127.0.0.1:6500`, including when started individually. Connect to
+each process's printed inspector URL; both ports must be available.
 Listeners use `USER_HTTP_PORT` and `WALLET_HTTP_PORT` allocated by the selected
 environment. Each exposes its own `/docs`, `/docs-json` and `/graphql`; User
 REST is `/v1/users`, Wallet lookup is `/v1/wallets/by-user/:userId`.

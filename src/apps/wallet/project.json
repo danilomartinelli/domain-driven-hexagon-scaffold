@@ -87,7 +87,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --inspect --watch src/apps/wallet/main.ts",
+        "command": "bun --inspect=127.0.0.1:6500 --watch src/apps/wallet/main.ts",
         "cwd": "."
       }
     },

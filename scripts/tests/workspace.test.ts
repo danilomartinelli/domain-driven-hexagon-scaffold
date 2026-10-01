@@ -13,6 +13,26 @@ import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 
+test('application debug targets expose two connectable inspectors at the same time', async () => {
+  const workspace = await createWorkspace();
+  try {
+    for (const app of ['user', 'wallet']) {
+      await writeFile(
+        join(workspace.root, `src/apps/${app}/main.ts`),
+        'setInterval(() => {}, 1000);\n',
+      );
+    }
+    const result = await workspace.run([
+      process.execPath,
+      'scripts/tests/fixtures/debug-inspectors.ts',
+    ]);
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain('Connected to both advertised inspectors');
+  } finally {
+    await workspace.cleanup();
+  }
+}, 40_000);
+
 test.each(['new package', 'package-only dependency'])(
   'copied workspaces typecheck with a %s',
   async (scenario) => {
