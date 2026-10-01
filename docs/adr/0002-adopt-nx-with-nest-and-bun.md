@@ -222,8 +222,13 @@ Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-s
   Outage/restart/deletion and uncertain-publication checks use real broker/database
   boundaries. Scenario cleanup quiesces both processes before purging and truncating.
 
-Remaining: operator inspection/replay, the Kong gateway, command activation,
-distributions, diagnostics and generators (#25 to #35).
+- #25: the independent [User command endpoint](../user-commands.md), with
+  versioned validation, explicit message metadata, atomic User/outbox creation,
+  correlated responses, retained failures and commit-before-ACK recovery.
+  Component tests exercise the real broker/database without Wallet.
+
+Remaining: operator replay tooling, the Kong gateway, distributions, broader
+diagnostics and generators (#26 to #35).
 
 ## References
 

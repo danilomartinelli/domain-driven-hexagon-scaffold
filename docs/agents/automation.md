@@ -12,6 +12,7 @@ configured model and reasoning defaults.
 | Capability                          | Claude Code                       | Codex                                                       | OpenCode                                   |
 | ----------------------------------- | --------------------------------- | ----------------------------------------------------------- | ------------------------------------------ |
 | Library documentation               | Context7 in `.mcp.json`           | Context7 in `.codex/config.toml`                            | Context7 in `opencode.json`                |
+| Code structure and relationships    | CodeGraph in `.mcp.json`          | CodeGraph in `.codex/config.toml`                           | CodeGraph in `opencode.json`               |
 | Migration and environment workflows | `/create-migration`, `/local-env` | `$create-migration`, `$local-env`                           | `/create-migration`, `/local-env` commands |
 | Formatting after edits              | `PostToolUse` for Edit/Write      | `PostToolUse` for apply_patch                               | Native Prettier formatter                  |
 | Review roles                        | `.claude/agents/`                 | `.codex/agents/`                                            | `agent` entries in `opencode.json`         |
@@ -88,6 +89,55 @@ and keep Nx Cloud disabled. The Claude plugin inherits `NX_DAEMON=false` and
 `NX_LOAD_DOT_ENV_FILES=false` from project settings. Nx skills are informed by the
 [official integration](https://github.com/nrwl/nx-ai-agents-config) and adapted to
 [this workspace's contracts](../nx-workspace.md).
+
+## CodeGraph
+
+Each client declares the same project-scoped `codegraph` MCP server. Its command
+resolves the current Git worktree root and passes that directory explicitly to
+the server, including when the client starts in a subdirectory. It uses the
+`codegraph` executable from the client process's PATH and disables telemetry.
+The validated CLI version is 1.6.1:
+
+```sh
+npm install --global @colbymchenry/codegraph@1.6.1
+codegraph --version
+```
+
+From the repository root, initialize once if `.codegraph/` is absent:
+
+```sh
+codegraph init .
+codegraph status --json
+codegraph explore --max-files 5 'runCommand'
+```
+
+The index stays local and ignored. `.worktreeinclude` copies it into Conductor
+worktrees alongside `.env*`; the MCP server reconciles it with the current files
+on connection and watches later edits. Keep the default shared daemon enabled
+so multiple clients can use one workspace. Follow any staleness warning by
+reading the live file.
+
+Restart an existing client session to discover `codegraph_explore`. Codex requires
+a trusted checkout. Claude may report `Pending approval` for a new project MCP
+server; approve it in Claude's native prompt. OpenCode 1.18.34 uses the direct
+`mcp.codegraph` shape in this repository and the launcher described above when
+project configuration is disabled. A user-scoped entry alone does not configure
+other clients or other developers; these project entries use the same server name.
+Do not run the CodeGraph multi-client installer to refresh these files: its
+OpenCode 2 configuration differs from the validated OpenCode 1 layout.
+
+Inspect only this server's configuration when diagnosing activation:
+
+```sh
+claude mcp get codegraph
+codex mcp get codegraph --json
+bun run agents:opencode debug config --pure | jq '.mcp.codegraph'
+```
+
+Those commands prove configuration loading. A successful `codegraph_explore`
+call in the client proves connection and workspace selection. GUI-launched
+clients also need `codegraph` on their inherited PATH; installing it in a shell
+does not update an already-running app's environment.
 
 ## Formatting and review
 

@@ -7,6 +7,34 @@ import { withCleanup } from './cleanup';
 
 const search = new URL('../search.ts', import.meta.url).pathname;
 
+test('search overflow from a quickly exiting producer reports incomplete output without a signal error', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'starter-search-overflow-'));
+  await withCleanup(async () => {
+    await writeFile(join(directory, 'matches.txt'), 'match\n'.repeat(100));
+    // Exercise the exit/output race repeatedly through the real rg subprocess.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const result = await runCommand(
+        [
+          process.execPath,
+          search,
+          '--max-bytes=256',
+          '--',
+          'match',
+          'matches.txt',
+        ],
+        { cwd: directory, timeout: 3_000 },
+      );
+      expect(result.code, result.stderr).toBe(125);
+      expect(result.timedOut).toBe(false);
+      expect(result.stderr).toContain('[search:truncated]');
+      expect(result.stderr).not.toContain('EPERM');
+      expect(
+        Buffer.byteLength(result.stdout + result.stderr),
+      ).toBeLessThanOrEqual(256);
+    }
+  }, [() => rm(directory, { recursive: true, force: true })]);
+}, 70_000);
+
 test.each([256, 512, 1024])(
   'read pages resume without losing or repeating UTF-8 lines across ranges (%i bytes)',
   async (maxBytes) => {

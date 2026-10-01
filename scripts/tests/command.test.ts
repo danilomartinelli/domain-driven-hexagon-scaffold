@@ -37,3 +37,27 @@ test('excessive output fails explicitly instead of becoming a truncated successf
   expect(result.stderr).toContain('result is incomplete');
   expect(result.stdout.length).toBeLessThanOrEqual(64_000);
 });
+
+test('output overflow still terminates descendants when the producer exits immediately', async () => {
+  const result = await runCommand(
+    [
+      process.execPath,
+      '-e',
+      `
+      const child = Bun.spawn([process.execPath, '-e', 'setInterval(() => {}, 1000)'], {
+        stdout: 'inherit', stderr: 'inherit',
+      });
+      console.log(child.pid);
+      child.unref();
+      process.stdout.write('x'.repeat(70_000));
+    `,
+    ],
+    { cwd: process.cwd(), timeout: 5_000, outputRetention: 'head' },
+  );
+  expect(result.code).toBe(125);
+  expect(result.timedOut).toBe(false);
+  const descendant = Number(result.stdout.split('\n')[0]);
+  expect(descendant).toBeGreaterThan(0);
+  await Bun.sleep(50);
+  expect(() => process.kill(descendant, 0)).toThrow();
+});

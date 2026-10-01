@@ -269,7 +269,7 @@ Evite que command handlers executem outros commands desta forma: Command → Com
 Arquivos de exemplo:
 
 - [create-user.command.ts](src/apps/user/commands/create-user/create-user.command.ts) - um objeto de command
-- [create-user.message.controller.ts](src/apps/user/commands/create-user/create-user.message.controller.ts) - o controller executa um command usando um command bus. Isso o desacopla do command handler.
+- [create-user.http.controller.ts](src/apps/user/commands/create-user/create-user.http.controller.ts) - o controller executa um command usando um command bus. Isso o desacopla do command handler.
 - [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts) - um command handler.
 
 Leia mais:
@@ -895,8 +895,8 @@ Contém `Controllers` e DTOs de `Request`/`Response` (também pode conter `Views
 Pode-se usar um controller por tipo de gatilho para ter uma separação mais clara. Por exemplo:
 
 - [create-user.http.controller.ts](src/apps/user/commands/create-user/create-user.http.controller.ts) para requisições HTTP ([NestJS Controllers](https://docs.nestjs.com/controllers)),
-- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) para a definição de um comando de CLI usando [Commander](https://github.com/tj/commander.js), com injeção de dependência do Nest. A inicialização da CLI e o transporte de mensageria continuam inacabados; veja [compatibilidade e limites dos adaptadores](docs/adapters.md).
-- [create-user.message.controller.ts](src/apps/user/commands/create-user/create-user.message.controller.ts) para mensagens externas ([NestJS Microservices](https://docs.nestjs.com/microservices/basics)).
+- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) para a definição de um comando de CLI usando [Commander](https://github.com/tj/commander.js), com injeção de dependência do Nest. CLI startup remains unfinished; veja [compatibilidade e limites dos adaptadores](docs/adapters.md).
+- [rabbit-user-command-consumer.ts](src/apps/user/messaging/rabbit-user-command-consumer.ts) for external messages; see the [executable RabbitMQ contract](docs/user-commands.md).
 - etc.
 
 ### Resolvers

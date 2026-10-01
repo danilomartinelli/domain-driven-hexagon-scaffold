@@ -22,7 +22,7 @@
     "NX_DAEMON": "false",
     "NX_LOAD_DOT_ENV_FILES": "false"
   },
-  "enabledMcpjsonServers": ["context7"],
+  "enabledMcpjsonServers": ["codegraph", "context7"],
   "hooks": {
     "PostToolUse": [
       {

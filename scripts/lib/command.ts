@@ -33,7 +33,20 @@ export async function runCommand(
   const terminate = (): void => {
     if (child.pid === undefined) return;
     try {
-      process.kill(-child.pid, 'SIGKILL');
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch (error) {
+        if (!(
+          process.platform === 'darwin' &&
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'EPERM'
+        ))
+          throw error;
+        // Darwin can reject a group containing only an unreaped zombie.
+        // A direct signal accepts that state but still rejects denied access.
+        process.kill(child.pid, 'SIGKILL');
+      }
     } catch (error) {
       if (!(
         error instanceof Error &&

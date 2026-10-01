@@ -1,5 +1,14 @@
 {
   "mcpServers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "sh",
+      "args": [
+        "-c",
+        "cd \"$(git rev-parse --show-toplevel)\" && exec codegraph serve --mcp --path \"$PWD\""
+      ],
+      "env": { "CODEGRAPH_TELEMETRY": "0" }
+    },
     "context7": {
       "type": "http",
       "url": "https://mcp.context7.com/mcp",

@@ -22,6 +22,8 @@ import { DATABASE_POOL } from './database/database.module';
 import { SlonikUserOutbox } from './database/user-outbox';
 import { RabbitOutboxPublisher } from './messaging/rabbit-outbox-publisher';
 import { userRabbitMqOptions } from './configs/environment';
+import { CreateUser } from './application/create-user';
+import { RabbitUserCommandConsumer } from './messaging/rabbit-user-command-consumer';
 
 const interceptors = [
   {
@@ -50,6 +52,16 @@ const interceptors = [
   providers: [
     ...interceptors,
     {
+      provide: RabbitUserCommandConsumer,
+      useFactory: (create: CreateUser) =>
+        new RabbitUserCommandConsumer(
+          userRabbitMqOptions(),
+          create,
+          new Logger('UserCommands'),
+        ),
+      inject: [CreateUser],
+    },
+    {
       provide: RabbitOutboxPublisher,
       useFactory: (pool: DatabasePool) =>
         new RabbitOutboxPublisher(
@@ -67,12 +79,15 @@ export class AppModule
   constructor(
     @Inject(RabbitOutboxPublisher)
     private readonly publisher: RabbitOutboxPublisher,
+    @Inject(RabbitUserCommandConsumer)
+    private readonly commands: RabbitUserCommandConsumer,
   ) {}
   onApplicationBootstrap(): void {
     this.publisher.start();
+    this.commands.start();
   }
   async beforeApplicationShutdown(): Promise<void> {
-    await this.publisher.stop();
+    await Promise.all([this.publisher.stop(), this.commands.stop()]);
   }
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestContextMiddleware).forRoutes('{*path}');
