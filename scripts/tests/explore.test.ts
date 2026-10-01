@@ -10,6 +10,42 @@ import {
 import { join } from 'node:path';
 import { createWorkspace } from './workspace-fixture';
 
+test('the default page carries most of its budget as CodeGraph content', async () => {
+  const workspace = await createWorkspace();
+  try {
+    const bin = join(workspace.root, '.context/bin');
+    await mkdir(bin, { recursive: true });
+    const line = 'a typical CodeGraph output line with useful content';
+    const source = `${line}\n`.repeat(400);
+    await writeFile(
+      join(bin, 'codegraph'),
+      `#!/usr/bin/env bun\nprocess.stdout.write(${JSON.stringify(source)});\n`,
+      { mode: 0o755 },
+    );
+    const result = await workspace.run([
+      'env',
+      `PATH=${bin}:${process.env.PATH ?? ''}`,
+      'bun',
+      'run',
+      'explore',
+      '--',
+      'a symbol',
+    ]);
+    expect(result.code, result.stderr).toBe(125);
+    expect(
+      Buffer.byteLength(result.stdout + result.stderr),
+    ).toBeLessThanOrEqual(16_000);
+    const lines = result.stdout
+      .split('\n')
+      .filter((output) => output.endsWith(line));
+    expect(lines.length * Buffer.byteLength(`${line}\n`)).toBeGreaterThan(
+      12_000,
+    );
+  } finally {
+    await workspace.cleanup();
+  }
+}, 5_000);
+
 test('CodeGraph pages retain the complete UTF-8 result and resume without executing the query again', async () => {
   const workspace = await createWorkspace();
   try {
@@ -75,10 +111,7 @@ process.stderr.write(${JSON.stringify(diagnostics)});
         Buffer.byteLength(result.stdout + result.stderr),
       ).toBeLessThanOrEqual(1200);
       expect(result.stdout + result.stderr).not.toContain('\uFFFD');
-      collected += result.stdout.replace(
-        /^.*\/(stdout|stderr)\.txt:\d+:/gm,
-        '',
-      );
+      collected += result.stdout.replace(/^(stdout|stderr)\.txt:\d+:/gm, '');
       if (result.code === 0) {
         expect(collected).toBe(source + diagnostics);
         return;

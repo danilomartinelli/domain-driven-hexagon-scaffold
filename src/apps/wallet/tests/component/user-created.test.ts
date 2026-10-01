@@ -115,48 +115,76 @@ test('concurrent deliveries across consumers create one Wallet and never replace
 }, 30_000);
 
 test('an unroutable failure publication does not ACK the source and recovers through real redelivery', async () => {
-  await withBroker(async (channel) => {
-    await eventually(async () => {
-      expect((await channel.checkQueue(destination.queue)).consumerCount).toBe(
-        1,
+  await stopWallet();
+  const gate = await brokerGate(brokerOptions());
+  gate.allow();
+  gate.withholdConfirmations();
+  await withCleanup(async () => {
+    await startWallet({ RABBITMQ_PORT: gate.port });
+    await withBroker(async (channel) => {
+      await eventually(async () => {
+        expect(
+          (await channel.checkQueue(destination.queue)).consumerCount,
+        ).toBe(1);
+      });
+      await channel.deleteQueue(destination.failed);
+      const body = userCreated('event-returned', 'never-created').replace(
+        '"version":1',
+        '"version":999',
       );
-    });
-    await channel.deleteQueue(destination.failed);
-    const body = userCreated('event-returned', 'never-created').replace(
-      '"version":1',
-      '"version":999',
-    );
-    await publish(channel, body);
-    // Passive checks on another channel must wait until the consumer recreates its topology.
-    await eventually(async () => {
-      const response = await fetch(
-        `${process.env.RABBITMQ_MANAGEMENT_URL ?? ''}/api/queues/${encodeURIComponent(process.env.RABBITMQ_VHOST ?? '')}/${destination.failed}`,
-        {
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${process.env.RABBITMQ_USERNAME ?? ''}:${process.env.RABBITMQ_PASSWORD ?? ''}`).toString('base64')}`,
+      await publish(channel, body);
+      const queueState = async (name: string): Promise<unknown> => {
+        const response = await fetch(
+          `${process.env.RABBITMQ_MANAGEMENT_URL ?? ''}/api/queues/${encodeURIComponent(process.env.RABBITMQ_VHOST ?? '')}/${name}`,
+          {
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${process.env.RABBITMQ_USERNAME ?? ''}:${process.env.RABBITMQ_PASSWORD ?? ''}`).toString('base64')}`,
+            },
           },
-        },
+        );
+        expect(response.status).toBe(200);
+        return response.json();
+      };
+      // Passive checks on another channel must wait until the consumer recreates its topology.
+      await eventually(async () => {
+        await queueState(destination.failed);
+      });
+      await eventually(async () => {
+        expect(
+          (await channel.checkQueue(destination.failed)).messageCount,
+        ).toBe(1);
+      });
+      // A visible failure copy is not proof of publisher confirmation or source ACK.
+      // Observe the pending source before releasing confirms so stale zero metrics cannot pass.
+      await eventually(async () => {
+        expect(await queueState(destination.queue)).toMatchObject({
+          messages: 1,
+          messages_unacknowledged: 1,
+        });
+      });
+      gate.releaseConfirmations();
+      await eventually(async () => {
+        expect(await queueState(destination.queue)).toMatchObject({
+          messages: 0,
+          messages_unacknowledged: 0,
+        });
+      });
+      await stopWallet();
+      const failure = await channel.get(destination.failed, { noAck: false });
+      if (!failure) throw new Error('Missing retained delivery');
+      expect(failure.content.toString()).toBe(body);
+      expect(failure.properties.headers).toMatchObject({
+        'wallet-original-redelivered': true,
+      });
+      channel.ack(failure);
+      expect(await channel.get(destination.queue, { noAck: false })).toBe(
+        false,
       );
-      expect(response.status).toBe(200);
+      expect(
+        (await ownerDatabase().query('SELECT * FROM wallets')).rows,
+      ).toEqual([]);
     });
-    await eventually(async () => {
-      expect((await channel.checkQueue(destination.failed)).messageCount).toBe(
-        1,
-      );
-    });
-    await stopWallet();
-    const failure = await channel.get(destination.failed, { noAck: false });
-    if (!failure) throw new Error('Missing retained delivery');
-    expect(failure.content.toString()).toBe(body);
-    expect(failure.properties.headers).toMatchObject({
-      'wallet-original-redelivered': true,
-    });
-    channel.ack(failure);
-    expect(await channel.get(destination.queue, { noAck: false })).toBe(false);
-    expect((await ownerDatabase().query('SELECT * FROM wallets')).rows).toEqual(
-      [],
-    );
-  });
+  }, [() => gate.close()]);
 }, 30_000);
 
 test('broker authentication failure logs its diagnostic while HTTP remains available', async () => {

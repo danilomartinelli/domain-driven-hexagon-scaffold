@@ -9,6 +9,7 @@ export async function brokerGate(target: {
   attempts(): number;
   allow(): void;
   withholdConfirmations(): void;
+  releaseConfirmations(): void;
   confirmations(): number;
   block(): void;
   close(): Promise<void>;
@@ -18,10 +19,12 @@ export async function brokerGate(target: {
   let confirmations = 0;
   let attempts = 0;
   const sockets = new Set<Socket>();
+  const heldConfirmations = new Map<Socket, Buffer[]>();
   const track = (socket: Socket) => {
     sockets.add(socket);
     socket.on('close', () => {
       sockets.delete(socket);
+      heldConfirmations.delete(socket);
     });
   };
   const server = createServer((client) => {
@@ -62,7 +65,11 @@ export async function brokerGate(target: {
           frame.readUInt16BE(7) === 60 &&
           [80, 120].includes(frame.readUInt16BE(9));
         if (confirmation) confirmations++;
-        if (!withhold || !confirmation) client.write(frame);
+        if (withhold && confirmation) {
+          const pending = heldConfirmations.get(client) ?? [];
+          pending.push(frame);
+          heldConfirmations.set(client, pending);
+        } else client.write(frame);
       }
     });
   });
@@ -86,6 +93,13 @@ export async function brokerGate(target: {
       withhold = true;
     },
     confirmations: () => confirmations,
+    releaseConfirmations: () => {
+      withhold = false;
+      for (const [client, frames] of heldConfirmations) {
+        if (!client.destroyed) for (const frame of frames) client.write(frame);
+      }
+      heldConfirmations.clear();
+    },
     block,
     close: async () => {
       block();

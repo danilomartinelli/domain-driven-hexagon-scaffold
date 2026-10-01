@@ -15,6 +15,8 @@ interface Capture {
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
+  // Bun consumes a leading separator when the query is the first script argument.
+  if (args[0] && !args[0].startsWith('--')) args.unshift('--');
   const separator = args.indexOf('--');
   const options = separator === -1 ? args : args.slice(0, separator);
   const query = separator === -1 ? [] : args.slice(separator + 1);
@@ -106,6 +108,7 @@ async function main(): Promise<number> {
       maxOutput: maxBytes - statusBytes,
     },
     cursor ? `${cursor[2]}:${cursor[3]}` : undefined,
+    'basename',
   );
   // Reuse the search reader's line/UTF-8 pagination, but bind the cursor to an
   // immutable capture. Reading the next page never reruns CodeGraph.
