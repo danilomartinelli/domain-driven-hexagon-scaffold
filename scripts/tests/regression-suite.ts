@@ -7,7 +7,7 @@ export async function expectRegressionSuite(
   root: string,
   output: string,
 ): Promise<void> {
-  const text = Bun.stripANSI(output);
+  const text = Bun.stripANSI(output).replace(/^::group::/gm, '');
   for (const group of ['tests/user', 'tests/integration']) {
     const files = await Array.fromAsync(
       new Bun.Glob('**/*{.test,_test,.spec,_spec}.{ts,tsx,js,jsx}').scan({
