@@ -22,6 +22,11 @@ files: expose several small entry points instead of re-exporting a whole subtree
 through one index. An interface should hide useful behavior, keeping callers
 independent of the implementation.
 
+**Consumer dependencies:** Declare `@starter/<name>: "workspace:*"` in each
+consumer's `package.json`. Applications use the root manifest; their runtime
+package imports belong in its `dependencies`. Update the lockfile with
+`bun install`, then repeat the [setup checks](../../docs/developer-checks.md#setup).
+
 **Inside a package:** Its production files may import each other freely,
 including nested implementation files. Test folders remain private to tests.
 Existing layer rules still apply independently of this convention.

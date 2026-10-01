@@ -143,6 +143,17 @@ turns off the daemon. Native root `eslint.config.mjs`, `prettier.config.mjs` and
 `tsconfig.json` remain usable by tools and editors and import/extend the internal
 configuration. Each code project has its own strict typecheck scope.
 
+`bun run characterize -- --base <ref> <test-file>...` copies selected tests to
+a temporary base worktree. Run one suite at a time: native tests, distributed
+tests under `tests/`, or component tests under one application's
+`src/apps/<app>/tests/component/`. Distributed and component suites provision
+their own environment and load the corresponding preload; component suites
+select `--app=<app>`. Paths may start with `./`. For example:
+
+```sh
+bun run characterize -- --base origin/master src/apps/user/tests/component/user-create-command.test.ts
+```
+
 ```sh
 bun install --frozen-lockfile
 bun run nx show projects

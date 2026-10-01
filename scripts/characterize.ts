@@ -5,13 +5,14 @@
  *   bun run characterize -- [--base <ref>] <file>...
  *
  * Named files are copied into a temporary worktree of the base; `*.test.ts`
- * files run there. Files under `tests/` use the provisioned database runner.
+ * files run there. Distributed and application component suites use their
+ * provisioned runner scope and preload.
  */
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, normalize, relative } from 'node:path';
 import { runCommand } from './lib/command';
 import { bunTestCounts, describeCounts } from './lib/test-counts';
 
@@ -22,12 +23,21 @@ const CLEANUP_GRACE = 60_000;
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const baseIndex = args.indexOf('--base');
 const baseRef = baseIndex === -1 ? undefined : args[baseIndex + 1];
-const files = args.filter(
-  (_, index) =>
-    baseIndex === -1 || (index !== baseIndex && index !== baseIndex + 1),
-);
+const files = args
+  .filter(
+    (_, index) =>
+      baseIndex === -1 || (index !== baseIndex && index !== baseIndex + 1),
+  )
+  .map((file) => normalize(file));
 const tests = files.filter((file) => file.endsWith('.test.ts'));
-const live = tests.filter((file) => file.startsWith('tests/'));
+
+function testSuite(file: string): string {
+  const component = /^src\/apps\/[^/]+\/tests\/component\//.exec(file);
+  if (component) return component[0];
+  return file.startsWith('tests/') ? 'tests/' : 'native';
+}
+
+const suites = new Set(tests.map(testSuite));
 
 async function git(cwd: string, ...gitArgs: string[]): Promise<string> {
   const result = await runCommand(['git', ...gitArgs], {
@@ -41,18 +51,22 @@ async function git(cwd: string, ...gitArgs: string[]): Promise<string> {
 
 /** Runs the tests with a deadline; the child receives our interruptions. */
 async function runTests(worktree: string, log: string): Promise<number> {
-  const command = live.length
-    ? [
-        process.execPath,
-        'scripts/with-test-database.ts',
-        '--',
-        process.execPath,
-        'test',
-        '--preload',
-        './tests/setup/preload.ts',
-        ...tests.map((file) => `./${file}`),
-      ]
-    : [process.execPath, 'test', ...tests.map((file) => `./${file}`)];
+  const suite = [...suites][0];
+  const app = suite.startsWith('src/apps/') ? suite.split('/')[2] : undefined;
+  const command =
+    suite !== 'native'
+      ? [
+          process.execPath,
+          'scripts/with-test-database.ts',
+          ...(app ? [`--app=${app}`] : []),
+          '--',
+          process.execPath,
+          'test',
+          '--preload',
+          app ? `./${suite}preload.ts` : './tests/setup/preload.ts',
+          ...tests.map((file) => `./${file}`),
+        ]
+      : [process.execPath, 'test', ...tests.map((file) => `./${file}`)];
   const output = openSync(log, 'w');
   const child = Bun.spawn(command, {
     cwd: worktree,
@@ -113,8 +127,10 @@ async function main(): Promise<number> {
     throw new Error(
       'Usage: characterize [--base <ref>] <file>... (at least one *.test.ts)',
     );
-  if (live.length && live.length !== tests.length)
-    throw new Error('Characterize tests/ suites and native tests separately.');
+  if (suites.size > 1)
+    throw new Error(
+      'Characterize one test suite at a time: native tests, tests/, or one application component suite.',
+    );
   const root = await git(process.cwd(), 'rev-parse', '--show-toplevel');
   const base = await git(
     root,
