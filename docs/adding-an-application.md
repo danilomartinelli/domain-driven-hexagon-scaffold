@@ -5,7 +5,7 @@ exists, a new application under `src/apps/<name>` needs every edit below.
 `src/apps/wallet` is the worked example. The work is done when each item is
 done or marked not applicable, with the reason, in the pull request.
 
-These mechanics need no edit: `legacy-app` excludes `src/apps`, the
+These mechanics need no edit: `type-fixtures` excludes `src/apps`, the
 architecture rules match every `src/apps/*`, and `run-many` reaches the new
 targets from `test:unit`, `lint`, `typecheck`, `test:component` and `check:full`.
 

@@ -34,7 +34,7 @@ test('runtime credentials allow profile operations and pending insertion but can
       'ALTER TABLE users ADD COLUMN forbidden boolean',
       'SELECT name FROM pgmigrations',
       'DELETE FROM user_outbox',
-      'UPDATE user_outbox SET published_at = now()',
+      'UPDATE user_outbox SET envelope = envelope',
     ])
       expect(await failure(() => runtime.query(statement)), statement).toBe(
         '42501',
@@ -48,6 +48,7 @@ test('User has its own schema and migration history', async () => {
   );
   expect(history.rows.map((row) => row.name)).toEqual([
     '1790813453459_user-baseline',
+    '1790813453460_user-publication',
   ]);
   const tables = await ownerDatabase().query<{ name: string }>(
     `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`,

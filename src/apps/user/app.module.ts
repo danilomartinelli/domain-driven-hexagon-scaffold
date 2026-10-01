@@ -1,5 +1,9 @@
 import {
   Module,
+  Logger,
+  Inject,
+  type OnApplicationBootstrap,
+  type BeforeApplicationShutdown,
   type MiddlewareConsumer,
   type NestModule,
 } from '@nestjs/common';
@@ -13,6 +17,11 @@ import { ExceptionInterceptor } from '@starter/nest-support/http';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import cors from 'cors';
+import type { DatabasePool } from 'slonik';
+import { DATABASE_POOL } from './database/database.module';
+import { SlonikUserOutbox } from './database/user-outbox';
+import { RabbitOutboxPublisher } from './messaging/rabbit-outbox-publisher';
+import { userRabbitMqOptions } from './configs/environment';
 
 const interceptors = [
   {
@@ -38,9 +47,33 @@ const interceptors = [
     UserModule,
   ],
   controllers: [],
-  providers: [...interceptors],
+  providers: [
+    ...interceptors,
+    {
+      provide: RabbitOutboxPublisher,
+      useFactory: (pool: DatabasePool) =>
+        new RabbitOutboxPublisher(
+          userRabbitMqOptions(),
+          new SlonikUserOutbox(pool),
+          new Logger('UserPublication'),
+        ),
+      inject: [DATABASE_POOL],
+    },
+  ],
 })
-export class AppModule implements NestModule {
+export class AppModule
+  implements NestModule, OnApplicationBootstrap, BeforeApplicationShutdown
+{
+  constructor(
+    @Inject(RabbitOutboxPublisher)
+    private readonly publisher: RabbitOutboxPublisher,
+  ) {}
+  onApplicationBootstrap(): void {
+    this.publisher.start();
+  }
+  async beforeApplicationShutdown(): Promise<void> {
+    await this.publisher.stop();
+  }
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestContextMiddleware).forRoutes('{*path}');
     // Apollo's Express integration no longer installs GraphQL CORS itself.

@@ -1,8 +1,20 @@
 import { expect, test } from 'bun:test';
 import { sql } from 'slonik';
 import { z } from 'zod';
-import { getHttpServer, getTestDatabase } from '@tests/setup/test-server';
+import {
+  getHttpServer,
+  getWalletServer,
+  getTestDatabase,
+  getWalletDatabase,
+  user,
+  wallet,
+} from '@tests/setup/test-server';
 import { withCleanup } from '../../scripts/tests/cleanup';
+import {
+  assertTestEnvironment,
+  readEnvironmentFile,
+} from '../../database/environment';
+import { runCommand } from '../../scripts/lib/command';
 
 const profile = {
   email: 'atomic@example.com',
@@ -10,49 +22,78 @@ const profile = {
   street: 'Baker street',
   postalCode: '28566',
 };
-const walletSchema = z.object({ userId: z.string(), balance: z.number() });
-
-test('REST creation commits a zero-balance Wallet and deletion retains it', async () => {
-  const response = await getHttpServer()
-    .post('/v1/users')
-    .send(profile)
-    .expect(201);
-  const { id } = z.object({ id: z.string() }).parse(response.body);
-  const pool = getTestDatabase();
-  const wallets = await pool.any(
-    sql.type(walletSchema)`SELECT "userId", balance FROM wallets`,
-  );
-  expect(wallets).toEqual([{ userId: id, balance: 0 }]);
-  await getHttpServer().delete(`/v1/users/${id}`).expect(200);
+const walletSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  balance: z.number(),
+});
+async function until(
+  condition: () => Promise<boolean> | boolean,
+  timeout = 20_000,
+): Promise<void> {
+  const deadline = Date.now() + timeout;
+  while (!(await condition())) {
+    if (Date.now() > deadline)
+      throw new Error(
+        `Distributed operation timed out\n${user.output}\n${wallet.output}`,
+      );
+    await Bun.sleep(50);
+  }
+}
+async function create(email = profile.email): Promise<string> {
+  return z.object({ id: z.string() }).parse(
+    (
+      await getHttpServer()
+        .post('/v1/users')
+        .send({ ...profile, email })
+        .expect(201)
+    ).body,
+  ).id;
+}
+async function observe(userId: string): Promise<z.infer<typeof walletSchema>> {
+  let result: z.infer<typeof walletSchema> | undefined;
+  await until(async () => {
+    const response = await getWalletServer().get(
+      `/v1/wallets/by-user/${userId}`,
+    );
+    if (response.status !== 200) return false;
+    result = walletSchema.parse(response.body);
+    return true;
+  });
+  if (!result) throw new Error('Missing Wallet');
+  expect(result).toMatchObject({ userId, balance: 0 });
+  const graphql = await getWalletServer()
+    .post('/graphql')
+    .send({
+      query: `{ walletByUser(userId: "${userId}") { id userId balance } }`,
+    })
+    .expect(200);
+  expect(graphql.body).toEqual({ data: { walletByUser: result } });
   expect(
-    await pool.any(
-      sql.type(walletSchema)`SELECT "userId", balance FROM wallets`,
+    await getWalletDatabase().any(
+      sql.unsafe`SELECT id FROM wallets WHERE "userId" = ${userId}`,
     ),
-  ).toEqual(wallets);
-});
-
-test('Wallet persistence failure rolls back User creation and the next request recovers', async () => {
-  const pool = getTestDatabase();
-  // A real database failure at the second write, not a mock of the listener.
-  await pool.query(
-    sql.unsafe`ALTER TABLE wallets ADD CONSTRAINT issue16_reject_wallet CHECK (balance < 0)`,
+  ).toEqual([{ id: result.id }]);
+  return result;
+}
+async function published(): Promise<boolean> {
+  return (
+    (
+      await getTestDatabase().any(
+        sql.unsafe`SELECT event_id FROM user_outbox WHERE published_at IS NULL`,
+      )
+    ).length === 0
   );
-  await withCleanup(async () => {
-    await getHttpServer().post('/v1/users').send(profile).expect(500);
-    expect(await pool.any(sql.unsafe`SELECT id FROM users`)).toEqual([]);
-    expect(await pool.any(sql.unsafe`SELECT id FROM wallets`)).toEqual([]);
-  }, [
-    () =>
-      pool.query(
-        sql.unsafe`ALTER TABLE wallets DROP CONSTRAINT issue16_reject_wallet`,
-      ),
-  ]);
-  await getHttpServer().post('/v1/users').send(profile).expect(201);
-  expect(await pool.any(sql.unsafe`SELECT id FROM users`)).toHaveLength(1);
-  expect(await pool.any(sql.unsafe`SELECT id FROM wallets`)).toHaveLength(1);
-});
+}
 
-test('GraphQL creation keeps its response shape and commits a Wallet', async () => {
+test('REST creation eventually yields one zero-balance Wallet through both APIs; deletion retains it', async () => {
+  const id = await create();
+  const before = await observe(id);
+  await getHttpServer().delete(`/v1/users/${id}`).expect(200);
+  expect(await observe(id)).toEqual(before);
+}, 30_000);
+
+test('GraphQL creation eventually yields one Wallet with its own independent schema', async () => {
   const response = await getHttpServer()
     .post('/graphql')
     .send({
@@ -63,37 +104,156 @@ test('GraphQL creation keeps its response shape and commits a Wallet', async () 
     .object({ data: z.object({ create: z.object({ id: z.string() }) }) })
     .strict()
     .parse(response.body);
+  await observe(body.data.create.id);
+}, 30_000);
+
+test('Wallet stopped: User creation and broker acceptance succeed; processing completes only after Wallet starts', async () => {
+  await wallet.stop();
+  const id = await create();
+  await until(published);
+  expect(
+    await getWalletDatabase().any(sql.unsafe`SELECT id FROM wallets`),
+  ).toEqual([]);
+  await wallet.start();
+  await observe(id);
+}, 30_000);
+
+test('Wallet persistence failure preserves User and recovers without a partial Wallet or deduplication record', async () => {
+  const pool = getWalletDatabase();
+  await pool.query(
+    sql.unsafe`ALTER TABLE wallets ADD CONSTRAINT reject_wallet CHECK (balance < 0)`,
+  );
+  let id = '';
+  await withCleanup(async () => {
+    id = await create();
+    await until(() => wallet.output.includes('Wallet delivery failed'));
+    expect(
+      await getTestDatabase().any(sql.unsafe`SELECT id FROM users`),
+    ).toEqual([{ id }]);
+    expect(await pool.any(sql.unsafe`SELECT id FROM wallets`)).toEqual([]);
+    expect(
+      await pool.any(sql.unsafe`SELECT * FROM wallet_consumed_events`),
+    ).toEqual([]);
+  }, [
+    () =>
+      pool.query(sql.unsafe`ALTER TABLE wallets DROP CONSTRAINT reject_wallet`),
+  ]);
+  await observe(id);
+}, 30_000);
+
+async function docker(args: string[]): Promise<string> {
+  const result = await runCommand(['docker', ...args], {
+    cwd: process.cwd(),
+    timeout: 30_000,
+  });
+  if (result.code !== 0) throw new Error(result.stderr);
+  return result.stdout.trim();
+}
+
+test('broker stopped: REST and GraphQL creation survive User restart; pending deletion still delivers after broker recovery', async () => {
+  assertTestEnvironment();
+  const file = process.env.DDH_ENVIRONMENT_FILE;
+  if (!file) throw new Error('Missing manifest');
+  const manifest = readEnvironmentFile(file);
+  const broker = await docker([
+    'ps',
+    '-q',
+    '--filter',
+    `label=com.docker.compose.project=${manifest.project}`,
+    '--filter',
+    `label=dev.starter.owner=${manifest.owner}`,
+    '--filter',
+    'label=com.docker.compose.service=rabbitmq',
+  ]);
+  if (!broker || broker.includes('\n'))
+    throw new Error('Expected one owned broker');
+  let restId = '';
+  let graphqlId = '';
+  let envelopes: readonly unknown[] = [];
+  await withCleanup(async () => {
+    await docker(['stop', '--time', '3', broker]);
+    await user.stop();
+    await user.start();
+    restId = await create();
+    const response = await getHttpServer()
+      .post('/graphql')
+      .send({
+        query: `mutation { create(input: { email: "offline@example.com", country: "England", street: "Baker street", postalCode: "28566" }) { id } }`,
+      })
+      .expect(200);
+    graphqlId = z
+      .object({ data: z.object({ create: z.object({ id: z.string() }) }) })
+      .parse(response.body).data.create.id;
+    envelopes = await getTestDatabase().any(
+      sql.unsafe`SELECT event_id, envelope FROM user_outbox ORDER BY event_id`,
+    );
+    expect(envelopes).toHaveLength(2);
+    await getHttpServer().delete(`/v1/users/${restId}`).expect(200);
+    await user.stop();
+    await user.start();
+    expect(
+      await getTestDatabase().any(
+        sql.unsafe`SELECT event_id, envelope FROM user_outbox WHERE published_at IS NULL ORDER BY event_id`,
+      ),
+    ).toEqual(envelopes);
+  }, [
+    async () => {
+      await docker(['start', broker]);
+      await until(
+        async () =>
+          (await docker([
+            'inspect',
+            '--format',
+            '{{.State.Health.Status}}',
+            broker,
+          ])) === 'healthy',
+      );
+    },
+  ]);
+  await observe(restId);
+  await observe(graphqlId);
+  await until(published);
   expect(
     await getTestDatabase().any(
-      sql.type(walletSchema)`SELECT "userId", balance FROM wallets`,
+      sql.unsafe`SELECT event_id, envelope FROM user_outbox ORDER BY event_id`,
     ),
-  ).toEqual([{ userId: body.data.create.id, balance: 0 }]);
-});
+  ).toEqual(envelopes);
+  expect(await getTestDatabase().any(sql.unsafe`SELECT id FROM users`)).toEqual(
+    [{ id: graphqlId }],
+  );
+}, 60_000);
 
-test('REST duplicate and validation errors retain the adapter-supplied correlation ID', async () => {
-  await getHttpServer().post('/v1/users').send(profile).expect(201);
-  const duplicate = await getHttpServer()
-    .post('/v1/users')
-    .send(profile)
-    .expect(409);
-  expect(duplicate.body).toMatchObject({
-    statusCode: 409,
-    message: 'User already exists',
-  });
+test('publication completion failure duplicates delivery with stable identity and one Wallet after restart', async () => {
+  const pool = getTestDatabase();
+  await pool.query(
+    sql.unsafe`CREATE FUNCTION fail_publication() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Completion failed'; END $$`,
+  );
+  await pool.query(
+    sql.unsafe`CREATE TRIGGER fail_publication BEFORE UPDATE ON user_outbox FOR EACH ROW EXECUTE FUNCTION fail_publication()`,
+  );
+  let id = '';
+  let first: z.infer<typeof walletSchema> | undefined;
+  await withCleanup(async () => {
+    id = await create();
+    first = await observe(id);
+    await until(() => user.output.includes('publication uncertain'));
+    await user.stop();
+    expect(await published()).toBe(false);
+  }, [
+    async () => {
+      await pool.query(
+        sql.unsafe`DROP TRIGGER fail_publication ON user_outbox`,
+      );
+      await pool.query(sql.unsafe`DROP FUNCTION fail_publication()`);
+    },
+  ]);
+  await user.start();
+  await until(published);
+  if (!first) throw new Error('Missing first Wallet');
+  expect(await observe(id)).toEqual(first);
   expect(
-    z.object({ correlationId: z.string().min(1) }).safeParse(duplicate.body)
-      .success,
-  ).toBe(true);
-  const invalid = await getHttpServer()
-    .post('/v1/users')
-    .send({ ...profile, email: 'invalid' })
-    .expect(400);
-  expect(invalid.body).toMatchObject({
-    statusCode: 400,
-    message: 'Validation error',
-  });
-  expect(
-    z.object({ correlationId: z.string().min(1) }).safeParse(invalid.body)
-      .success,
-  ).toBe(true);
-});
+    await getWalletDatabase().any(
+      sql.unsafe`SELECT event_id FROM wallet_consumed_events`,
+    ),
+  ).toHaveLength(1);
+}, 30_000);

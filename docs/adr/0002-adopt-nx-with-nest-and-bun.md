@@ -6,8 +6,8 @@ date: 2026-09-29
 # Adopt Nx with hexagonal Nest 12 services and native Bun
 
 Amended on 2026-09-30: continuous integration now runs the infrastructure-free
-fast gate (`bun run check`), the uncached broker regression target and the service
-component suites on pull requests and pushes to `master`. This lifts the
+fast gate (`bun run check`), the uncached broker regression target, distributed
+end-to-end suite and service component suites on pull requests and pushes to `master`. This lifts the
 GitHub Actions restriction below and the CI restriction in
 [ADR 0001](0001-modernize-with-bun.md); the Docker-backed suites in
 `check:full` otherwise remain local.
@@ -196,7 +196,7 @@ here instead of restating it. The decision and the
 [User/Wallet glossary](../../GLOSSARY.md) remain the migration contract.
 
 Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-starter-js/issues/15).
-#16 to #20 run inside the transitional application:
+#16 to #20 established the original baseline; their retained behavior now runs in the independent applications:
 
 - #16: domain primitives without request context.
 - #17: the [Nx/Bun baseline](../nx-workspace.md) around the existing regressions.
@@ -215,9 +215,15 @@ Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-s
   atomic profile and pending integration event persistence, retained events after
   deletion and external-process REST/GraphQL/Gherkin coverage without sibling services.
 
-Remaining: outbox publication, operator inspection/replay, the Kong gateway, final
-executable boundaries, distributions and generators (#24 to #35). The shared
-User/Wallet transaction is still present in the transitional application.
+- #24: committed outbox publication with durable topology, mandatory persistent
+  delivery, publisher confirmations, bounded recovery and stable identities.
+  Independent User/Wallet processes are the default runtime and system-test
+  arrangement; the shared transaction, combined bootstrap and schema are removed.
+  Outage/restart/deletion and uncertain-publication checks use real broker/database
+  boundaries. Scenario cleanup quiesces both processes before purging and truncating.
+
+Remaining: operator inspection/replay, the Kong gateway, command activation,
+distributions, diagnostics and generators (#25 to #35).
 
 ## References
 

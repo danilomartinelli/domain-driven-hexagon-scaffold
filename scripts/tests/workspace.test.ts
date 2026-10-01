@@ -13,6 +13,26 @@ import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 
+test('application debug targets expose two connectable inspectors at the same time', async () => {
+  const workspace = await createWorkspace();
+  try {
+    for (const app of ['user', 'wallet']) {
+      await writeFile(
+        join(workspace.root, `src/apps/${app}/main.ts`),
+        'setInterval(() => {}, 1000);\n',
+      );
+    }
+    const result = await workspace.run([
+      process.execPath,
+      'scripts/tests/fixtures/debug-inspectors.ts',
+    ]);
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain('Connected to both advertised inspectors');
+  } finally {
+    await workspace.cleanup();
+  }
+}, 40_000);
+
 test.each(['new package', 'package-only dependency'])(
   'copied workspaces typecheck with a %s',
   async (scenario) => {
@@ -39,7 +59,7 @@ test.each(['new package', 'package-only dependency'])(
       await rm(packageLink, { force: true });
       await symlink(`../../src/packages/${name}`, packageLink);
       await writeFile(
-        join(source.root, 'src/modules/workspace-fixture.ts'),
+        join(source.root, 'src/apps/user/workspace-fixture.ts'),
         `export { value } from '@starter/${name}';\n`,
       );
       if (scenario === 'package-only dependency') {
@@ -75,7 +95,7 @@ test.each(['new package', 'package-only dependency'])(
         'run',
         'nx',
         'run',
-        'legacy-app:typecheck',
+        'user:typecheck',
         '--output-style=static',
       ];
       const baseline = await source.run(typecheck);
@@ -238,11 +258,11 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
       await Bun.file(join(workspace.root, 'graph.json')).json(),
     );
     for (const [project, dependencies] of Object.entries({
-      'legacy-app': ['core', 'nest-support'],
+      'type-fixtures': ['core'],
       wallet: ['core', 'nest-support'],
       user: ['core', 'nest-support', 'integration-contracts'],
       'nest-support': ['core'],
-      e2e: ['legacy-app', 'test-runner'],
+      e2e: ['test-runner'],
       'test-runner': ['database', 'infrastructure'],
     })) {
       expect(graph.dependencies).toHaveProperty(project);
@@ -261,13 +281,11 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
     const targets = (project: string) =>
       graph.dependencies[project].map((edge) => edge.target);
     expect(targets('wallet')).not.toContain('legacy-app');
-    expect(targets('legacy-app')).not.toContain('wallet');
     expect(targets('user')).not.toContain('wallet');
     expect(targets('user')).not.toContain('legacy-app');
     expect(targets('wallet')).not.toContain('user');
-    expect(targets('legacy-app')).not.toContain('user');
-    // Shared tooling must not link an application to the transitional one.
-    expect(targets('database')).not.toContain('legacy-app');
+    // Shared tooling must not link to an application implementation.
+    expect(targets('database')).not.toContain('user');
   } finally {
     await workspace.cleanup();
   }
@@ -281,7 +299,7 @@ test('cached typechecking is invalidated by dependency source, shared config and
       'run',
       'nx',
       'run',
-      'legacy-app:typecheck',
+      'user:typecheck',
       '--output-style=static',
     ]);
   try {

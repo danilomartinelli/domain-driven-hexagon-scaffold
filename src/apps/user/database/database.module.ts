@@ -13,7 +13,11 @@ export const DATABASE_POOL = Symbol('USER_DATABASE_POOL');
     {
       provide: DATABASE_POOL,
       useFactory: async (): Promise<DatabasePool> =>
-        createPool(userDatabaseUri(), { interceptors: [resultParser] }),
+        createPool(userDatabaseUri(), {
+          interceptors: [resultParser],
+          connectionTimeout: 5_000,
+          statementTimeout: 5_000,
+        }),
     },
   ],
   exports: [DATABASE_POOL],

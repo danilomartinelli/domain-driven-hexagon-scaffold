@@ -5,10 +5,8 @@ Wallet is the first independently runnable application of
 lives in `src/apps/wallet`, creates Wallets from versioned user-created RabbitMQ
 events and looks them up by User identity through REST and GraphQL. Its APIs
 start without a User process or an available broker and use only its own database.
-The transitional `legacy-app` still creates Wallets in its own database;
-Wallet does not read that data. The User integration mapper defines the producer
-envelope; the independent [User application](user.md) now persists it in its outbox,
-and background publication belongs to #24.
+The [User application](user.md) commits its integration envelope in its own
+outbox and publishes it in the background after commit.
 
 ## Run it locally
 
@@ -27,7 +25,7 @@ bun run env:exec --environment=development --run=default -- bun run start:wallet
 `start:wallet:debug` adds Bun's inspector. They invoke the `wallet:serve`,
 `wallet:watch` and `wallet:debug` Nx targets. The server listens on
 `WALLET_HTTP_PORT`, allocated per run and logged at startup. The seed adds one
-lookup example: a zero-balance Wallet for the transitional `john@gmail.com` User
+lookup example: a zero-balance Wallet for a standalone example User
 identity. It is the fixture's only source; no user-created event is scheduled
 for it. Seeds are not idempotent, so a second run fails and rolls back.
 
@@ -84,10 +82,8 @@ REST GET /v1/wallets/by-user/:userId, or GraphQL walletByUser(userId: ID!)
 [FindWalletByUser](../src/apps/wallet/application/find-wallet-by-user.ts) and
 [the Wallet read port](../src/apps/wallet/application/wallet-read.port.ts) import
 nothing, and the Wallet domain imports only the plain core. The architecture
-check rejects imports between applications, from the transitional `src` tree,
-from production Wallet code into database tooling and from input adapters into
-`database/`. Wallet has its own copy of the Wallet domain and its invariants;
-the transitional application keeps its copy until the asynchronous cutover.
+check rejects imports between applications, from production Wallet code into database tooling and from input adapters into
+`database/`. Wallet owns its domain and invariants.
 There is no shared User/Wallet business-model library.
 
 ## User-created integration contract

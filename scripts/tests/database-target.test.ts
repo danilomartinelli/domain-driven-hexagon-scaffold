@@ -16,20 +16,20 @@ test('database tooling outside a selected environment reads .env with shell prec
     );
     await writeFile(
       join(directory, '.env'),
-      'DB_HOST=file-host\nDB_PORT=6543\nDB_USERNAME=file-user\nDB_PASSWORD=file-password\nDB_NAME=file-name\n',
+      'USER_DB_HOST=file-host\nUSER_DB_PORT=6543\nUSER_DB_MIGRATION_USERNAME=file-user\nUSER_DB_MIGRATION_PASSWORD=file-password\nUSER_DB_NAME=file-name\n',
     );
     // No selected environment, test mode, application selection or inherited
-    // database settings (such as an env:exec session's); only DB_NAME is shell.
+    // database settings (such as an env:exec session's); only USER_DB_NAME is shell.
     const env: NodeJS.ProcessEnv = {
       ...Object.fromEntries(
         Object.entries(process.env).filter(
           ([name]) =>
-            !/^(DDH_ENVIRONMENT_FILE|NODE_ENV|DATABASE_APP)$|(^|_)DB_/.test(
+            !/^(DDH_ENVIRONMENT_FILE|NODE_ENV|DATABASE_APP)$|(^|_)USER_DB_/.test(
               name,
             ),
         ),
       ),
-      DB_NAME: 'shell-name',
+      USER_DB_NAME: 'shell-name',
     };
     const result = await runCommand(
       [

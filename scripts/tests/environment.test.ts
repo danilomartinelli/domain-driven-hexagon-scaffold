@@ -12,6 +12,7 @@ import { runCommand } from '../lib/command';
 import { composeProbeConfiguration } from './compose-fixture';
 import { availablePort } from '../lib/environments';
 import { withCleanup } from './cleanup';
+import { expectRegressionSuite } from './regression-suite';
 
 const root = new URL('../../', import.meta.url).pathname;
 const run = `probe-${randomUUID().slice(0, 8)}`;
@@ -93,20 +94,15 @@ function environment(
   );
 }
 
-/** The User seed's profile and Wallet's lookup example share one user identity. */
+/** User has a pending event; the direct Wallet lookup fixture has a different identity. */
 const seedsProbe = `
   const { Client } = await import('pg');
-  const users = new Client({host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_NAME});
-  await users.connect();
-  const profiles = (await users.query('SELECT id, email FROM users')).rows;
-  await users.end();
-  if (profiles.length !== 1 || profiles[0].email !== 'john@gmail.com') throw new Error('Selected seed missing');
   // Wallet's runtime role can read its own seeded lookup example.
   const wallets = new Client({host: process.env.WALLET_DB_HOST, port: Number(process.env.WALLET_DB_PORT), user: process.env.WALLET_DB_USERNAME, password: process.env.WALLET_DB_PASSWORD, database: process.env.WALLET_DB_NAME});
   await wallets.connect();
   const lookups = (await wallets.query('SELECT "userId", balance FROM wallets')).rows;
   await wallets.end();
-  if (lookups.length !== 1 || lookups[0].userId !== profiles[0].id || lookups[0].balance !== 0) throw new Error('Wallet seed is not consistent with the legacy User seed');
+  if (lookups.length !== 1 || lookups[0].userId !== 'f59d0748-d455-4465-b0a8-8d8260b1c877' || lookups[0].balance !== 0) throw new Error('Wallet lookup seed missing');
   const standalone = new Client({host: process.env.USER_DB_HOST, port: Number(process.env.USER_DB_PORT), user: process.env.USER_DB_USERNAME, password: process.env.USER_DB_PASSWORD, database: process.env.USER_DB_NAME});
   await standalone.connect();
   const ownProfiles = (await standalone.query('SELECT id, email FROM users')).rows;
@@ -120,7 +116,7 @@ test('a named test environment prepares PostgreSQL and RabbitMQ for explicit dat
   await withCleanup(async () => {
     const prepared = await environment('prepare');
     expect(prepared.code, prepared.stdout + prepared.stderr).toBe(0);
-    for (const app of ['legacy', 'wallet', 'user']) {
+    for (const app of ['wallet', 'user']) {
       for (const script of ['migration:up:tests', 'seed:up:tests']) {
         const result = await environment(
           'exec',
@@ -199,7 +195,7 @@ test('development exec survives command deadlines while test exec stays bounded'
 
 const seedProbe = `
   const {Client} = await import('pg');
-  const client = new Client({host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_NAME});
+  const client = new Client({host: process.env.USER_DB_HOST, port: Number(process.env.USER_DB_PORT), user: process.env.USER_DB_USERNAME, password: process.env.USER_DB_PASSWORD, database: process.env.USER_DB_NAME});
   await client.connect();
   const {rows} = await client.query('SELECT email FROM users ORDER BY email');
   if (rows.length !== 1 || rows[0].email !== 'john@gmail.com') throw new Error('Seed was modified');
@@ -239,17 +235,19 @@ test('prepared regression runs reject foreign targets and preserve development a
       for (const result of prepared)
         if (result.status === 'rejected') throw result.reason;
       for (const cli of environments) {
-        await succeeded(
-          cli('exec', ['--', process.execPath, 'run', 'migration:up']),
-        );
-        await succeeded(
-          cli('exec', ['--', process.execPath, 'run', 'seed:up']),
-        );
+        for (const app of ['user', 'wallet']) {
+          for (const script of ['migration:up', 'seed:up'])
+            await succeeded(
+              cli('exec', ['--', process.execPath, 'run', script], {
+                DATABASE_APP: app,
+              }),
+            );
+        }
       }
       await succeeded(
         dev('exec', ['--', process.execPath, '-e', brokerQueue('PUT')]),
       );
-      const infoCode = `console.log('TARGET=' + JSON.stringify({database: process.env.DB_NAME, port: process.env.DB_PORT, vhost: process.env.RABBITMQ_VHOST, brokerPort: process.env.RABBITMQ_PORT}));`;
+      const infoCode = `console.log('TARGET=' + JSON.stringify({database: process.env.USER_DB_NAME, port: process.env.USER_DB_PORT, vhost: process.env.RABBITMQ_VHOST, brokerPort: process.env.RABBITMQ_PORT}));`;
       const firstInfo = await succeeded(
         first('exec', ['--', process.execPath, '-e', infoCode]),
       );
@@ -317,20 +315,7 @@ test('prepared regression runs reject foreign targets and preserve development a
           AGENT: '0',
         }),
       );
-      // The regression suite grows; require both Gherkin and database coverage.
-      const output = Bun.stripANSI(regression.stderr + regression.stdout);
-      for (const file of [
-        'tests/user/create-user/create-user.test.ts',
-        'tests/user/delete-user/delete-user.test.ts',
-        'tests/integration/find-users.test.ts',
-        'tests/integration/user-wallet.test.ts',
-        'tests/integration/user-writes.test.ts',
-      ]) {
-        expect(output).toContain(`\n${file}:\n`);
-      }
-      expect(output).toMatch(/^\s*0 fail\s*$/m);
-      const passed = /(\d+) pass/.exec(output);
-      expect(Number(passed?.[1] ?? 0)).toBeGreaterThanOrEqual(7);
+      await expectRegressionSuite(root, regression.stderr + regression.stdout);
       await succeeded(first('down'));
       await succeeded(
         sibling('exec', ['--', process.execPath, '-e', seedProbe]),
@@ -359,12 +344,12 @@ test('a bound database port fails preparation and removes only the failed run', 
         '--',
         process.execPath,
         '-e',
-        "console.log('PORT=' + process.env.DB_PORT)",
+        "console.log('PORT=' + process.env.USER_DB_PORT)",
       ]),
     );
     const port = /^PORT=(\d+)$/m.exec(info.stdout)?.[1];
     expect(port).toBeDefined();
-    const prepared = await failed('prepare', [], { DB_PORT: port });
+    const prepared = await failed('prepare', [], { USER_DB_PORT: port });
     expect(prepared.code).not.toBe(0);
     expect(prepared.stdout + prepared.stderr).toMatch(
       /port is already allocated|address already in use/,
@@ -454,6 +439,20 @@ test('preparing a development run created before independent apps were registere
 
     await succeeded(dev('prepare'));
     const upgraded = readEnvironment('development', name);
+    const retiredProbe = `
+      const {Client} = await import('pg');
+      const db = new Client({host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_NAME});
+      await db.connect();
+      if (process.env.CREATE_RETIRED_MARKER) await db.query('CREATE TABLE retained_marker (id integer PRIMARY KEY); INSERT INTO retained_marker VALUES (42)');
+      const {rows} = await db.query('SELECT id FROM retained_marker');
+      if (rows.length !== 1 || rows[0].id !== 42) throw new Error('Retired development data lost');
+      await db.end();
+    `;
+    await succeeded(
+      dev('exec', ['--', process.execPath, '-e', retiredProbe], {
+        CREATE_RETIRED_MARKER: '1',
+      }),
+    );
     expect(upgraded.databases.find((db) => db.app === 'legacy')).toEqual(
       legacy,
     );
@@ -462,7 +461,7 @@ test('preparing a development run created before independent apps were registere
       'user',
       'wallet',
     ]);
-    for (const app of ['legacy', 'wallet', 'user']) {
+    for (const app of ['wallet', 'user']) {
       for (const script of ['migration:up', 'seed:up'])
         await succeeded(
           dev('exec', ['--', process.execPath, 'run', script], {
@@ -479,5 +478,6 @@ test('preparing a development run created before independent apps were registere
       status: 'ready',
     });
     await succeeded(dev('exec', ['--', process.execPath, '-e', seedsProbe]));
+    await succeeded(dev('exec', ['--', process.execPath, '-e', retiredProbe]));
   }, [() => succeeded(dev('down'))]);
 }, 180_000);

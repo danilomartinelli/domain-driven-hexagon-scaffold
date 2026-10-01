@@ -36,7 +36,7 @@ required string `options` argument, which is not parsed into filters.
 
 `USER_DB_HOST`, `USER_DB_PORT`, `USER_DB_NAME`, `USER_DB_USERNAME` and
 `USER_DB_PASSWORD` select the application's database and restricted
-`user_runtime` role. The app loads no dotenv files and requires no broker or
+`user_runtime` role. The app loads no dotenv files and requires broker configuration but no broker connectivity or
 Wallet configuration. Database tooling alone uses `USER_DB_MIGRATION_USERNAME`
 and `USER_DB_MIGRATION_PASSWORD` for migrations and seeds.
 
@@ -60,13 +60,12 @@ later publication attempts must reuse the stored envelope and identity.
 There is no foreign key from outbox to profile. Deleting a profile neither
 deletes nor cancels pending creation. Runtime privileges permit profile
 read/insert/delete and outbox read/insert; they deny migration/schema changes,
-outbox deletion and publication updates. The publisher slice will grant its
-required additional privileges explicitly. Neither application's effective
+outbox deletion and envelope mutation. The [publication migration](../src/apps/user/database/migrations/1790813453460_user-publication.sql) grants updates only to `published_at`. Neither application's effective
 runtime credentials can access the other's database.
 
 The seed creates `john@gmail.com` with identity
 `a73b6bf6-6077-4117-a6b3-dff3e02f2310` and one pending creation in the same seed
-transaction. This identity differs from the transitional seed and Wallet's
+transaction. This identity differs from Wallet's
 direct lookup fixture. Only the pending event will create this User's Wallet;
 there is no simultaneous direct Wallet insertion for it. Repeating the seed
 fails and rolls back.
@@ -86,14 +85,31 @@ database settings. It executes the seven original Gherkin cases from
 `tests/user` using independent step bindings, the characterized REST/GraphQL
 contract, real PostgreSQL rollback after profile insertion, pending persistence
 across restart/deletion, denied cross-database credentials and startup/creation
-with sibling infrastructure stopped. A live broker probe verifies this slice
-publishes nothing after either rollback or commit. Core tests prove transaction
-intent without infrastructure. The compile-time decorator fixture remains in
-the workspace's type gate.
+with sibling infrastructure stopped. Real broker tests distinguish rollback,
+routing returns, confirmations lost in transit, and accepted publication whose
+completion write fails. Retries retain the persisted identity. Core tests prove
+transaction intent without infrastructure.
 
-`src/main.ts`, the default `start` commands and the combined E2E suite remain
-explicitly transitional. They keep their synchronous User/Wallet behavior until
-the full asynchronous workflow switches over. This slice establishes durable
-pending work; background publication/retry (#24), message-command activation,
-gateway routing and independent distribution artifacts remain later slices of
-[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+## Background publication
+
+The publisher starts independently of HTTP/GraphQL. It declares the durable
+`user.events` direct exchange and `wallet.user-created` subscription even while
+Wallet is stopped. A transaction selects committed pending work with
+`FOR UPDATE SKIP LOCKED`; competing User publishers cannot claim the same row
+simultaneously. It sends the stored envelope with stable `messageId`, persistent
+delivery and mandatory routing, then updates `published_at` only after a publisher
+confirmation without a routing return. The database commit of that update is
+separate from broker acceptance. Neither means Wallet has finished processing.
+
+A return, NACK, missing confirmation, disconnect or failed completion write leaves
+work pending. Uncertain success may produce duplicates; Wallet deduplicates in
+its own transaction and acknowledges only after commit. Retries start at 250ms,
+double to a 10s cap, and reset only after completed publication. Empty polling
+waits 250ms. Connections time out after 2s; topology, confirmations and close wait
+at most 5s; database connection/statement waits are bounded at 5s. Shutdown
+interrupts messaging before closing the pool; restart resumes persisted work.
+Deleting a profile never cancels its outbox item or removes a Wallet.
+
+See [distributed recovery](recovery.md) for commands and actual broker/database
+evidence. Message-command activation, gateway routing and independent distribution
+artifacts remain later slices of [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).

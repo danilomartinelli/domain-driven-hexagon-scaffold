@@ -6,8 +6,7 @@ own Nx project. Read [the Wallet guide](../../docs/wallet.md) before changing
 [the checklist](../../docs/adding-an-application.md).
 
 - An application imports only its own files and shared packages through their
-  entry points. Never import another application, the transitional `src` tree,
-  or database/environment tooling from production code. Nothing outside an
+  entry points. Never import another application or database/environment tooling from production code. Nothing outside an
   application imports its implementation. `bun run lint:boundaries` enforces this.
 - Keep `domain/` and `application/` plain TypeScript: they own their ports and
   result models. Controllers and resolvers call application use cases and map
@@ -18,5 +17,5 @@ own Nx project. Read [the Wallet guide](../../docs/wallet.md) before changing
 - `tests/unit/` needs no framework or infrastructure and runs in `test:unit`.
   `tests/component/` starts the real entry point against a provisioned run; its
   preload must validate the owned test environment before anything else.
-  Infrastructure fixtures may import `scripts/tests/cleanup.ts` to attempt all
+  Infrastructure fixtures may import `scripts/tests/cleanup.ts` and the owned broker gate to attempt all
   owned cleanup and preserve failures; this exception is limited to test code.

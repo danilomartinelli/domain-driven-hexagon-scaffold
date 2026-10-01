@@ -25,7 +25,7 @@ async function runProbe(
       process.execPath,
       '-e',
       `const pg = await import('pg');
-     const client = new pg.default.Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD, database: process.env.DB_NAME });
+     const client = new pg.default.Client({ host: process.env.USER_DB_HOST, port: Number(process.env.USER_DB_PORT), user: process.env.USER_DB_MIGRATION_USERNAME, password: process.env.USER_DB_MIGRATION_PASSWORD, database: process.env.USER_DB_NAME });
      await client.connect();
      const waitForCleanup = ${JSON.stringify(waitForCleanup)};
      const deadline = Date.now() + 60000;
@@ -34,7 +34,7 @@ async function runProbe(
        await Bun.sleep(20);
      }
      const migrations = await client.query('SELECT name FROM pgmigrations');
-     if (migrations.rows.length !== 1) throw new Error('Baseline migration missing');
+     if (migrations.rows.length !== 2) throw new Error('Baseline migration missing');
      await client.end();
      console.log('probe completed');
      process.exit(${String(code)});`,

@@ -95,7 +95,13 @@ export function readEnvironmentFile(
   }
   const listed = new Set<string>();
   for (const target of manifest.databases) {
-    const application = applications.find((app) => app.name === target.app);
+    // Retired development resources remain owned and stoppable; never provision
+    // them for new runs or expose them as migration targets.
+    const application =
+      applications.find((app) => app.name === target.app) ??
+      (manifest.environment === 'development' && target.app === 'legacy'
+        ? { name: 'legacy', prefix: 'DB', runtimeRole: undefined }
+        : undefined);
     if (
       !application ||
       listed.has(target.app) ||
@@ -110,7 +116,7 @@ export function readEnvironmentFile(
     }
     listed.add(target.app);
   }
-  if (complete && listed.size !== applications.length)
+  if (complete && applications.some((app) => !listed.has(app.name)))
     throw new Error(
       manifest.environment === 'development'
         ? 'Environment application registry changed; prepare it again to add the new application databases.'

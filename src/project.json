@@ -1,7 +1,7 @@
 {
-  "name": "legacy-app",
-  "projectType": "application",
-  "tags": ["scope:legacy", "type:app"],
+  "name": "type-fixtures",
+  "projectType": "library",
+  "tags": ["type:tooling"],
   "targets": {
     "lint": {
       "executor": "nx:run-commands",
@@ -16,70 +16,6 @@
       "cache": true,
       "options": {
         "command": "bun --bun tsc --project src/tsconfig.json",
-        "cwd": "."
-      }
-    },
-    "test": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "options": {
-        "command": "bun test ./src/tests",
-        "cwd": "."
-      }
-    },
-    "test-watch": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "bun test --watch ./src/tests",
-        "cwd": "."
-      }
-    },
-    "test-coverage": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "bun test --coverage ./src/tests",
-        "cwd": "."
-      }
-    },
-    "test-debug": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "bun --inspect-brk test ./src/tests",
-        "cwd": "."
-      }
-    },
-    "serve": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "bun src/main.ts",
-        "cwd": "."
-      }
-    },
-    "watch": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "bun --watch src/main.ts",
-        "cwd": "."
-      }
-    },
-    "debug": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "bun --inspect --watch src/main.ts",
-        "cwd": "."
-      }
-    },
-    "serve-production": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "NODE_ENV=production bun src/main.ts",
         "cwd": "."
       }
     },

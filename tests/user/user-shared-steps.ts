@@ -1,5 +1,5 @@
 import type { Mutable } from '@starter/core/types';
-import { CreateUserRequestDto } from '@src/modules/user/commands/create-user/create-user.request.dto';
+import type { CreateUserRequestDto } from '@tests/test-utils/ApiClient';
 import type { DefineStepFunction } from 'jest-cucumber';
 import { TestContext } from '@tests/test-utils/TestContext';
 import { ApiClient } from '@tests/test-utils/ApiClient';

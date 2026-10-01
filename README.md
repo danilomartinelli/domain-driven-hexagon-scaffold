@@ -28,7 +28,7 @@ Run the application with `bun run start:dev` and the existing Gherkin cases with
 Gherkin cases plus the real-database rollback regressions.
 The [dependency inventory](docs/dependencies.md) records compatible versions and
 security fixes. Run `bun audit` separately to recheck the complete dependency tree.
-The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the transitional application,
+The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the independent User and Wallet applications,
 private technical packages and regressions. Delivered and remaining migration
 work is tracked in [ADR 0002's implementation status](docs/adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
 
@@ -170,8 +170,8 @@ Keep your modules small. You should be able to rewrite a module in a relatively 
 
 Code Examples:
 
-- Check [src/modules](src/modules) directory structure.
-- [src/modules/user/commands](src/modules/user/commands) - "commands" directory in a user module includes business use cases (commands) that a module can execute, each with its own Vertical Slice.
+- Check [src/apps](src/apps) directory structure.
+- [src/apps/user/commands](src/apps/user/commands) - "commands" directory in a user module includes business use cases (commands) that a module can execute, each with its own Vertical Slice.
 
 Read more:
 
@@ -237,7 +237,7 @@ Use cases are, simply said, list of actions required from an application.
 
 </details>
 
-Example file: [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts)
+Example file: [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts)
 
 More about services:
 
@@ -268,9 +268,9 @@ Avoid command handlers executing other commands in this fashion: Command → Com
 
 Example files:
 
-- [create-user.command.ts](src/modules/user/commands/create-user/create-user.command.ts) - a command Object
-- [create-user.message.controller.ts](src/modules/user/commands/create-user/create-user.message.controller.ts) - controller executes a command using a command bus. This decouples it from a command handler.
-- [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - a command handler.
+- [create-user.command.ts](src/apps/user/commands/create-user/create-user.command.ts) - a command Object
+- [create-user.message.controller.ts](src/apps/user/commands/create-user/create-user.message.controller.ts) - controller executes a command using a command bus. This decouples it from a command handler.
+- [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts) - a command handler.
 
 Read more:
 
@@ -287,9 +287,9 @@ Similarly to Commands, Queries can use a `Query Bus` if needed. This way you can
 
 Example files:
 
-- [find-users.ts](src/modules/user/application/find-users.ts) - a plain query and use case. It owns its [read port and read model](src/modules/user/application/user-read.port.ts), without using domain objects or repositories (more info [here](https://codeopinion.com/should-you-use-the-repository-pattern-with-cqrs-yes-and-no/)).
-- [user-read.adapter.ts](src/modules/user/database/user-read.adapter.ts) - the output adapter that executes SQL, validates rows and maps them into the read model.
-- [find-users.query-handler.ts](src/modules/user/queries/find-users/find-users.query-handler.ts) - a Nest CQRS query handler delegating to the use case. REST and GraphQL adapters map its read model, never the persistence model.
+- [find-users.ts](src/apps/user/application/find-users.ts) - a plain query and use case. It owns its [read port and read model](src/apps/user/application/user-read.port.ts), without using domain objects or repositories (more info [here](https://codeopinion.com/should-you-use-the-repository-pattern-with-cqrs-yes-and-no/)).
+- [user-read.adapter.ts](src/apps/user/database/user-read.adapter.ts) - the output adapter that executes SQL, validates rows and maps them into the read model.
+- [find-users.query-handler.ts](src/apps/user/queries/find-users/find-users.query-handler.ts) - a Nest CQRS query handler delegating to the use case. REST and GraphQL adapters map its read model, never the persistence model.
 
 ---
 
@@ -330,8 +330,8 @@ In Application Core **dependencies point inwards**. Outer layers can depend on i
 Example files:
 
 - [repository.port.ts](src/packages/core/lib/ddd/repository.port.ts) - generic port for repositories
-- [user.repository.port.ts](src/modules/user/database/user.repository.port.ts) - a port for user repository
-- [user-write.port.ts](src/modules/user/application/user-write.port.ts) - application-owned ports for user persistence and fact recording within one atomic scope; the User use cases depend on these interfaces
+- [user.repository.port.ts](src/apps/user/database/user.repository.port.ts) - a port for user repository
+- [user-write.port.ts](src/apps/user/application/user-write.port.ts) - application-owned ports for user persistence and fact recording within one atomic scope; the User use cases depend on these interfaces
 - [logger.port.ts](src/packages/core/lib/ports/logger.port.ts) - another example of a port for application logger
 
 Read more:
@@ -378,8 +378,8 @@ Entities:
 
 Example files:
 
-- [user.entity.ts](src/modules/user/domain/user.entity.ts)
-- [wallet.entity.ts](src/modules/wallet/domain/wallet.entity.ts)
+- [user.entity.ts](src/apps/user/domain/user.entity.ts)
+- [wallet.entity.ts](src/apps/wallet/domain/wallet.entity.ts)
 
 Read more:
 
@@ -411,7 +411,7 @@ In summary, if you combine multiple related entities and value objects inside on
 Example files:
 
 - [aggregate-root.base.ts](src/packages/core/lib/ddd/aggregate-root.base.ts) - abstract base class.
-- [user.entity.ts](src/modules/user/domain/user.entity.ts) - aggregates are just entities that have to follow a set of specific rules described above.
+- [user.entity.ts](src/apps/user/domain/user.entity.ts) - aggregates are just entities that have to follow a set of specific rules described above.
 
 Read more:
 
@@ -446,12 +446,12 @@ There are multiple ways on implementing an event bus for Domain Events, for exam
 
 Examples:
 
-- [user-created.domain-event.ts](src/modules/user/domain/events/user-created.domain-event.ts) - simple object that holds data related to published event.
-- [create-user.ts](src/modules/user/application/create-user.ts) and [delete-user.ts](src/modules/user/application/delete-user.ts) - plain use cases request an atomic scope and explicitly record resulting facts through application-owned ports.
-- [user-write-transaction.ts](src/infrastructure/user-write-transaction.ts) - the Slonik adapter owns the connection and temporarily coordinates Wallet creation and in-process dispatch. Replace this bridge with an outbox at the asynchronous cutover.
+- [user-created.domain-event.ts](src/apps/user/domain/events/user-created.domain-event.ts) - simple object that holds data related to published event.
+- [create-user.ts](src/apps/user/application/create-user.ts) and [delete-user.ts](src/apps/user/application/delete-user.ts) - plain use cases request an atomic scope and explicitly record resulting facts through application-owned ports.
+- [user-write-transaction.ts](src/apps/user/database/user-write-transaction.ts) - the Slonik adapter commits a profile and durable pending event together. The [publisher](src/apps/user/messaging/rabbit-outbox-publisher.ts) delivers it after commit; see the asynchronous cutover.
 - [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - dispatches facts with identity and explicit operation metadata; aggregates and repositories do not publish.
 - [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts) - repository insert/delete persist only, using the connection supplied by the transaction adapter.
-- [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - Nest CQRS input adapter maps the command and metadata into the plain use case.
+- [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts) - Nest CQRS input adapter maps the command and metadata into the plain use case.
 
 See the [current write path and remaining transition](docs/runtime.md#persistence-and-transaction-review).
 
@@ -519,7 +519,7 @@ Imagine you have a `User` entity which needs to have an `address` of a user. Usu
 
 Example files:
 
-- [address.value-object.ts](src/modules/user/domain/value-objects/address.value-object.ts)
+- [address.value-object.ts](src/apps/user/domain/value-objects/address.value-object.ts)
 
 Read more about Value Objects:
 
@@ -546,7 +546,7 @@ Below we will discuss some validation techniques for your domain objects.
 
 Example files:
 
-- [wallet.entity.ts](src/modules/wallet/domain/wallet.entity.ts) - notice `validate` method. This is a simplified example of enforcing a domain invariant.
+- [wallet.entity.ts](src/apps/wallet/domain/wallet.entity.ts) - notice `validate` method. This is a simplified example of enforcing a domain invariant.
 
 Read more:
 
@@ -703,8 +703,8 @@ By combining compile and runtime validations, using objects instead of primitive
 
 You may have noticed that we do validation in multiple places:
 
-1. First when user input is sent to our application. In our example we use DTO decorators: [create-user.request-dto.ts](src/modules/user/commands/create-user/create-user.request.dto.ts).
-2. Second time in domain objects, for example: [address.value-object.ts](src/modules/user/domain/value-objects/address.value-object.ts).
+1. First when user input is sent to our application. In our example we use DTO decorators: [create-user.request-dto.ts](src/apps/user/commands/create-user/create-user.request.dto.ts).
+2. Second time in domain objects, for example: [address.value-object.ts](src/apps/user/domain/value-objects/address.value-object.ts).
 
 So, why are we validating things twice? Let's call a second validation "_guarding_", and distinguish between guarding and validating:
 
@@ -839,10 +839,10 @@ Libraries you can use:
 
 Example files:
 
-- [user.errors.ts](src/modules/user/domain/user.errors.ts) - user errors
-- [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - notice how `Err(new UserAlreadyExistsError())` is returned instead of throwing it.
-- [create-user.http.controller.ts](src/modules/user/commands/create-user/create-user.http.controller.ts) - in a user http controller we match an error and decide what to do with it. If an error is `UserAlreadyExistsError` we throw a `Conflict Exception` which a user will receive as `409 - Conflict`. If an error is unknown we just throw it and our framework will return it to the user as `500 - Internal Server Error`.
-- [create-user.cli.controller.ts](src/modules/user/commands/create-user/create-user.cli.controller.ts) - in a CLI controller we don't care about returning a correct status code so we just `.unwrap()` a result, which will just throw in case of an error.
+- [user.errors.ts](src/apps/user/domain/user.errors.ts) - user errors
+- [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts) - notice how `Err(new UserAlreadyExistsError())` is returned instead of throwing it.
+- [create-user.http.controller.ts](src/apps/user/commands/create-user/create-user.http.controller.ts) - in a user http controller we match an error and decide what to do with it. If an error is `UserAlreadyExistsError` we throw a `Conflict Exception` which a user will receive as `409 - Conflict`. If an error is unknown we just throw it and our framework will return it to the user as `500 - Internal Server Error`.
+- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) - in a CLI controller we don't care about returning a correct status code so we just `.unwrap()` a result, which will just throw in case of an error.
 - [exceptions](src/packages/core/lib/exceptions) folder contains some generic app exceptions (not domain specific)
 
 Read more:
@@ -894,9 +894,9 @@ Contains `Controllers` and `Request`/`Response` DTOs (can also contain `Views`, 
 
 One controller per trigger type can be used to have a clearer separation. For example:
 
-- [create-user.http.controller.ts](src/modules/user/commands/create-user/create-user.http.controller.ts) for http requests ([NestJS Controllers](https://docs.nestjs.com/controllers)),
-- [create-user.cli.controller.ts](src/modules/user/commands/create-user/create-user.cli.controller.ts) for a CLI command definition using [Commander](https://github.com/tj/commander.js), with Nest dependency injection. CLI startup and messaging transport remain unfinished; see [adapter compatibility and limits](docs/adapters.md).
-- [create-user.message.controller.ts](src/modules/user/commands/create-user/create-user.message.controller.ts) for external messages ([NestJS Microservices](https://docs.nestjs.com/microservices/basics)).
+- [create-user.http.controller.ts](src/apps/user/commands/create-user/create-user.http.controller.ts) for http requests ([NestJS Controllers](https://docs.nestjs.com/controllers)),
+- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) for a CLI command definition using [Commander](https://github.com/tj/commander.js), with Nest dependency injection. CLI startup and messaging transport remain unfinished; see [adapter compatibility and limits](docs/adapters.md).
+- [create-user.message.controller.ts](src/apps/user/commands/create-user/create-user.message.controller.ts) for external messages ([NestJS Microservices](https://docs.nestjs.com/microservices/basics)).
 - etc.
 
 ### Resolvers
@@ -907,7 +907,7 @@ One of the main benefits of a layered architecture is separation of concerns. As
 
 Example files:
 
-- [create-user.graphql-resolver.ts](src/modules/user/commands/create-user/graphql-example/create-user.graphql-resolver.ts)
+- [create-user.graphql-resolver.ts](src/apps/user/commands/create-user/graphql-example/create-user.graphql-resolver.ts)
 
 ---
 
@@ -924,7 +924,7 @@ Input data sent by a user.
 
 Examples:
 
-- [create-user.request.dto.ts](src/modules/user/commands/create-user/create-user.request.dto.ts)
+- [create-user.request.dto.ts](src/apps/user/commands/create-user/create-user.request.dto.ts)
 
 ### Response DTOs
 
@@ -934,7 +934,7 @@ Output data returned to a user.
 
 Examples:
 
-- [user.response.dto.ts](src/modules/user/dtos/user.response.dto.ts)
+- [user.response.dto.ts](src/apps/user/dtos/user.response.dto.ts)
 
 ---
 
@@ -942,7 +942,7 @@ DTO contracts protect your clients from internal data structure changes that may
 
 When updating DTO interfaces, a new version of API can be created by prefixing an endpoint with a version number, for example: `v2/users`. This will make transition painless by preventing breaking compatibility for users that are slow to update their apps that uses your API.
 
-You may have noticed that our [create-user.command.ts](src/modules/user/commands/create-user/create-user.command.ts) contains the same properties as [create-user.request.dto.ts](src/modules/user/commands/create-user/create-user.request.dto.ts).
+You may have noticed that our [create-user.command.ts](src/apps/user/commands/create-user/create-user.command.ts) contains the same properties as [create-user.request.dto.ts](src/apps/user/commands/create-user/create-user.request.dto.ts).
 So why do we need DTOs if we already have Command objects that carry properties? Shouldn't we just have one class to avoid duplication?
 
 > Because commands and DTOs are different things, they tackle different problems. Commands are serializable method calls - calls of the methods in the domain model. Whereas DTOs are the data contracts. The main reason to introduce this separate layer with data contracts is to provide backward compatibility for the clients of your API. Without the DTOs, the API will have breaking changes with every modification of the domain model.
@@ -1014,7 +1014,7 @@ Application's core usually is not allowed to depend on repositories directly, in
 
 Example files:
 
-This project contains abstract repository class that allows to make basic CRUD operations: [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts). This base class is then extended by a specific repository, and all specific operations that an entity may need are implemented in that specific repo: [user.repository.ts](src/modules/user/database/user.repository.ts).
+This project contains abstract repository class that allows to make basic CRUD operations: [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts). This base class is then extended by a specific repository, and all specific operations that an entity may need are implemented in that specific repo: [user.repository.ts](src/apps/user/database/user.repository.ts).
 
 Read more:
 
@@ -1038,8 +1038,8 @@ Over time, when the amount of data grows, there may be a need to make some chang
 
 Example files:
 
-- [user.repository.ts](src/modules/user/database/user.repository.ts) <- notice `userSchema` and `UserModel` type that describe how user looks in a database
-- [user.mapper.ts](src/modules/user/user.mapper.ts) <- Persistence models should also have a corresponding mapper to map from domain to persistence and back.
+- [user.repository.ts](src/apps/user/database/user.repository.ts) <- notice `userSchema` and `UserModel` type that describe how user looks in a database
+- [user.mapper.ts](src/apps/user/user.mapper.ts) <- Persistence models should also have a corresponding mapper to map from domain to persistence and back.
 
 For smaller projects you could use [ORM](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping) libraries like [Typeorm](https://typeorm.io/) for simplicity. But for projects with more complexity ORMs are not flexible and performant enough. For this reason, this project uses raw queries with a [Slonik](https://github.com/gajus/slonik) client library.
 
@@ -1205,11 +1205,11 @@ There are different approaches to file/folder structuring, choose what suits bet
 
 Examples:
 
-- [user](src/modules/user) module.
-- [create-user](src/modules/user/commands/create-user) subcomponent.
+- [user](src/apps/user) module.
+- [create-user](src/apps/user/commands/create-user) subcomponent.
 
-- [Commands](src/modules/user/commands) directory contains all state changing use cases and each use case inside it contains most of the things that it needs: controller, service, DTOs, command, etc.
-- [Queries](src/modules/user/queries) directory is structured in the same way as commands but contains data retrieval use cases.
+- [Commands](src/apps/user/commands) directory contains all state changing use cases and each use case inside it contains most of the things that it needs: controller, service, DTOs, command, etc.
+- [Queries](src/apps/user/queries) directory is structured in the same way as commands but contains data retrieval use cases.
 
 Read more:
 

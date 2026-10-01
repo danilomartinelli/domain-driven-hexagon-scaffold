@@ -17,7 +17,12 @@
       "options": {
         "command": "bun --bun tsc --project src/apps/user/tsconfig.json",
         "cwd": "."
-      }
+      },
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/src/type-tests/**/*.ts"
+      ]
     },
     "test": {
       "executor": "nx:run-commands",
@@ -87,7 +92,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --inspect --watch src/apps/user/main.ts",
+        "command": "bun --inspect=127.0.0.1:6499 --watch src/apps/user/main.ts",
         "cwd": "."
       }
     },

@@ -107,8 +107,8 @@ Codex has no configured native LSP adapter. Its equivalent supports semantic
 definitions and references through the installed TypeScript language service:
 
 ```sh
-bun run typescript:query definition src/main.ts 1 10
-bun run typescript:query references src/main.ts 1 10
+bun run typescript:query definition src/apps/user/main.ts 1 10
+bun run typescript:query references src/apps/user/main.ts 1 10
 bun run typecheck
 ```
 
@@ -123,7 +123,7 @@ codex mcp list
 bun run agents:opencode debug agent standards-reviewer --pure
 bun run agents:opencode debug agent spec-reviewer --pure
 bun run agents:opencode debug skill --pure
-bun run agents:opencode debug lsp diagnostics src/main.ts --pure
+bun run agents:opencode debug lsp diagnostics src/apps/user/main.ts --pure
 bun test ./scripts/tests/agent-automation.test.ts
 ```
 

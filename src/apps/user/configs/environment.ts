@@ -15,3 +15,23 @@ export function userDatabaseUri(): string {
   const port = get('USER_DB_PORT').required().asPortNumber();
   return `postgres://${setting('USERNAME')}:${setting('PASSWORD')}@${setting('HOST')}:${String(port)}/${setting('NAME')}`;
 }
+
+export function userRabbitMqOptions(): {
+  hostname: string;
+  port: number;
+  username: string;
+  password: string;
+  vhost: string;
+  heartbeat: number;
+} {
+  const setting = (name: string) =>
+    get(`RABBITMQ_${name}`).required().asString();
+  return {
+    hostname: setting('HOST'),
+    port: get('RABBITMQ_PORT').required().asPortNumber(),
+    username: setting('USERNAME'),
+    password: setting('PASSWORD'),
+    vhost: setting('VHOST'),
+    heartbeat: 2,
+  };
+}

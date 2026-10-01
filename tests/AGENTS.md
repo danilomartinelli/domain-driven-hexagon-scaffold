@@ -1,19 +1,20 @@
 # Application integration test instructions
 
 This directory contains Gherkin scenarios in `user/` and database/API regressions
-in `integration/`. Infrastructure-free application tests belong in `src/tests/`;
+in `integration/`. Infrastructure-free application tests belong in each app's `tests/unit/`;
 package tests belong beside their package under `src/packages/`.
 
 ## Setup and isolation
 
 - Keep [the preload](setup/preload.ts) validating the selected owned test
-  environment before importing the application or opening pools. Use its
+  environment before starting application processes or opening pools. Use its
   `bun:test` configuration for `jest-cucumber`.
-- Use [test-server helpers](setup/test-server.ts) for the application, HTTP server
-  and database pool. The application owns and closes the pool.
+- Use [test-server helpers](setup/test-server.ts) for both external application
+  processes and the two owner pools used for fixtures. Never import app implementation.
 - Preserve `assertTestEnvironment()` before database truncation. Setup clears
   User/Wallet data before the first test and after each test, while retaining
-  migration history. Tests must create their own data rather than depend on
+  migration history. Stop both processes, purge their owned queues, truncate each
+  database, then restart: delayed delivery cannot cross scenario boundaries. Tests must create their own data rather than depend on
   another scenario or the initial seeds.
 - Keep Gherkin scenarios and their step definitions aligned. Exercise database
   and API regressions through the real application and disposable database.

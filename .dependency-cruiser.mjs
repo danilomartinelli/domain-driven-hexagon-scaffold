@@ -37,9 +37,6 @@ const domainLayerPaths = [
 // A closed set prevents indirect escapes through shared barrels as well.
 const corePaths = [
   '^src/packages/core/(?!tests/)',
-  '^src/modules/[^/]+/domain/',
-  '^src/modules/[^/]+/commands/.*\\.command\\.ts$',
-  '^src/modules/user/application/',
   '^src/apps/[^/]+/(domain|application)/',
 ];
 
@@ -49,7 +46,7 @@ const PACKAGE_INTERNALS = `^${PACKAGES_ROOT}/[^/]+/[^/]+/`;
 
 // Test code; production code must not import it.
 const testPaths =
-  '^(tests|src/tests|src/type-tests|scripts/tests|src/packages/[^/]+/tests|src/apps/[^/]+/tests)';
+  '^(tests|src/type-tests|scripts/tests|src/packages/[^/]+/tests|src/apps/[^/]+/tests)';
 
 /** @type {import('dependency-cruiser').IConfiguration} */
 const config = {
@@ -58,14 +55,14 @@ const config = {
       name: 'apps-are-independent',
       severity: 'error',
       comment:
-        'An application imports its own files and shared packages, never another application or the transitional src tree.',
+        'An application imports its own files and shared packages, never another application.',
       from: { path: '^src/apps/([^/]+)/' },
       to: {
         path: '^(src|tests|scripts)/',
         pathNot: [
           '^src/apps/$1/',
           `^${PACKAGES_ROOT}/`,
-          '^scripts/tests/cleanup\\.ts$',
+          '^scripts/tests/(cleanup|broker-gate)\\.ts$',
         ],
       },
     },
