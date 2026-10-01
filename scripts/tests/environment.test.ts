@@ -12,6 +12,7 @@ import { runCommand } from '../lib/command';
 import { composeProbeConfiguration } from './compose-fixture';
 import { availablePort } from '../lib/environments';
 import { withCleanup } from './cleanup';
+import { expectRegressionSuite } from './regression-suite';
 
 const root = new URL('../../', import.meta.url).pathname;
 const run = `probe-${randomUUID().slice(0, 8)}`;
@@ -314,20 +315,7 @@ test('prepared regression runs reject foreign targets and preserve development a
           AGENT: '0',
         }),
       );
-      // The regression suite grows; require both Gherkin and database coverage.
-      const output = Bun.stripANSI(regression.stderr + regression.stdout);
-      for (const file of [
-        'tests/user/create-user/create-user.test.ts',
-        'tests/user/delete-user/delete-user.test.ts',
-        'tests/integration/find-users.test.ts',
-        'tests/integration/user-wallet.test.ts',
-        'tests/integration/user-api-contract.test.ts',
-      ]) {
-        expect(output).toContain(`\n${file}:\n`);
-      }
-      expect(output).toMatch(/^\s*0 fail\s*$/m);
-      const passed = /(\d+) pass/.exec(output);
-      expect(Number(passed?.[1] ?? 0)).toBeGreaterThanOrEqual(7);
+      await expectRegressionSuite(root, regression.stderr + regression.stdout);
       await succeeded(first('down'));
       await succeeded(
         sibling('exec', ['--', process.execPath, '-e', seedProbe]),

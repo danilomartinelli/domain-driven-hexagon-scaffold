@@ -104,3 +104,48 @@ test('withCleanup remains available to infrastructure fixtures', async () => {
     ),
   ).toEqual([]);
 });
+
+test.each([
+  'src/apps/user/tests/component/publication-recovery.test.ts',
+  'src/apps/wallet/tests/component/database-ownership.test.ts',
+  'tests/integration/user-wallet.test.ts',
+  'scripts/tests/environment.test.ts',
+])(
+  'rejects sequential awaits inside one cleanup callback in %s',
+  async (filePath) => {
+    for (const callback of [
+      'async () => { await stopUser(); await connection.close(); }',
+      'async function () { await stopUser(); await connection.close(); }',
+      'async () => { await connection.close(); await stopUser(); }',
+      'async () => { await stopUser(); await pool.end(); }',
+    ]) {
+      const messages = await restrictions(
+        `export async function fixture(): Promise<void> {
+        await withCleanup(() => Promise.resolve(), [${callback}]);
+      }`,
+        filePath,
+      );
+      expect(messages).toHaveLength(1);
+      expect(messages[0].message).toContain('withCleanup');
+    }
+  },
+);
+
+test('dependent restore steps stay sequential and resource cleanup uses nested withCleanup', async () => {
+  expect(
+    await restrictions(
+      `export async function fixture(): Promise<void> {
+        await withCleanup(async () => {
+          await startUser();
+          await createUser();
+        }, [
+          () => withCleanup(stopUser, [() => connection.close()]),
+          async () => { await gate.close(); },
+          async () => { await stopUser(); await startUser(); },
+          async () => { await startBroker(); await waitForBrokerHealth(); },
+        ]);
+      }`,
+      'src/apps/user/tests/component/publication-recovery.test.ts',
+    ),
+  ).toEqual([]);
+});

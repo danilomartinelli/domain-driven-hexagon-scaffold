@@ -83,6 +83,12 @@ export default defineConfig(
           message:
             'Use withCleanup from scripts/tests/cleanup.ts to preserve operation and cleanup failures.',
         },
+        {
+          selector:
+            "CallExpression[callee.name='withCleanup'] > ArrayExpression.arguments > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement > ExpressionStatement[expression.type='AwaitExpression'] ~ ExpressionStatement > AwaitExpression > CallExpression:matches([callee.property.name=/^(close|end|stop|destroy|shutdown)$/], [callee.name=/^(close|end|stop|destroy|shutdown)([A-Z_]|$)/])",
+          message:
+            'Use nested withCleanup so an earlier cleanup failure cannot skip closing this resource.',
+        },
       ],
     },
   },

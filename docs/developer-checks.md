@@ -26,12 +26,13 @@ existing Prettier configuration, then `check:code` (lint, types, architecture an
 core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
 failure blocks the commit. Continuous integration runs `bun run check`,
-`bun run nx run test-runner:test-broker` and `bun run test:component` on pull
+`bun run nx run test-runner:test-broker`, `bun run test:e2e` and `bun run test:component` on pull
 requests and pushes to `master`. All belong to the `check` job required by the
 `protect-master` ruleset. The uncached broker target uses the pinned Docker image
 to force the healthcheck-before-startup ordering and verifies fixture cleanup
-ownership. The broader runner lifecycle and distributed end-to-end suites remain part
-of local `check:full` validation; its lifecycle suite also includes these broker checks.
+ownership. The distributed end-to-end suite verifies the service integration and
+all seven Gherkin cases. The broader runner lifecycle suite remains part of local
+`check:full` validation and also includes these broker checks.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added

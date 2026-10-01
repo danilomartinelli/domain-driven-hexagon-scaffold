@@ -24,16 +24,10 @@ and Nx ([ADR 0001](docs/adr/0001-modernize-with-bun.md),
 - One set of rules for every contributor: Claude Code, Codex and OpenCode share
   the repository's instructions, skills and reviewers.
 
-## Current state
-
-- User and Wallet run as independent Nest applications, each owning its
-  PostgreSQL database. User publishes committed outbox events through RabbitMQ;
-  Wallet consumes them idempotently. See [recovery evidence](docs/recovery.md).
-- Nx orchestrates the applications, private technical packages (`core`,
-  `nest-support`, `example`), database, tooling and regression projects; see
-  [the Nx guide](docs/nx-workspace.md).
-- The original Gherkin cases and database/API regressions run against
-  provisioned PostgreSQL and RabbitMQ; see [developer checks](docs/developer-checks.md).
+Runtime behavior and commands live in the [runtime guide](docs/runtime.md)
+and [recovery guide](docs/recovery.md). Project ownership and orchestration
+live in the [Nx guide](docs/nx-workspace.md); validation lives in
+[developer checks](docs/developer-checks.md).
 
 ## Direction
 
