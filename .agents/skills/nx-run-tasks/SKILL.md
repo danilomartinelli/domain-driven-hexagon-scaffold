@@ -20,6 +20,9 @@ focused feedback. Use `bun run nx`; direct `npx nx` bypasses repository settings
 Affected runs are focused feedback, not a replacement for the full gate. Use
 `origin/master` as the comparison base and include unstaged/new files when that
 is the task's scope. Use `--skip-nx-cache` when fresh execution evidence is needed.
-Live targets are intentionally uncached. Preserve a failed command's status and
-report cleanup failures separately. Nx Cloud is disabled; do not enable it or
+Live targets are intentionally uncached. Use `&&` for sequential checks, or
+separate tool calls and inspect every exit status, as shown in
+[focused feedback](../../../docs/developer-checks.md#focused-feedback).
+A later successful check must not hide an earlier failure. Report cleanup
+failures separately. Nx Cloud is disabled; do not enable it or
 start CI repair/publishing merely because an upstream skill mentions it.

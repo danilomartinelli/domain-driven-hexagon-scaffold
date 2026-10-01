@@ -1,7 +1,11 @@
 import {
   Module,
+  Logger,
+  Inject,
   type MiddlewareConsumer,
   type NestModule,
+  type OnApplicationBootstrap,
+  type BeforeApplicationShutdown,
 } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
@@ -13,12 +17,17 @@ import {
 import { ExceptionInterceptor } from '@starter/nest-support/http';
 import cors from 'cors';
 import { FindWalletByUser } from './application/find-wallet-by-user';
-import { DatabaseModule } from './database/database.module';
+import { DatabaseModule, DATABASE_POOL } from './database/database.module';
+import type { DatabasePool } from 'slonik';
+import { CreateWallet } from './application/create-wallet';
+import { SlonikWalletCreationTransaction } from './database/wallet-creation.adapter';
+import { RabbitWalletConsumer } from './messaging/rabbit-wallet-consumer';
+import { walletRabbitMqOptions } from './configs/environment';
 import { SlonikWalletReadAdapter } from './database/wallet-read.adapter';
 import { FindWalletByUserGraphqlResolver } from './queries/find-wallet-by-user/find-wallet-by-user.graphql-resolver';
 import { FindWalletByUserHttpController } from './queries/find-wallet-by-user/find-wallet-by-user.http.controller';
 
-/** Wallet's composition root: only its own database, no User process or broker. */
+/** Wallet's composition root: its database and independently recovering messaging. */
 @Module({
   imports: [
     DatabaseModule,
@@ -29,6 +38,16 @@ import { FindWalletByUserHttpController } from './queries/find-wallet-by-user/fi
   ],
   controllers: [FindWalletByUserHttpController],
   providers: [
+    {
+      provide: RabbitWalletConsumer,
+      useFactory: (pool: DatabasePool) =>
+        new RabbitWalletConsumer(
+          walletRabbitMqOptions(),
+          new CreateWallet(new SlonikWalletCreationTransaction(pool)),
+          new Logger('WalletMessaging'),
+        ),
+      inject: [DATABASE_POOL],
+    },
     { provide: APP_INTERCEPTOR, useClass: ContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ExceptionInterceptor },
     SlonikWalletReadAdapter,
@@ -41,7 +60,22 @@ import { FindWalletByUserHttpController } from './queries/find-wallet-by-user/fi
     FindWalletByUserGraphqlResolver,
   ],
 })
-export class AppModule implements NestModule {
+export class AppModule
+  implements NestModule, OnApplicationBootstrap, BeforeApplicationShutdown
+{
+  constructor(
+    @Inject(RabbitWalletConsumer)
+    private readonly messaging: RabbitWalletConsumer,
+  ) {}
+
+  onApplicationBootstrap(): void {
+    this.messaging.start();
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
+    await this.messaging.stop();
+  }
+
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestContextMiddleware).forRoutes('{*path}');
     // Apollo's Express integration no longer installs GraphQL CORS itself.

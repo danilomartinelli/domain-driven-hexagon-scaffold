@@ -25,9 +25,11 @@ Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
 core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
-failure blocks the commit. Continuous integration runs `bun run check` on pull
-requests and pushes to `master`; the `protect-master` ruleset requires it to
-pass before merging.
+failure blocks the commit. Continuous integration runs `bun run check`, then
+`bun run test:component` with Docker on pull requests and pushes to `master`.
+Both belong to the `check` job required by the `protect-master` ruleset, so
+component failures block merging. The runner lifecycle and legacy end-to-end
+suites remain part of local `check:full` validation.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
@@ -67,11 +69,24 @@ the changed code; resolve failures before broadening validation. Pass the actual
 changed TypeScript or JavaScript paths explicitly; for example:
 
 ```sh
-bun --bun eslint scripts/search.ts scripts/lib/read-ranges.ts scripts/tests/search.test.ts --max-warnings 0
+bun test ./scripts/tests/search.test.ts &&
+  bun run nx run test-runner:typecheck &&
+  bun --bun eslint scripts/search.ts scripts/lib/read-ranges.ts scripts/tests/search.test.ts --max-warnings 0
 ```
 
-Use the full gate above for final validation. Operational guides describe test
-coverage without copying execution totals, so adding a regression does not
+Use `&&` to stop a sequential batch on failure. For independent checks, use
+separate tool calls (parallel when useful) and inspect every command's exit
+status. A batch is successful only if every check passed; `;` or unchecked
+parallel results can hide an earlier failure behind the last command's success.
+When saving logs, preserve the check's status and read the log in a separate
+call; a successful log reader is not evidence that the check passed.
+
+Once focused checks pass, stage and format the intended changes, then complete
+both staged reviews and resolve their findings. Run the full gate above only
+after the final reviewed snapshot is ready. Changes after that gate require
+affected checks, another review and final validation of the new snapshot.
+Operational guides describe test coverage without copying execution totals,
+so adding a regression does not
 require updating those guides unless the coverage changes.
 
 ## Documentation references
@@ -92,6 +107,11 @@ broken references and exit 2 means the checker could not complete.
 Infrastructure test fixtures use `withCleanup` from `scripts/tests/cleanup.ts`.
 It attempts every registered cleanup after success or failure, preserves a lone
 error's identity, and reports multiple failures together in an `AggregateError`.
+ESLint rejects `await` inside `finally` in application component tests, `tests/`
+integration fixtures and the Docker lifecycle suites
+(`scripts/tests/environment.test.ts` and `scripts/tests/test-database-runner.test.ts`).
+Register independent cleanups separately; they run concurrently. Nest
+`withCleanup` calls when cleanup order matters.
 
 ## Nx orchestration
 

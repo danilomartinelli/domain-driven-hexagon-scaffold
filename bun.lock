@@ -17,7 +17,9 @@
         "@nestjs/platform-express": "12.1.1",
         "@nestjs/swagger": "12.0.2",
         "@starter/core": "workspace:*",
+        "@starter/integration-contracts": "workspace:*",
         "@starter/nest-support": "workspace:*",
+        "amqplib": "2.2.0",
         "class-transformer": "0.5.1",
         "class-validator": "0.15.1",
         "commander": "15.0.0",
@@ -69,6 +71,13 @@
     "src/packages/example": {
       "name": "@starter/example",
       "version": "0.0.0",
+    },
+    "src/packages/integration-contracts": {
+      "name": "@starter/integration-contracts",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "4.6.5",
+      },
     },
     "src/packages/nest-support": {
       "name": "@starter/nest-support",
@@ -320,6 +329,8 @@
 
     "@starter/example": ["@starter/example@workspace:src/packages/example"],
 
+    "@starter/integration-contracts": ["@starter/integration-contracts@workspace:src/packages/integration-contracts"],
+
     "@starter/nest-support": ["@starter/nest-support@workspace:src/packages/nest-support"],
 
     "@tokenizer/inflate": ["@tokenizer/inflate@0.4.1", "", { "dependencies": { "debug": "^4.4.3", "token-types": "^6.1.1" } }, "sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA=="],
@@ -429,6 +440,8 @@
     "agent-base": ["agent-base@6.0.2", "", { "dependencies": { "debug": "4" } }, "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ=="],
 
     "ajv": ["ajv@6.15.0", "", { "dependencies": { "fast-deep-equal": "^3.1.1", "fast-json-stable-stringify": "^2.0.0", "json-schema-traverse": "^0.4.1", "uri-js": "^4.2.2" } }, "sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw=="],
+
+    "amqplib": ["amqplib@2.2.0", "", {}, "sha512-VifzN9aHs/Q3zTruVHXh2yCisQyXexBN91CQ2E5iSyUKyNjH6ilYhJGte5AXZH/Bj1PaH7SwPhyuSf6Msd2udw=="],
 
     "ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 

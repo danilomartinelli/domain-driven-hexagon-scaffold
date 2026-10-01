@@ -47,7 +47,7 @@
     "migration:status:tests": "bun run nx run database:migration-status --configuration=test",
     "seed:up": "bun run nx run database:seed",
     "seed:up:tests": "bun run nx run database:seed --configuration=test",
-    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/boundaries.test.ts ./scripts/tests/characterize.test.ts ./scripts/tests/test-counts.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts ./scripts/tests/database-target.test.ts ./scripts/tests/cleanup.test.ts ./scripts/tests/docs.test.ts ./scripts/tests/search.test.ts ./scripts/tests/agent-automation.test.ts",
+    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/boundaries.test.ts ./scripts/tests/characterize.test.ts ./scripts/tests/test-counts.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts ./scripts/tests/database-target.test.ts ./scripts/tests/cleanup.test.ts ./scripts/tests/fixture-lint.test.ts ./scripts/tests/docs.test.ts ./scripts/tests/search.test.ts ./scripts/tests/agent-automation.test.ts",
     "audit:changed": "bun scripts/audit-changed.ts",
     "characterize": "bun scripts/characterize.ts",
     "env:prepare": "bun --no-env-file scripts/environment-cli.ts prepare",
@@ -84,7 +84,9 @@
     "commander": "15.0.0",
     "cors": "2.8.6",
     "@starter/core": "workspace:*",
-    "@starter/nest-support": "workspace:*"
+    "@starter/nest-support": "workspace:*",
+    "@starter/integration-contracts": "workspace:*",
+    "amqplib": "2.2.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

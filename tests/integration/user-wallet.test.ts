@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { sql } from 'slonik';
 import { z } from 'zod';
 import { getHttpServer, getTestDatabase } from '@tests/setup/test-server';
+import { withCleanup } from '../../scripts/tests/cleanup';
 
 const profile = {
   email: 'atomic@example.com',
@@ -36,15 +37,16 @@ test('Wallet persistence failure rolls back User creation and the next request r
   await pool.query(
     sql.unsafe`ALTER TABLE wallets ADD CONSTRAINT issue16_reject_wallet CHECK (balance < 0)`,
   );
-  try {
+  await withCleanup(async () => {
     await getHttpServer().post('/v1/users').send(profile).expect(500);
     expect(await pool.any(sql.unsafe`SELECT id FROM users`)).toEqual([]);
     expect(await pool.any(sql.unsafe`SELECT id FROM wallets`)).toEqual([]);
-  } finally {
-    await pool.query(
-      sql.unsafe`ALTER TABLE wallets DROP CONSTRAINT issue16_reject_wallet`,
-    );
-  }
+  }, [
+    () =>
+      pool.query(
+        sql.unsafe`ALTER TABLE wallets DROP CONSTRAINT issue16_reject_wallet`,
+      ),
+  ]);
   await getHttpServer().post('/v1/users').send(profile).expect(201);
   expect(await pool.any(sql.unsafe`SELECT id FROM users`)).toHaveLength(1);
   expect(await pool.any(sql.unsafe`SELECT id FROM wallets`)).toHaveLength(1);

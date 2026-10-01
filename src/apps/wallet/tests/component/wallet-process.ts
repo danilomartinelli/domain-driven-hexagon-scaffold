@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeAll } from 'bun:test';
 import type { Subprocess } from 'bun';
 import pg from 'pg';
 import { assertTestEnvironment } from '../../../../../database/environment';
+import { destination, withBroker } from './broker-fixture';
+import { withCleanup } from '../../../../../scripts/tests/cleanup';
 
 const root = new URL('../../../../../', import.meta.url).pathname;
 let wallet: Subprocess<'ignore', 'pipe', 'pipe'> | undefined;
@@ -30,6 +32,10 @@ export function walletUrl(): string {
   return `http://127.0.0.1:${setting('WALLET_HTTP_PORT')}`;
 }
 
+export function walletOutput(): string {
+  return output;
+}
+
 /** Owner connection for fixtures and cleanup; available after the preload starts Wallet. */
 export function ownerDatabase(): pg.Client {
   if (!owner) throw new Error('Wallet database has not been opened.');
@@ -38,15 +44,15 @@ export function ownerDatabase(): pg.Client {
 
 async function cleanDatabase(): Promise<void> {
   assertTestEnvironment();
-  await owner?.query('TRUNCATE wallets');
+  await owner?.query('TRUNCATE wallets, wallet_consumed_events');
 }
 
 /**
- * Only Wallet settings reach the process: no User or legacy database, no
- * broker and no migration owner. Starting proves none of them is required.
+ * Wallet knows its database and broker, with no User or legacy database settings
+ * and no migration owner credentials.
  */
-function walletEnvironment(): Record<string, string> {
-  const excluded = /^(DB_|RABBITMQ_|USER_HTTP_PORT$|WALLET_DB_MIGRATION_)/;
+export function walletEnvironment(): Record<string, string> {
+  const excluded = /^(DB_|USER_HTTP_PORT$|WALLET_DB_MIGRATION_)/;
   const env: Record<string, string> = { NO_COLOR: '1' };
   for (const [name, value] of Object.entries(process.env))
     if (value !== undefined && !excluded.test(name)) env[name] = value;
@@ -75,7 +81,7 @@ async function waitUntilListening(process: Subprocess): Promise<void> {
   throw new Error(`Wallet did not listen within 20 seconds:\n${output}`);
 }
 
-async function stopWallet(): Promise<void> {
+export async function stopWallet(): Promise<void> {
   if (!wallet) return;
   const running = wallet;
   wallet = undefined;
@@ -90,33 +96,62 @@ async function stopWallet(): Promise<void> {
   }
 }
 
+export async function startWallet(
+  overrides: Record<string, string> = {},
+): Promise<void> {
+  if (wallet) throw new Error('Wallet is already running');
+  output = '';
+  wallet = Bun.spawn([process.execPath, 'src/apps/wallet/main.ts'], {
+    cwd: root,
+    env: { ...walletEnvironment(), ...overrides },
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  void collect(wallet.stdout);
+  void collect(wallet.stderr);
+  await waitUntilListening(wallet);
+}
+
 beforeAll(async () => {
   try {
     owner = new pg.Client(walletDatabase('owner'));
     await owner.connect();
     await cleanDatabase();
-    wallet = Bun.spawn([process.execPath, 'src/apps/wallet/main.ts'], {
-      cwd: root,
-      env: walletEnvironment(),
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    void collect(wallet.stdout);
-    void collect(wallet.stderr);
-    await waitUntilListening(wallet);
+    await startWallet();
   } catch (error) {
-    await stopWallet();
-    await owner?.end();
-    owner = undefined;
-    throw error;
+    await withCleanup(() => {
+      throw error;
+    }, [closeResources]);
   }
 });
 
-afterEach(cleanDatabase);
-
-afterAll(async () => {
-  await stopWallet();
-  await owner?.end();
-  owner = undefined;
+afterEach(async () => {
+  // No delayed delivery may race the next scenario's database cleanup.
+  await withCleanup(stopWallet, [
+    () =>
+      withCleanup(
+        () =>
+          withBroker((channel) =>
+            withCleanup(
+              () => channel.purgeQueue(destination.queue),
+              [() => channel.purgeQueue(destination.failed)],
+            ),
+          ),
+        [cleanDatabase],
+      ),
+  ]);
+  await startWallet();
 });
+
+async function closeResources(): Promise<void> {
+  await withCleanup(stopWallet, [
+    async () => {
+      const connection = owner;
+      owner = undefined;
+      await connection?.end();
+    },
+  ]);
+}
+
+afterAll(closeResources);
