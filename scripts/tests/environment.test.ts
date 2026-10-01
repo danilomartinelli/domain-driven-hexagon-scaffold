@@ -9,49 +9,12 @@ import {
   readEnvironment,
 } from '../../database/environment';
 import { runCommand } from '../lib/command';
-import { composeConfiguration } from '../lib/compose';
+import { composeProbeConfiguration } from './compose-fixture';
 import { availablePort } from '../lib/environments';
 import { withCleanup } from './cleanup';
 
 const root = new URL('../../', import.meta.url).pathname;
 const run = `probe-${randomUUID().slice(0, 8)}`;
-
-function composeProbeConfiguration(username: string, password: string) {
-  return composeConfiguration({
-    environment: 'test',
-    run: 'compose-probe',
-    project: 'compose-probe',
-    owner: randomUUID(),
-    status: 'starting',
-    databases: [
-      {
-        app: 'wallet',
-        prefix: 'WALLET_DB',
-        host: '127.0.0.1',
-        port: 5432,
-        username: 'owner',
-        password: 'fixture-owner',
-        database: 'wallet',
-        runtime: { username, password },
-      },
-    ],
-    broker: {
-      port: 5672,
-      managementPort: 15672,
-      username: 'fixture',
-      password: 'fixture-broker',
-      vhost: 'compose-probe',
-    },
-    gateway: {
-      name: 'compose-probe-gateway',
-      host: 'host.docker.internal',
-      proxyPort: 8000,
-      adminPort: 8001,
-      userPort: 3000,
-      walletPort: 3001,
-    },
-  });
-}
 
 test.each([
   {
@@ -111,80 +74,6 @@ test.each([
     }, [() => rm(directory, { recursive: true, force: true })]);
   },
 );
-
-test('RabbitMQ healthcheck cannot make the startup cookie unreadable to the broker', async () => {
-  const { services } = z
-    .object({
-      services: z.object({
-        rabbitmq: z.object({
-          image: z.string(),
-          labels: z.object({ 'dev.starter.owner': z.string() }),
-          healthcheck: z.object({
-            test: z.tuple([z.literal('CMD')]).rest(z.string()),
-          }),
-        }),
-      }),
-    })
-    .parse(composeProbeConfiguration('runtime', 'fixture-runtime'));
-  const container = `starter-cookie-probe-${randomUUID()}`;
-  await withCleanup(async () => {
-    const result = await runCommand(
-      [
-        'docker',
-        'run',
-        '--name',
-        container,
-        '--label',
-        `dev.starter.owner=${services.rabbitmq.labels['dev.starter.owner']}`,
-        '--tmpfs',
-        '/var/lib/rabbitmq',
-        '--entrypoint',
-        'sh',
-        services.rabbitmq.image,
-        '-c',
-        // Force the healthcheck between entrypoint ownership setup and broker startup.
-        // With no broker running, diagnostics may fail but must leave its cookie readable.
-        'chown rabbitmq:rabbitmq /var/lib/rabbitmq && { "$@" >/tmp/healthcheck.log 2>&1 || true; } && su-exec rabbitmq test -r /var/lib/rabbitmq/.erlang.cookie',
-        'healthcheck-probe',
-        ...services.rabbitmq.healthcheck.test.slice(1),
-      ],
-      { cwd: root, timeout: 15_000 },
-    );
-    expect(result.code, result.stderr).toBe(0);
-  }, [
-    async () => {
-      const inspection = await runCommand(
-        ['docker', 'container', 'inspect', container],
-        { cwd: root, timeout: 15_000 },
-      );
-      if (
-        inspection.code === 1 &&
-        inspection.stderr.trim() ===
-          `Error response from daemon: No such container: ${container}`
-      )
-        return;
-      expect(inspection.code, inspection.stderr).toBe(0);
-      const [owned] = z
-        .tuple([
-          z.object({
-            Id: z.string().min(1),
-            Config: z.object({
-              Labels: z.object({ 'dev.starter.owner': z.string() }),
-            }),
-          }),
-        ])
-        .parse(JSON.parse(inspection.stdout));
-      expect(owned.Config.Labels['dev.starter.owner']).toBe(
-        services.rabbitmq.labels['dev.starter.owner'],
-      );
-      const removal = await runCommand(['docker', 'rm', '-f', owned.Id], {
-        cwd: root,
-        timeout: 15_000,
-      });
-      expect(removal.code, removal.stderr).toBe(0);
-    },
-  ]);
-}, 50_000);
 
 function environment(
   command: string,

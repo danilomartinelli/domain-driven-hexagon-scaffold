@@ -17,10 +17,9 @@ bun run search -- 'withCleanup' scripts/tests
 bun scripts/search.ts --read --max-bytes=6000 -- scripts/tests/cleanup.ts 1 35
 ```
 
-Adapt the scope, query and ranges to the task. Keep the combined output of each
-tool call within its display budget. If the helper exits 125 or the tool output
-is truncated, narrow the ranges or split the calls before using the missing
-content. Do not replace a truncated read with an unbounded dump.
+Adapt the scope, query and ranges to the task. For incomplete reads, follow the
+continuation and outer-tool budget rules in
+`docs/agents/issue-tracker.md#conventions` before relying on missing content.
 
 Before the first test, formatter or Nx task, complete the setup in
 `docs/developer-checks.md#setup`. Continue when the checkout's pinned Bun and

@@ -37,8 +37,24 @@ text, plus a 10-second deadline, including all ranges in a read batch.
 Use `bun scripts/search.ts` when the budget must exclude the package runner's
 own command echo and error messages.
 `--max-bytes=<n>` and `--timeout-ms=<n>` before `--` change those bounds.
-Exit 125 marks incomplete output; exit 124 marks timeout. Narrow the path/pattern
-and retry. Complete results retain ripgrep's 0/1/2 exit codes. Use the Git inventory
+Exit 125 marks incomplete output; exit 124 marks timeout. A full read page emits
+`[search:resume] --resume=<range-index>:<line>` on stderr. Repeat the original
+`--read` invocation with that option before `--`, keeping every original range
+and the files unchanged. The zero-based range index identifies repeated or
+overlapping ranges; the line is the first line not delivered. Each page reserves
+room for its cursor inside the same byte cap. For example:
+
+```sh
+bun scripts/search.ts --read --max-bytes=6000 --resume=0:41 -- scripts/tests/search.test.ts 1 180
+```
+
+A single line that cannot fit the current page reports the minimum byte budget;
+increase `--max-bytes` before retrying its cursor. An unchanged budget cannot make
+progress on that line. If the numbered line plus diagnostic space exceeds the
+maximum 1,048,576-byte page, reading fails explicitly without a cursor: whole-line
+continuation is unavailable. Use a bounded excerpt or search preview for that
+line. Search mode has no read cursor: narrow its path/pattern and retry.
+Complete results retain ripgrep's 0/1/2 exit codes. Use the Git inventory
 commands directly when a workflow requires every path, rather than a search preview.
 
 For a child issue, read the child first. Save a long parent body under `.context/`
@@ -47,10 +63,11 @@ locate its headings with `rg -n '^##'`, and read the referenced acceptance crite
 and relevant decision ranges. Expand to other sections only when they affect the
 selected work.
 
-Batch selected ranges in one `--read` invocation so they share one output
-budget. Split larger batches into smaller ranges when exit 125 reports an
-incomplete read; separate invocations each have their own budget. Keep large
-issue bodies and registry manifests in separate outputs.
+Batch selected ranges in one paginated `--read` invocation. Return one page per
+tool response, leaving room for the tool's own output wrapper. The helper's byte
+cap cannot control an outer tool's token cap. If that outer response is cut, lower
+`--max-bytes` and repeat the same page before advancing its cursor. Keep large issue
+bodies and registry manifests in separate outputs.
 For registry metadata, select only fields needed for the decision (version,
 engines and peer dependencies); save a full response under `.context/` when the
 CLI cannot select fields.

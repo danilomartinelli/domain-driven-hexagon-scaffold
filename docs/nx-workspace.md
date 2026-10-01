@@ -127,6 +127,9 @@ Arguments continue through the command chain, for example
 `bun run migration:create add-user-index`. Direct Bun commands for focused
 experiments remain possible; use the package commands for the quality gates.
 Unit discovery has no E2E preload. Bare `bun test` runs only `src/tests`.
+`bun run nx run test-runner:test-broker` runs the pinned-image healthcheck and
+container-ownership regressions without provisioning application databases.
+This uncached subset runs in CI and is also included in `test:tooling`.
 The decorator fixture is never a runtime test and remains in
 `legacy-app:typecheck`.
 

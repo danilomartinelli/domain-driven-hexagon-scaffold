@@ -31,6 +31,8 @@ jobs:
       # Fast gate: formatting, docs references, lint, types, boundaries and unit tests.
       - name: Check
         run: bun run check
+      - name: Broker regression and cleanup ownership
+        run: bun run nx run test-runner:test-broker
       # Keep component failures inside the existing required check status.
       - name: Component tests
         run: bun run test:component

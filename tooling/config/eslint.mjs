@@ -14,6 +14,22 @@ const restrictedSyntax = [
   },
 ];
 
+const containerRemovalSyntax = [
+  {
+    selector: [
+      "ArrayExpression[elements.0.value='docker'][elements.1.value=/^(rm|remove)$/]",
+      "ArrayExpression[elements.0.value='docker'][elements.1.value='container'][elements.2.value=/^(rm|remove)$/]",
+      "CallExpression[arguments.0.value='docker'][arguments.1.elements.0.value=/^(rm|remove)$/]",
+      "CallExpression[arguments.0.value='docker'][arguments.1.elements.0.value='container'][arguments.1.elements.1.value=/^(rm|remove)$/]",
+      'CallExpression > Literal.arguments[value=/^docker\\s+(container\\s+)?(rm|remove)(\\s|$)/]',
+      'ArrayExpression > Literal.elements[value=/^docker\\s+(container\\s+)?(rm|remove)(\\s|$)/]',
+      'CallExpression > TemplateLiteral.arguments[quasis.0.value.cooked=/^docker\\s+(container\\s+)?(rm|remove)(\\s|$)/]',
+    ].join(', '),
+    message:
+      'Use removeOwnedContainer from scripts/tests/owned-container.ts to verify ownership and remove the inspected ID.',
+  },
+];
+
 export default defineConfig(
   {
     files: [
@@ -40,12 +56,28 @@ export default defineConfig(
     files: [
       'src/apps/*/tests/component/**/*.ts',
       'tests/**/*.ts',
-      'scripts/tests/{environment,test-database-runner}.test.ts',
+      'scripts/tests/**/*.ts',
+    ],
+    ignores: ['scripts/tests/owned-container.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...restrictedSyntax,
+        ...containerRemovalSyntax,
+      ],
+    },
+  },
+  {
+    files: [
+      'src/apps/*/tests/component/**/*.ts',
+      'tests/**/*.ts',
+      'scripts/tests/{environment,test-database-runner,broker}.test.ts',
     ],
     rules: {
       'no-restricted-syntax': [
         'error',
         ...restrictedSyntax,
+        ...containerRemovalSyntax,
         {
           selector: 'TryStatement > BlockStatement.finalizer AwaitExpression',
           message:

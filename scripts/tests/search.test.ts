@@ -7,6 +7,129 @@ import { withCleanup } from './cleanup';
 
 const search = new URL('../search.ts', import.meta.url).pathname;
 
+test.each([256, 512, 1024])(
+  'read pages resume without losing or repeating UTF-8 lines across ranges (%i bytes)',
+  async (maxBytes) => {
+    const directory = await mkdtemp(join(tmpdir(), 'starter-read-pages-'));
+    await withCleanup(async () => {
+      const file = 'first file:ação.txt';
+      const lines = Array.from(
+        { length: 35 },
+        (_, i) => `linha ${String(i)} ação 🐢`,
+      );
+      await writeFile(join(directory, file), lines.join('\r\n'));
+      await writeFile(join(directory, 'second.txt'), 'fim\n');
+      const ranges = [file, '2', '35', 'second.txt', '1', '99', file, '1', '2'];
+      let cursor: string[] = [];
+      let collected = '';
+      for (let page = 0; page < 40; page++) {
+        const result = await runCommand(
+          [
+            process.execPath,
+            search,
+            '--read',
+            `--max-bytes=${String(maxBytes)}`,
+            ...cursor,
+            '--',
+            ...ranges,
+          ],
+          { cwd: directory },
+        );
+        expect(
+          Buffer.byteLength(result.stdout + result.stderr),
+        ).toBeLessThanOrEqual(maxBytes);
+        expect(result.stdout).not.toBe('');
+        expect(result.stdout + result.stderr).not.toContain('\uFFFD');
+        collected += result.stdout;
+        if (result.code === 0) {
+          expect(collected).toBe(
+            [
+              ...lines
+                .slice(1)
+                .map((line, i) => `${file}:${String(i + 2)}:${line}\n`),
+              'second.txt:1:fim\n',
+              ...lines
+                .slice(0, 2)
+                .map((line, i) => `${file}:${String(i + 1)}:${line}\n`),
+            ].join(''),
+          );
+          expect(page).toBeGreaterThan(0);
+          return;
+        }
+        expect(result.code, result.stderr).toBe(125);
+        const next = /^\[search:resume\] (--resume=\d+:\d+)$/m.exec(
+          result.stderr,
+        );
+        expect(next, result.stderr).not.toBeNull();
+        if (!next) throw new Error('Missing read continuation');
+        expect(cursor).not.toEqual([next[1]]);
+        cursor = [next[1]];
+      }
+      throw new Error('Read pagination made no progress');
+    }, [() => rm(directory, { recursive: true, force: true })]);
+  },
+);
+
+test('an oversized read line reports the required budget and resumes after delivered lines', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'starter-read-large-page-'));
+  await withCleanup(async () => {
+    await writeFile(
+      join(directory, 'file.txt'),
+      `first\n${'á'.repeat(300)}\nlast\n`,
+    );
+    const invoke = (...options: string[]) =>
+      runCommand(
+        [
+          process.execPath,
+          search,
+          '--read',
+          ...options,
+          '--',
+          'file.txt',
+          '1',
+          '3',
+        ],
+        { cwd: directory },
+      );
+    const first = await invoke('--max-bytes=256');
+    expect(first.code).toBe(125);
+    expect(first.stdout).toBe('file.txt:1:first\n');
+    expect(first.stderr).toContain('Line exceeds page budget');
+    expect(first.stderr).toContain('[search:resume] --resume=0:2');
+    const blocked = await invoke('--max-bytes=256', '--resume=0:2');
+    expect(blocked.stdout).toBe('');
+    expect(blocked.stderr).toContain('Line exceeds page budget');
+    expect(Buffer.byteLength(blocked.stderr)).toBeLessThanOrEqual(256);
+    const rest = await invoke('--max-bytes=1024', '--resume=0:2');
+    expect(rest.code, rest.stderr).toBe(0);
+    expect(first.stdout + rest.stdout).toBe(
+      `file.txt:1:first\nfile.txt:2:${'á'.repeat(300)}\nfile.txt:3:last\n`,
+    );
+  }, [() => rm(directory, { recursive: true, force: true })]);
+});
+
+test.each(['', '0:0', '1:2', '-1:2', '0:1.5', '0:4', '9007199254740992:2'])(
+  'read rejects an invalid cursor %s before emitting content',
+  async (cursor) => {
+    const result = await runCommand(
+      [
+        process.execPath,
+        search,
+        '--read',
+        `--resume=${cursor}`,
+        '--',
+        'package.json',
+        '2',
+        '3',
+      ],
+      { cwd: process.cwd() },
+    );
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('cursor');
+  },
+);
+
 test('read mode returns numbered ranges from a batch in argument order', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'starter-read-ranges-'));
   await withCleanup(async () => {
@@ -119,7 +242,7 @@ test('read mode reports missing files and invalid ranges instead of silently ski
   }, [() => rm(directory, { recursive: true, force: true })]);
 });
 
-test('read mode marks an oversized single line as incomplete', async () => {
+test('read mode reports a line above its maximum as terminal without an impossible cursor', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'starter-read-long-line-'));
   await withCleanup(async () => {
     await writeFile(join(directory, 'long.txt'), 'á'.repeat(1_000_000));
@@ -141,6 +264,8 @@ test('read mode marks an oversized single line as incomplete', async () => {
       Buffer.byteLength(result.stdout + result.stderr),
     ).toBeLessThanOrEqual(256);
     expect(result.stderr).toContain('search:truncated');
+    expect(result.stderr).toContain('exceeds the maximum');
+    expect(result.stderr).not.toContain('[search:resume]');
     expect(result.stdout + result.stderr).not.toContain('\uFFFD');
   }, [() => rm(directory, { recursive: true, force: true })]);
 });
