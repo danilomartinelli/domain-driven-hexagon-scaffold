@@ -25,11 +25,13 @@ Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
 core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
-failure blocks the commit. Continuous integration runs `bun run check`, then
-`bun run test:component` with Docker on pull requests and pushes to `master`.
-Both belong to the `check` job required by the `protect-master` ruleset, so
-component failures block merging. The runner lifecycle and legacy end-to-end
-suites remain part of local `check:full` validation.
+failure blocks the commit. Continuous integration runs `bun run check`,
+`bun run nx run test-runner:test-broker` and `bun run test:component` on pull
+requests and pushes to `master`. All belong to the `check` job required by the
+`protect-master` ruleset. The uncached broker target uses the pinned Docker image
+to force the healthcheck-before-startup ordering and verifies fixture cleanup
+ownership. The broader runner lifecycle and legacy end-to-end suites remain part
+of local `check:full` validation; its lifecycle suite also includes these broker checks.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
@@ -139,7 +141,8 @@ group; other commands fail explicitly on output overflow rather than treating
 truncated output as a successful result. Test fixtures remove their temporary
 directories in `finally`. The guardrail suite also tests the audit CLI with real Git and Bun
 against a local HTTP registry fixture, with no external registry or Docker.
-The existing real-Docker runner suite remains `test:tooling`.
+The existing real-Docker runner suite remains `test:tooling`. Its fast broker
+subset is also available as `bun run nx run test-runner:test-broker` and runs in CI.
 
 `bun run audit:changed` compares dependency files against the merge-base of
 `HEAD` and `origin/master`, including branch commits, staged/unstaged changes and
@@ -243,6 +246,14 @@ populated by Nest, mappers or inherited constructors, without adding defaults
 that could change validation or responses.
 
 The lint preset is used without global rule overrides or ignored source files.
+Infrastructure fixtures use `withCleanup` to retain operation and cleanup
+failures. Standalone Docker probes use `removeOwnedContainer` from
+`scripts/tests/owned-container.ts`: it verifies `dev.starter.owner`, removes the
+inspected container ID without volumes, and treats only a confirmed absent name
+as already cleaned. ESLint rejects direct literal Docker container-removal
+commands (argument arrays and shell calls) outside that helper in test fixtures.
+Computed commands still require ownership review.
+
 Three local, explained directives retain constructs required by the examples:
 two empty Nest module classes and the public query marker base. Wallet creation
 now records its `userId` as part of the domain fact. Unsafe file-wide suppressions in
@@ -258,13 +269,13 @@ Applications under `src/apps` import only their own files and shared package ent
 nothing else imports their implementation, and their production code cannot import database tooling.
 `check:workspace` injects representative violations into a temporary copy
 (core to Nest or Slonik, adapter to persistence, handler to API DTO, a cycle,
-imports between the Wallet and transitional applications, and Wallet runtime to database tooling) and
+imports between User, Wallet and the transitional application, and service runtime to database tooling) and
 requires each to fail under its rule name.
 The domain request-context exception is removed. New packages follow
 [the deep-module convention](../src/packages/AGENTS.md): root files are public
 entry points, all subfolders are private, tests use entry points and their own
 fixtures, and dependency cycles are errors throughout the checked graph. The transitional `legacy-app` still owns `src/modules`; `wallet` owns
-`src/apps/wallet`; private technical packages now live under `src/packages`.
+`src/apps/wallet` and `user` owns `src/apps/user`; private technical packages now live under `src/packages`.
 Type-only adapter imports from development declarations
 are permitted while runtime development-only dependencies remain forbidden.
 The outdated classification of all `async_hooks` exports as deprecated was

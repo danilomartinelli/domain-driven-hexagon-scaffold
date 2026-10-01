@@ -9,7 +9,7 @@ import {
   readEnvironment,
 } from '../../database/environment';
 import { runCommand } from '../lib/command';
-import { composeConfiguration } from '../lib/compose';
+import { composeProbeConfiguration } from './compose-fixture';
 import { availablePort } from '../lib/environments';
 import { withCleanup } from './cleanup';
 
@@ -37,40 +37,7 @@ test.each([
   async ({ username, password, sql }) => {
     const directory = await mkdtemp(join(tmpdir(), 'starter-compose-'));
     await withCleanup(async () => {
-      const configuration = composeConfiguration({
-        environment: 'test',
-        run: 'compose-probe',
-        project: 'compose-probe',
-        owner: randomUUID(),
-        status: 'starting',
-        databases: [
-          {
-            app: 'wallet',
-            prefix: 'WALLET_DB',
-            host: '127.0.0.1',
-            port: 5432,
-            username: 'owner',
-            password: 'fixture-owner',
-            database: 'wallet',
-            runtime: { username, password },
-          },
-        ],
-        broker: {
-          port: 5672,
-          managementPort: 15672,
-          username: 'fixture',
-          password: 'fixture-broker',
-          vhost: 'compose-probe',
-        },
-        gateway: {
-          name: 'compose-probe-gateway',
-          host: 'host.docker.internal',
-          proxyPort: 8000,
-          adminPort: 8001,
-          userPort: 3000,
-          walletPort: 3001,
-        },
-      });
+      const configuration = composeProbeConfiguration(username, password);
       const file = join(directory, 'compose.json');
       await writeFile(file, JSON.stringify(configuration), { mode: 0o600 });
       const env: NodeJS.ProcessEnv = {
@@ -139,14 +106,21 @@ const seedsProbe = `
   await wallets.connect();
   const lookups = (await wallets.query('SELECT "userId", balance FROM wallets')).rows;
   await wallets.end();
-  if (lookups.length !== 1 || lookups[0].userId !== profiles[0].id || lookups[0].balance !== 0) throw new Error('Wallet seed is not consistent with the User seed');
+  if (lookups.length !== 1 || lookups[0].userId !== profiles[0].id || lookups[0].balance !== 0) throw new Error('Wallet seed is not consistent with the legacy User seed');
+  const standalone = new Client({host: process.env.USER_DB_HOST, port: Number(process.env.USER_DB_PORT), user: process.env.USER_DB_USERNAME, password: process.env.USER_DB_PASSWORD, database: process.env.USER_DB_NAME});
+  await standalone.connect();
+  const ownProfiles = (await standalone.query('SELECT id, email FROM users')).rows;
+  const pending = (await standalone.query('SELECT envelope FROM user_outbox WHERE published_at IS NULL')).rows;
+  await standalone.end();
+  if (ownProfiles.length !== 1 || pending.length !== 1 || pending[0].envelope.data.userId !== ownProfiles[0].id) throw new Error('User seed must have exactly one pending creation');
+  if (lookups.some((wallet) => wallet.userId === ownProfiles[0].id)) throw new Error('User seed duplicates direct Wallet insertion');
 `;
 
 test('a named test environment prepares PostgreSQL and RabbitMQ for explicit database tooling', async () => {
   await withCleanup(async () => {
     const prepared = await environment('prepare');
     expect(prepared.code, prepared.stdout + prepared.stderr).toBe(0);
-    for (const app of ['legacy', 'wallet']) {
+    for (const app of ['legacy', 'wallet', 'user']) {
       for (const script of ['migration:up:tests', 'seed:up:tests']) {
         const result = await environment(
           'exec',
@@ -422,7 +396,7 @@ test('a bound database port fails preparation and removes only the failed run', 
   }, [() => succeeded(failed('down')), () => succeeded(sibling('down'))]);
 }, 120_000);
 
-test('preparing a development run created before Wallet was registered adds only its database', async () => {
+test('preparing a development run created before independent apps were registered preserves legacy data', async () => {
   const name = `upgrade-${randomUUID().slice(0, 8)}`;
   const dev = namedEnvironment('development', name);
   const { project, directory, manifestPath } = environmentLocation(
@@ -485,9 +459,10 @@ test('preparing a development run created before Wallet was registered adds only
     );
     expect(upgraded.databases.map((db) => db.app).sort()).toEqual([
       'legacy',
+      'user',
       'wallet',
     ]);
-    for (const app of ['legacy', 'wallet']) {
+    for (const app of ['legacy', 'wallet', 'user']) {
       for (const script of ['migration:up', 'seed:up'])
         await succeeded(
           dev('exec', ['--', process.execPath, 'run', script], {
@@ -496,7 +471,7 @@ test('preparing a development run created before Wallet was registered adds only
         );
     }
     await succeeded(dev('exec', ['--', process.execPath, '-e', seedsProbe]));
-    // Preparing again reuses the upgraded manifest and both databases' data.
+    // Preparing again reuses the upgraded manifest and all databases' data.
     await succeeded(dev('down'));
     await succeeded(dev('prepare'));
     expect(readEnvironment('development', name)).toEqual({

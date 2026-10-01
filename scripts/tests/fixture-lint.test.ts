@@ -2,6 +2,42 @@ import { expect, test } from 'bun:test';
 import { ESLint } from 'eslint';
 
 const eslint = new ESLint();
+
+test.each([
+  "runCommand(['docker', 'rm', '-f', 'probe'], { cwd: '.' })",
+  "runCommand(['docker', 'container', 'remove', 'probe'], { cwd: '.' })",
+  "spawn('docker', ['rm', '-f', 'probe'])",
+  "spawn('docker', ['container', 'rm', 'probe'])",
+  "exec('docker rm -f probe')",
+  "runCommand(['sh', '-c', 'docker container rm probe'], { cwd: '.' })",
+  'exec(`docker rm -f ${name}`)',
+])('Docker fixtures reject direct container deletion: %s', async (command) => {
+  const messages = await restrictions(
+    `export function fixture(): void { void ${command}; }`,
+    'scripts/tests/environment.test.ts',
+  );
+  expect(messages).toHaveLength(1);
+  expect(messages[0].message).toContain('removeOwnedContainer');
+});
+
+test('container removal rules preserve other Docker and Git commands and the owned helper', async () => {
+  const source = `export function fixture(): void {
+    void runCommand(['docker', 'inspect', 'probe'], { cwd: '.' });
+    void runCommand(['docker', 'exec', 'probe', 'rm', 'temporary-file'], { cwd: '.' });
+    void runCommand(['git', 'rm', 'file'], { cwd: '.' });
+    void removeOwnedContainer({ name: 'probe', owner: 'fixture' });
+  }`;
+  expect(
+    await restrictions(source, 'scripts/tests/environment.test.ts'),
+  ).toEqual([]);
+  expect(
+    await restrictions(
+      "export function fixture(): void { void runCommand(['docker', 'rm', 'id'], { cwd: '.' }); }",
+      'scripts/tests/owned-container.ts',
+    ),
+  ).toEqual([]);
+});
+
 const asyncFinally = `export async function fixture(): Promise<void> {
   try { await Promise.resolve(); }
   finally { await Promise.reject(new Error('cleanup')); }
@@ -20,6 +56,7 @@ test.each([
   'tests/integration/user-wallet.test.ts',
   'scripts/tests/environment.test.ts',
   'scripts/tests/test-database-runner.test.ts',
+  'scripts/tests/broker.test.ts',
 ])(
   'rejects awaited finally cleanup in infrastructure fixture %s',
   async (filePath) => {

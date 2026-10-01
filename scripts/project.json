@@ -23,7 +23,15 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun test ./scripts/tests/test-database-runner.test.ts ./scripts/tests/environment.test.ts",
+        "command": "bun test ./scripts/tests/test-database-runner.test.ts ./scripts/tests/environment.test.ts ./scripts/tests/broker.test.ts",
+        "cwd": "."
+      }
+    },
+    "test-broker": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests/broker.test.ts",
         "cwd": "."
       }
     },

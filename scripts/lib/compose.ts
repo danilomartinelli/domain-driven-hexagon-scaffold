@@ -77,7 +77,14 @@ export function composeConfiguration(
       ? { tmpfs: ['/var/lib/rabbitmq'] }
       : { volumes: ['rabbitmq:/var/lib/rabbitmq'] }),
     healthcheck: {
-      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity'],
+      // The image entrypoint runs diagnostics as rabbitmq, preserving cookie ownership.
+      test: [
+        'CMD',
+        'docker-entrypoint.sh',
+        'rabbitmq-diagnostics',
+        '-q',
+        'check_port_connectivity',
+      ],
       interval: '2s',
       timeout: '5s',
       retries: 30,

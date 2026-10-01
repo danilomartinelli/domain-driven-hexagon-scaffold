@@ -37,6 +37,21 @@ export const applications: DatabaseApplication[] = [
     ],
     runtimeRole: 'wallet_runtime',
   },
+  {
+    name: 'user',
+    prefix: 'USER_DB',
+    migrations: new URL(
+      '../src/apps/user/database/migrations/',
+      import.meta.url,
+    ),
+    seeds: [
+      new URL(
+        '../src/apps/user/database/seeds/users.seed.sql',
+        import.meta.url,
+      ),
+    ],
+    runtimeRole: 'user_runtime',
+  },
 ];
 
 export function selectApplication(

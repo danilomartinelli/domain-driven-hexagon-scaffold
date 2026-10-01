@@ -2,7 +2,7 @@
 
 Private Bun workspace packages and nested Nx projects live here. `core/` owns
 framework-free technical primitives; `nest-support/` owns framework helpers.
-Business code belongs to its application: `src/apps/wallet` or the transitional
+Business code belongs to its application: `src/apps/user`, `src/apps/wallet` or the transitional
 `src/modules` application.
 `example/` is a starter template to copy or delete. See [the Nx guide](../../docs/nx-workspace.md).
 

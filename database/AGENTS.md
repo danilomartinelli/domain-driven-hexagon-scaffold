@@ -3,7 +3,8 @@
 Read [the database workflow](../docs/database.md) before changing migrations,
 seeds or target selection. The registered applications are `legacy`, which
 owns the shared User/Wallet schema in this directory, and `wallet`, whose
-migrations and seed live in `src/apps/wallet/database/`.
+migrations and seed live in `src/apps/wallet/database/`, and `user`, whose
+profile/outbox baseline and seed live in `src/apps/user/database/`.
 
 ## Application content
 

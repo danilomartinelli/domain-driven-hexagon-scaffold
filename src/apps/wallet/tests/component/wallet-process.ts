@@ -52,7 +52,7 @@ async function cleanDatabase(): Promise<void> {
  * and no migration owner credentials.
  */
 export function walletEnvironment(): Record<string, string> {
-  const excluded = /^(DB_|USER_HTTP_PORT$|WALLET_DB_MIGRATION_)/;
+  const excluded = /^(DB_|USER_|WALLET_DB_MIGRATION_)/;
   const env: Record<string, string> = { NO_COLOR: '1' };
   for (const [name, value] of Object.entries(process.env))
     if (value !== undefined && !excluded.test(name)) env[name] = value;

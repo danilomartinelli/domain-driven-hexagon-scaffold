@@ -9,6 +9,34 @@ const wallet = 'src/apps/wallet';
 /** Each import is legal TypeScript that only the architecture rules reject. */
 const violations = [
   {
+    rule: 'core-is-context-independent',
+    file: 'src/apps/user/application/create-user.ts',
+    source: "import type { DatabasePool } from 'slonik';",
+  },
+  {
+    rule: 'no-input-adapter-to-persistence-deps',
+    file: 'src/apps/user/queries/find-users/find-users.graphql-resolver.ts',
+    source: "import type { UserModel } from '../../database/user.schema';",
+  },
+  {
+    rule: 'apps-are-independent',
+    file: 'src/apps/user/application/user-read.port.ts',
+    source:
+      "import type { WalletSummary } from '../../wallet/application/wallet-read.port';",
+  },
+  {
+    rule: 'apps-are-independent',
+    file: 'src/apps/wallet/application/wallet-read.port.ts',
+    source:
+      "import type { UserSummary } from '../../user/application/user-read.port';",
+  },
+  {
+    rule: 'app-runtime-excludes-tooling',
+    file: 'src/apps/user/configs/environment.ts',
+    source:
+      "import type { EnvironmentManifest } from '../../../../database/environment';",
+  },
+  {
     rule: 'integration-contract-is-independent',
     file: 'src/packages/integration-contracts/user-created.ts',
     source:

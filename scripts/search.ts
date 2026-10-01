@@ -1,5 +1,5 @@
 import { runCommand } from './lib/command';
-import { readRanges } from './lib/read-ranges';
+import { MAX_SEARCH_BYTES, readRanges } from './lib/read-ranges';
 
 /** Keep complete leading lines within the UTF-8 byte budget. */
 function clip(text: string, bytes: number): string {
@@ -21,9 +21,14 @@ async function main(): Promise<number> {
   let maxBytes = 16_000;
   let timeout = 10_000;
   let read = false;
+  let resume: string | undefined;
   for (const option of options) {
     if (option === '--read') {
       read = true;
+      continue;
+    }
+    if (option.startsWith('--resume=')) {
+      resume = option.slice('--resume='.length);
       continue;
     }
     const match = /^--(max-bytes|timeout-ms)=(\d+)$/.exec(option);
@@ -32,14 +37,22 @@ async function main(): Promise<number> {
     if (match[1] === 'max-bytes') maxBytes = value;
     else timeout = value;
   }
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 256 || maxBytes > 1_048_576)
-    throw new Error('max-bytes must be 256..1048576');
+  if (
+    !Number.isSafeInteger(maxBytes) ||
+    maxBytes < 256 ||
+    maxBytes > MAX_SEARCH_BYTES
+  )
+    throw new Error(`max-bytes must be 256..${String(MAX_SEARCH_BYTES)}`);
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 60_000)
     throw new Error('timeout-ms must be 1..60000');
+  if (resume !== undefined && !read)
+    throw new Error('--resume requires --read and the original ranges');
+  if (resume !== undefined && !/^\d+:\d+$/.test(resume))
+    throw new Error('Invalid resume cursor; expected <range-index>:<line>');
   if (!query.length)
     throw new Error(
       read
-        ? 'Usage: bun scripts/search.ts --read [--max-bytes=16000] [--timeout-ms=10000] -- <file> <first-line> <last-line> ...'
+        ? 'Usage: bun scripts/search.ts --read [--resume=<range-index>:<line>] [--max-bytes=16000] [--timeout-ms=10000] -- <file> <first-line> <last-line> ...'
         : 'Usage: bun run search [--max-bytes=16000] [--timeout-ms=10000] -- <rg arguments>',
     );
   const limits = {
@@ -49,7 +62,7 @@ async function main(): Promise<number> {
     outputRetention: 'head' as const,
   };
   const result = read
-    ? await readRanges(query, limits)
+    ? await readRanges(query, limits, resume)
     : await runCommand(
         [
           'rg',
@@ -62,6 +75,17 @@ async function main(): Promise<number> {
         ],
         limits,
       );
+  // Read pages reserve their diagnostic space before emitting lines. Forward them
+  // intact so the continuation always follows the last line actually delivered.
+  if (
+    read &&
+    !result.timedOut &&
+    Buffer.byteLength(result.stdout + result.stderr) <= maxBytes
+  ) {
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+    return result.code;
+  }
   // Reserve room for the status message inside the combined stream budget.
   const budget = maxBytes - 160;
   const stdout = clip(result.stdout, budget);

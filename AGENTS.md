@@ -8,7 +8,8 @@ instructions take precedence within their directory and descendants.
 
 This is a Bun/Nx workspace with NestJS applications. The transitional
 `legacy-app` (`src/main.ts`) still runs User and Wallet business code from
-`src/modules/` together. The independent Wallet application in
+`src/modules/` together. The independent User application in `src/apps/user/` owns profiles and durable
+pending integration events in its own database. The independent Wallet application in
 `src/apps/wallet/` owns Wallet creation from integration events, lookup and its own database; read
 [src/apps/AGENTS.md](./src/apps/AGENTS.md) before working there.
 

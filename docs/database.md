@@ -22,7 +22,8 @@ bun run env:down --environment=development --run=default
 Preparing the same development environment again reuses its manifest, ports,
 credentials and volumes. Migrations and seeds are explicit, separate operations.
 These commands select the `legacy` application; the
-[Wallet guide](wallet.md#run-it-locally) migrates, seeds and starts Wallet
+[Wallet guide](wallet.md#run-it-locally) and [User guide](user.md#run-it-locally)
+migrate, seed and start each independent service
 from the same environment. `docker:env` is an alias for preparing
 development's `default` run.
 
@@ -38,7 +39,8 @@ bun run test:e2e --test-name-pattern 'Wallet persistence failure'
 bun run test:component
 ```
 
-`test:e2e` selects `legacy` and `test:component` selects `wallet` through
+`test:e2e` selects `legacy`; `test:component` runs separate `user` and `wallet`
+suites through
 `scripts/with-test-database.ts --app=<name> -- <command>`. Without `--app`, the
 wrapper migrates and seeds every registered application. Every registered
 database is provisioned either way.
@@ -75,7 +77,7 @@ not adopted by the new workflow.
 
 All published infrastructure ports bind to loopback. Ports are allocated per
 run, or explicitly selected at first preparation with `DB_PORT`,
-`WALLET_DB_PORT`, `RABBITMQ_PORT` and `RABBITMQ_MANAGEMENT_PORT`. An occupied
+`USER_DB_PORT`, `WALLET_DB_PORT`, `RABBITMQ_PORT` and `RABBITMQ_MANAGEMENT_PORT`. An occupied
 port fails startup and triggers cleanup. Allocation cannot reserve a port
 across Docker startup; a race also fails closed and can be retried with a fresh run.
 
@@ -83,7 +85,7 @@ The manifest also reserves `GATEWAY_NAME`, `GATEWAY_HOST` (default
 `host.docker.internal`), `GATEWAY_PROXY_PORT`, `GATEWAY_ADMIN_PORT`,
 `USER_HTTP_PORT` and `WALLET_HTTP_PORT` for the later Kong routing slice.
 Those ports and host are configurable at preparation. Kong is not started yet;
-Wallet already listens on `WALLET_HTTP_PORT`, the other ports are coordinates.
+User and Wallet listen on `USER_HTTP_PORT` and `WALLET_HTTP_PORT`.
 
 The generated manifest and Compose configuration live under
 `.context/test-runs/<project>/` with owner-only file permissions. Treat them as
@@ -100,7 +102,7 @@ Bun automatic environment loading is disabled in `bunfig.toml`, and Nx dotenv
 loading is disabled by the package wrapper. The legacy application's and the
 database tooling's dotenv loaders skip `.env`/`.env.test` inside a selected
 environment. Outside that workflow, legacy development and database commands
-still read `.env` with shell precedence; Wallet reads no dotenv file.
+still read `.env` with shell precedence; the independent apps read no dotenv file.
 Tests never authorize cleanup based on a name containing `test`.
 
 Before opening any application pool or database-tool connection, and again
@@ -129,7 +131,8 @@ killed runner or unavailable Docker daemon may leave resources for a later
 prefix, migration directory, ordered seed files and optional runtime role. The
 transitional `legacy` application (`DB_*`, content in `database/`) is the
 default. `wallet` (`WALLET_DB_*`) owns its content in `src/apps/wallet/database/`
-and a new database with its own migration history; no data is transferred.
+and `user` (`USER_DB_*`) owns its profile/outbox content in `src/apps/user/database/`.
+Each has a new database with its own migration history; no data is transferred.
 Select an application with `DATABASE_APP`; unknown applications fail before
 connecting. The orchestrator iterates the registry to provision, migrate, seed
 and validate every target.
@@ -148,10 +151,11 @@ migrations and seeds; the application connects as the restricted role
 initializes the cluster and the migrations grant only what the application
 needs. Wallet's `wallet_runtime` can read and insert `wallets` and
 `wallet_consumed_events`, but cannot update balances, delete records or change
-the schema. Each application
+the schema. User's `user_runtime` can read, insert and delete profiles and read/insert
+pending events; it cannot delete/update outbox work or change the schema. Each application
 database runs in its own PostgreSQL container, so neither Wallet credential can
-connect to another application's database; Wallet's component suite verifies
-both properties. The legacy database still uses its owner for both.
+connect to another application's database; both component suites verify
+the final User/Wallet role restrictions. The legacy database still uses its owner for both.
 
 Registering an application changes existing manifests. The next `env:prepare`
 of a development run adds the new database, with new ports and credentials,
@@ -169,7 +173,8 @@ tables and their data, and Wallet's drops its `wallets` table.
 Seeds run explicitly after migrations in one transaction. The legacy fixture
 is `john@gmail.com` with a zero-balance Wallet; Wallet's seed is a zero-balance
 lookup example for the same User identity, with no event scheduled to create
-it again. Seeds are not idempotent: a second insertion fails and rolls back.
+it again. User's independent seed uses a distinct profile identity and one
+pending event, with no direct Wallet insertion for that identity. Seeds are not idempotent: a second insertion fails and rolls back.
 Application tests clear those fixtures before the first case and between cases.
 Migration history remains intact.
 

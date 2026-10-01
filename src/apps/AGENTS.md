@@ -2,7 +2,7 @@
 
 Each child directory is an independently runnable Nest/Bun application and its
 own Nx project. Read [the Wallet guide](../../docs/wallet.md) before changing
-`wallet/`. Adding an application: complete every item of
+`wallet/` and [the User guide](../../docs/user.md) before changing `user/`. Adding an application: complete every item of
 [the checklist](../../docs/adding-an-application.md).
 
 - An application imports only its own files and shared packages through their

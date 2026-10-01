@@ -5,8 +5,9 @@ puts the existing application and regressions under Nx **23.2.1**, with Bun
 **1.4.2** for installation, application execution and native tests. Nest stays on
 **12.1.1**. User and Wallet still run together in `legacy-app` and share the
 existing transaction; the independent [Wallet application](wallet.md) owns Wallet
-creation from RabbitMQ events, lookup and its own database. This is the runnable baseline for [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md),
-not completion of its independent services, outbox, generators or distributions.
+creation from RabbitMQ events, lookup and its own database. The independent
+[User application](user.md) commits profiles and pending events in its own database. This is the runnable baseline for [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md),
+with publication, generators and distributions still pending.
 The [User/Wallet language](../GLOSSARY.md) and ADR 0001 supersession note remain
 part of that design.
 
@@ -15,6 +16,7 @@ part of that design.
 | Nx project              | Root                                 | Responsibility / tests                                                                                                                                                                                                                                |
 | ----------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `legacy-app`            | `src` (excluding nested projects)    | Current User/Wallet application, owned entities, use cases and persistence models; domain/command tests in `src/tests` and compile-only decorator fixture in `src/type-tests`                                                                         |
+| `user`                  | `src/apps/user`                      | Independent User REST/GraphQL, owned profile/outbox transaction, database, migrations and seed; core and external-process component tests including the seven original Gherkin cases                                                                  |
 | `wallet`                | `src/apps/wallet`                    | Independent Wallet creation and lookup application with its own domain, creation use case, read and transaction ports, RabbitMQ consumer, adapters, migrations and seed; core tests in `tests/unit`, provisioned component suite in `tests/component` |
 | `integration-contracts` | `src/packages/integration-contracts` | Versioned serializable integration envelopes and independent baseline fixtures; infrastructure-free contract tests                                                                                                                                    |
 | `core`                  | `src/packages/core`                  | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                                                                                           |
@@ -43,6 +45,11 @@ graph TD
   e2e --> nest-support
   e2e --> core
   e2e --> test-runner
+  user --> nest-support
+  user --> core
+  user --> integration-contracts
+  user --> test-runner
+  user --> database
   wallet --> nest-support
   wallet --> core
   wallet --> integration-contracts
@@ -57,8 +64,8 @@ graph TD
 ```
 
 Database tooling has its own dotenv loader, so it depends on no application.
-Wallet's edges to `database` and `test-runner` come from its component suite's
-environment guard and runner; its production code imports only its own files
+The independent applications' edges to `database` and `test-runner` come from their component suites'
+environment guard and runner; their production code imports only its own files
 and the shared packages. Source imports (including type-only
 imports), workspace manifests and the runner's explicit command dependencies
 supply the Nx graph. Nx's built-in JavaScript analyzer is explicitly enabled;
@@ -94,11 +101,13 @@ bun run check:full
 | `lint`, `typecheck`, `lint:fix`                                          | All applicable project `lint` / `typecheck` / `lint-fix` targets                 |
 | `test`, `test:unit`                                                      | Every project's `test` target                                                    |
 | `start`, `start:dev`, `start:debug`, `start:prod`                        | `legacy-app:serve`, `watch`, `debug`, `serve-production`                         |
+| `start:user`, `start:user:dev`, `start:user:debug`                       | `user:serve`, `watch`, `debug`                                                   |
+| `test:user:component`                                                    | `user:test-component`                                                            |
 | `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                                 |
 | `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets                 |
 | `test:debug`                                                             | `legacy-app:test-debug`; run another project's `test-debug` target for its suite |
 | `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                    |
-| `test:component`                                                         | Every `test-component` target (currently `wallet:test-component`)                |
+| `test:component`                                                         | Every `test-component` target (`user` and `wallet`)                              |
 | `test:tooling`                                                           | `test-runner:test-live`                                                          |
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                           |
 | `seed:up`                                                                | `database:seed`                                                                  |
@@ -118,6 +127,9 @@ Arguments continue through the command chain, for example
 `bun run migration:create add-user-index`. Direct Bun commands for focused
 experiments remain possible; use the package commands for the quality gates.
 Unit discovery has no E2E preload. Bare `bun test` runs only `src/tests`.
+`bun run nx run test-runner:test-broker` runs the pinned-image healthcheck and
+container-ownership regressions without provisioning application databases.
+This uncached subset runs in CI and is also included in `test:tooling`.
 The decorator fixture is never a runtime test and remains in
 `legacy-app:typecheck`.
 

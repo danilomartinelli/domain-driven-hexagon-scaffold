@@ -6,10 +6,11 @@ date: 2026-09-29
 # Adopt Nx with hexagonal Nest 12 services and native Bun
 
 Amended on 2026-09-30: continuous integration now runs the infrastructure-free
-fast gate (`bun run check`) on pull requests and pushes to `master`. This lifts the
+fast gate (`bun run check`), the uncached broker regression target and the service
+component suites on pull requests and pushes to `master`. This lifts the
 GitHub Actions restriction below and the CI restriction in
 [ADR 0001](0001-modernize-with-bun.md); the Docker-backed suites in
-`check:full` remain local.
+`check:full` otherwise remain local.
 
 The repository will adopt Nx with `user` and `wallet` as separate Nest
 applications. Wallet's current size does not determine its intended application
@@ -210,9 +211,12 @@ Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-s
   events and independent broker recovery. Real component tests cover crashes
   on either side of commit, concurrent delivery and API availability.
 
-Remaining: the independent User application, durable integration through an
-outbox, operator inspection/replay, the Kong gateway, final executable boundaries,
-distributions and generators (#23 to #35). The shared
+- #23: the independent [User application](../user.md), owned database/credentials,
+  atomic profile and pending integration event persistence, retained events after
+  deletion and external-process REST/GraphQL/Gherkin coverage without sibling services.
+
+Remaining: outbox publication, operator inspection/replay, the Kong gateway, final
+executable boundaries, distributions and generators (#24 to #35). The shared
 User/Wallet transaction is still present in the transitional application.
 
 ## References
