@@ -1,0 +1,60 @@
+{
+  "_format_version": "3.0",
+  "services": [
+    {
+      "name": "user-rest",
+      "host": "${GATEWAY_HOST}",
+      "port": "${USER_HTTP_PORT}",
+      "protocol": "http",
+      "routes": [
+        {
+          "name": "user-rest",
+          "paths": ["~/v1/users(?:/|$)"],
+          "strip_path": false
+        }
+      ]
+    },
+    {
+      "name": "wallet-rest",
+      "host": "${GATEWAY_HOST}",
+      "port": "${WALLET_HTTP_PORT}",
+      "protocol": "http",
+      "routes": [
+        {
+          "name": "wallet-lookup",
+          "paths": ["~/v1/wallets/by-user/[^/]+$"],
+          "methods": ["GET"],
+          "strip_path": false
+        }
+      ]
+    },
+    {
+      "name": "user-graphql",
+      "host": "${GATEWAY_HOST}",
+      "port": "${USER_HTTP_PORT}",
+      "protocol": "http",
+      "path": "/graphql",
+      "routes": [
+        {
+          "name": "user-graphql",
+          "paths": ["~/user/graphql/?$"],
+          "strip_path": true
+        }
+      ]
+    },
+    {
+      "name": "wallet-graphql",
+      "host": "${GATEWAY_HOST}",
+      "port": "${WALLET_HTTP_PORT}",
+      "protocol": "http",
+      "path": "/graphql",
+      "routes": [
+        {
+          "name": "wallet-graphql",
+          "paths": ["~/wallet/graphql/?$"],
+          "strip_path": true
+        }
+      ]
+    }
+  ]
+}

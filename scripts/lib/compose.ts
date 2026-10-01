@@ -1,4 +1,5 @@
 import type { EnvironmentManifest } from '../../database/environment';
+import { gatewayConfiguration } from './gateway';
 
 /**
  * Runs once, when the image initializes an empty cluster. The role gets no
@@ -91,7 +92,35 @@ export function composeConfiguration(
     },
   };
   if (manifest.environment === 'development') volumes.rabbitmq = { labels };
-  // Reserved gateway coordinates are published in the environment manifest.
-  // Kong routes and its container are introduced by the routing slice.
+  configs['kong-routes'] = {
+    // Compose also interpolates config content, including route regex anchors.
+    content: gatewayConfiguration(manifest.gateway).replaceAll('$', () => '$$'),
+  };
+  services.gateway = {
+    image:
+      'kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c',
+    container_name: manifest.gateway.name,
+    labels,
+    ports: [
+      `127.0.0.1:${String(manifest.gateway.proxyPort)}:8000`,
+      `127.0.0.1:${String(manifest.gateway.adminPort)}:8001`,
+    ],
+    extra_hosts: ['host.docker.internal:host-gateway'],
+    environment: {
+      KONG_DATABASE: 'off',
+      KONG_DECLARATIVE_CONFIG: '/etc/kong/routes.json',
+      KONG_PROXY_LISTEN: '0.0.0.0:8000',
+      KONG_ADMIN_LISTEN: '0.0.0.0:8001',
+      KONG_ADMIN_GUI_LISTEN: 'off',
+      KONG_NGINX_WORKER_PROCESSES: '1',
+    },
+    configs: [{ source: 'kong-routes', target: '/etc/kong/routes.json' }],
+    healthcheck: {
+      test: ['CMD', 'kong', 'health'],
+      interval: '2s',
+      timeout: '5s',
+      retries: 30,
+    },
+  };
   return { services, networks: { default: { labels } }, volumes, configs };
 }

@@ -16,6 +16,11 @@ focused feedback. Use `bun run nx`; direct `npx nx` bypasses repository settings
   verify changed commands.
 - Live behavior: `bun run test:e2e` owns provision/migrate/seed/test/cleanup;
   prepared targets require the selected environment through `env:exec`.
+- Infrastructure/runner changes: before staged review, select and execute the
+  affected applications' `test-component` targets as described in
+  [focused feedback](../../../docs/developer-checks.md#focused-feedback), then
+  run the applicable lifecycle target. Include transitive dependents even when
+  no application file changed.
 
 Affected runs are focused feedback, not a replacement for the full gate. Use
 `origin/master` as the comparison base and include unstaged/new files when that

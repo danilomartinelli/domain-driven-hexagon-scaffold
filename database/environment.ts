@@ -166,6 +166,19 @@ function brokerVariables(
   };
 }
 
+function gatewayVariables(
+  manifest: EnvironmentManifest,
+): Record<string, string> {
+  return {
+    GATEWAY_NAME: manifest.gateway.name,
+    GATEWAY_HOST: manifest.gateway.host,
+    GATEWAY_PROXY_PORT: String(manifest.gateway.proxyPort),
+    GATEWAY_ADMIN_PORT: String(manifest.gateway.adminPort),
+    USER_HTTP_PORT: String(manifest.gateway.userPort),
+    WALLET_HTTP_PORT: String(manifest.gateway.walletPort),
+  };
+}
+
 /** Explicit shell settings win over generated defaults; unsafe test overrides fail closed. */
 export function environmentVariables(
   manifest: EnvironmentManifest,
@@ -174,12 +187,7 @@ export function environmentVariables(
   const defaults = {
     ...databaseVariables(manifest),
     ...brokerVariables(manifest),
-    GATEWAY_NAME: manifest.gateway.name,
-    GATEWAY_HOST: manifest.gateway.host,
-    GATEWAY_PROXY_PORT: String(manifest.gateway.proxyPort),
-    GATEWAY_ADMIN_PORT: String(manifest.gateway.adminPort),
-    USER_HTTP_PORT: String(manifest.gateway.userPort),
-    WALLET_HTTP_PORT: String(manifest.gateway.walletPort),
+    ...gatewayVariables(manifest),
   };
   const env = {
     ...defaults,
@@ -236,4 +244,10 @@ export function assertTestEnvironment(
   }
   if (env.RABBITMQ_URL)
     throw new Error('Use the scoped RABBITMQ_* fields, not RABBITMQ_URL.');
+  for (const [key, value] of Object.entries(gatewayVariables(manifest))) {
+    if (env[key] !== value)
+      throw new Error(
+        `Refusing gateway target: ${key} differs from the owned run.`,
+      );
+  }
 }

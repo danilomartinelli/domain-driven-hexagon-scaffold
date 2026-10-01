@@ -40,6 +40,8 @@ Both return the same wallet identity, user identity and balance. A User
 without a Wallet yields REST 404 and GraphQL `null`. OpenAPI is served at
 `/docs`; `/graphql` has its own schema, independent of the User schema.
 Wallet exposes no deposit, withdrawal, deletion or cancellation operation.
+Through [Kong](database.md#gateway-urls), the same REST lookup path and
+`/wallet/graphql` use the environment's `GATEWAY_PROXY_PORT`.
 
 ## Configuration
 

@@ -25,7 +25,7 @@ test('REST preserves creation, duplicate-email conflict and deletion responses',
 test('GraphQL preserves creation, listing and invalid-input responses', async () => {
   const api = getHttpServer();
   const created = await api
-    .post('/graphql')
+    .post('/user/graphql')
     .send({ query: mutation, variables: { input: profile } })
     .expect(200);
   const {
@@ -37,7 +37,7 @@ test('GraphQL preserves creation, listing and invalid-input responses', async ()
     .strict()
     .parse(created.body);
   const listed = await api
-    .post('/graphql')
+    .post('/user/graphql')
     .send({
       query:
         '{ findUsers(options: "") { count data { id email country postalCode street } } }',
@@ -47,7 +47,7 @@ test('GraphQL preserves creation, listing and invalid-input responses', async ()
     data: { findUsers: { count: 1, data: [{ id, ...profile }] } },
   });
   const invalid = await api
-    .post('/graphql')
+    .post('/user/graphql')
     .send({
       query: mutation,
       variables: { input: { ...profile, email: 'invalid' } },
@@ -64,4 +64,29 @@ test('REST ignores arbitrary request metadata when accepting a valid profile', a
     .post('/v1/users')
     .send({ ...profile, requestId: 'x'.repeat(256) })
     .expect(201);
+});
+
+test('User and Wallet retain separate GraphQL query schemas', async () => {
+  const query = '{ __schema { queryType { fields { name } } } }';
+  const schema = z.object({
+    data: z.object({
+      __schema: z.object({
+        queryType: z.object({
+          fields: z.array(z.object({ name: z.string() })),
+        }),
+      }),
+    }),
+  });
+  const fields = async (path: string) => {
+    const response = await getHttpServer()
+      .post(path)
+      .send({ query })
+      .expect(200);
+    return schema
+      .parse(response.body)
+      .data.__schema.queryType.fields.map((field) => field.name);
+  };
+  expect(await fields('/user/graphql')).toEqual(['findUsers']);
+  expect(await fields('/wallet/graphql')).toEqual(['walletByUser']);
+  await getHttpServer().post('/graphql').send({ query }).expect(404);
 });

@@ -14,8 +14,9 @@ Issues and specs for this repo live in [GitHub Issues](https://github.com/danilo
 Keep exploration output bounded: list identifiers first, then read selected
 records. For tool discovery, filter by the required capability and inspect only
 the matching tool names/descriptions; do not dump the whole registry. For source
-structure and relationships, use CodeGraph's `codegraph_explore` MCP tool with a
-specific question and a small `maxFiles` budget, or the bounded CLI:
+structure and relationships, first select paths or symbols from scoped search
+matches, then use CodeGraph's `codegraph_explore` MCP tool with that symbol and a
+small `maxFiles` budget, or the bounded CLI:
 `bun run explore --max-files=3 -- 'runCommand'`. Setup and client activation are in
 [agent automation](automation.md#codegraph).
 

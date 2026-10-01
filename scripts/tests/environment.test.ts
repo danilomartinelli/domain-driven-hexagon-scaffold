@@ -112,9 +112,30 @@ const seedsProbe = `
   if (lookups.some((wallet) => wallet.userId === ownProfiles[0].id)) throw new Error('User seed duplicates direct Wallet insertion');
 `;
 
-test('a named test environment prepares PostgreSQL and RabbitMQ for explicit database tooling', async () => {
+const gatewayProbe = `
+  {
+  const admin = 'http://127.0.0.1:' + process.env.GATEWAY_ADMIN_PORT;
+  const info = await fetch(admin, {signal: AbortSignal.timeout(2000)});
+  if (!info.ok || (await info.json()).configuration.database !== 'off') throw new Error('DB-less gateway unavailable');
+  const response = await fetch(admin + '/services', {signal: AbortSignal.timeout(2000)});
+  const {data: services} = await response.json();
+  if (services.length !== 4) throw new Error('Gateway services missing');
+  for (const service of services) {
+    const port = service.name.startsWith('user-') ? process.env.USER_HTTP_PORT : process.env.WALLET_HTTP_PORT;
+    if (service.host !== process.env.GATEWAY_HOST || service.port !== Number(port)) throw new Error('Gateway upstream differs from selected environment');
+  }
+  const proxy = await fetch('http://127.0.0.1:' + process.env.GATEWAY_PROXY_PORT + '/unrouted', {signal: AbortSignal.timeout(2000)});
+  if (proxy.status !== 404 || !(proxy.headers.get('server') || '').startsWith('kong/')) throw new Error('Owned gateway proxy unavailable');
+  }
+`;
+
+test('a named test environment prepares PostgreSQL, RabbitMQ and Kong and rejects foreign gateway targets', async () => {
   await withCleanup(async () => {
-    const prepared = await environment('prepare');
+    // This probe inspects routing without starting upstreams: a nondefault host
+    // must reach Kong's actual loaded configuration, not just its manifest.
+    const prepared = await environment('prepare', [], {
+      GATEWAY_HOST: '127.0.0.1',
+    });
     expect(prepared.code, prepared.stdout + prepared.stderr).toBe(0);
     for (const app of ['wallet', 'user']) {
       for (const script of ['migration:up:tests', 'seed:up:tests']) {
@@ -132,6 +153,7 @@ test('a named test environment prepares PostgreSQL and RabbitMQ for explicit dat
       '-e',
       `
       ${seedsProbe}
+      ${gatewayProbe}
       const response = await fetch(process.env.RABBITMQ_MANAGEMENT_URL + '/api/vhosts/' + encodeURIComponent(process.env.RABBITMQ_VHOST), {headers: {Authorization: 'Basic ' + btoa(process.env.RABBITMQ_USERNAME + ':' + process.env.RABBITMQ_PASSWORD)}});
       if (!response.ok) throw new Error('Owned broker namespace unavailable: ' + response.status);
       console.log('prepared resources verified');
@@ -139,6 +161,23 @@ test('a named test environment prepares PostgreSQL and RabbitMQ for explicit dat
     ]);
     expect(probe.code, probe.stdout + probe.stderr).toBe(0);
     expect(probe.stdout).toContain('prepared resources verified');
+    for (const variable of [
+      'GATEWAY_NAME',
+      'GATEWAY_HOST',
+      'GATEWAY_PROXY_PORT',
+      'GATEWAY_ADMIN_PORT',
+      'USER_HTTP_PORT',
+      'WALLET_HTTP_PORT',
+    ]) {
+      const rejected = await environment(
+        'exec',
+        ['--', process.execPath, '-e', "console.log('UNSAFE_COMMAND_STARTED')"],
+        { [variable]: 'foreign' },
+      );
+      expect(rejected.code, variable).not.toBe(0);
+      expect(rejected.stdout).toContain('Refusing gateway target');
+      expect(rejected.stdout).not.toContain('\nUNSAFE_COMMAND_STARTED\n');
+    }
   }, [() => succeeded(environment('down'))]);
 }, 180_000);
 
@@ -234,7 +273,28 @@ test('prepared regression runs reject foreign targets and preserve development a
       );
       for (const result of prepared)
         if (result.status === 'rejected') throw result.reason;
+      const manifests = [
+        readEnvironment('development', `dev-${id}`),
+        readEnvironment('test', `first-${id}`),
+        readEnvironment('test', `sibling-${id}`),
+      ];
+      expect(new Set(manifests.map((entry) => entry.gateway.name)).size).toBe(
+        3,
+      );
+      expect(
+        new Set(
+          manifests.flatMap((entry) => [
+            entry.gateway.proxyPort,
+            entry.gateway.adminPort,
+            entry.gateway.userPort,
+            entry.gateway.walletPort,
+          ]),
+        ).size,
+      ).toBe(12);
       for (const cli of environments) {
+        await succeeded(
+          cli('exec', ['--', process.execPath, '-e', gatewayProbe]),
+        );
         for (const app of ['user', 'wallet']) {
           for (const script of ['migration:up', 'seed:up'])
             await succeeded(
@@ -318,12 +378,21 @@ test('prepared regression runs reject foreign targets and preserve development a
       await expectRegressionSuite(root, regression.stderr + regression.stdout);
       await succeeded(first('down'));
       await succeeded(
+        sibling('exec', ['--', process.execPath, '-e', gatewayProbe]),
+      );
+      await succeeded(
+        dev('exec', ['--', process.execPath, '-e', gatewayProbe]),
+      );
+      await succeeded(
         sibling('exec', ['--', process.execPath, '-e', seedProbe]),
       );
       await succeeded(dev('exec', ['--', process.execPath, '-e', seedProbe]));
       // Development volumes remain usable after shutdown and restart.
       await succeeded(dev('down'));
       await succeeded(dev('prepare'));
+      await succeeded(
+        dev('exec', ['--', process.execPath, '-e', gatewayProbe]),
+      );
       await succeeded(
         dev('exec', ['--', process.execPath, '-e', brokerQueue('GET')]),
       );
@@ -333,53 +402,74 @@ test('prepared regression runs reject foreign targets and preserve development a
   );
 }, 240_000);
 
-test('a bound database port fails preparation and removes only the failed run', async () => {
-  const id = randomUUID().slice(0, 8);
-  const sibling = namedEnvironment('test', `holder-${id}`);
-  const failed = namedEnvironment('test', `bind-${id}`);
-  await withCleanup(async () => {
-    await succeeded(sibling('prepare'));
-    const info = await succeeded(
-      sibling('exec', [
-        '--',
-        process.execPath,
-        '-e',
-        "console.log('PORT=' + process.env.USER_DB_PORT)",
-      ]),
-    );
-    const port = /^PORT=(\d+)$/m.exec(info.stdout)?.[1];
-    expect(port).toBeDefined();
-    const prepared = await failed('prepare', [], { USER_DB_PORT: port });
-    expect(prepared.code).not.toBe(0);
-    expect(prepared.stdout + prepared.stderr).toMatch(
-      /port is already allocated|address already in use/,
-    );
-    const project = /Test run: (ddh-test-[a-z0-9-]+)/.exec(
-      prepared.stdout,
-    )?.[1];
-    expect(project).toBeDefined();
-    const remaining = await runCommand(
-      [
-        'docker',
-        'ps',
-        '-aq',
-        '--filter',
-        `label=com.docker.compose.project=${project ?? 'missing'}`,
-      ],
-      { cwd: root },
-    );
-    expect(remaining.code).toBe(0);
-    expect(remaining.stdout.trim()).toBe('');
-    await succeeded(
-      sibling('exec', [
-        '--',
-        process.execPath,
-        '-e',
-        "console.log('sibling still available')",
-      ]),
-    );
-  }, [() => succeeded(failed('down')), () => succeeded(sibling('down'))]);
-}, 120_000);
+test.each([
+  'USER_DB_PORT',
+  'GATEWAY_PROXY_PORT',
+  'GATEWAY_ADMIN_PORT',
+  'GATEWAY_HOST',
+])(
+  'failed preparation with %s removes only the failed run',
+  async (variable) => {
+    const id = randomUUID().slice(0, 8);
+    const sibling = namedEnvironment('test', `holder-${id}`);
+    const failed = namedEnvironment('test', `bind-${id}`);
+    await withCleanup(async () => {
+      await succeeded(sibling('prepare'));
+      const info = await succeeded(
+        sibling('exec', [
+          '--',
+          process.execPath,
+          '-e',
+          `console.log('TARGET=' + process.env.${variable})`,
+        ]),
+      );
+      const target = /^TARGET=(.+)$/m.exec(info.stdout)?.[1];
+      expect(target).toBeDefined();
+      const prepared = await failed('prepare', [], {
+        [variable]: variable === 'GATEWAY_HOST' ? 'invalid host' : target,
+      });
+      expect(prepared.code).not.toBe(0);
+      expect(prepared.stdout + prepared.stderr).toMatch(
+        variable === 'GATEWAY_HOST'
+          ? /error parsing declarative config/
+          : /port is already allocated|address already in use/,
+      );
+      const project = /Test run: (ddh-test-[a-z0-9-]+)/.exec(
+        prepared.stdout,
+      )?.[1];
+      expect(project).toBeDefined();
+      const remaining = await runCommand(
+        [
+          'docker',
+          'ps',
+          '-aq',
+          '--filter',
+          `label=com.docker.compose.project=${project ?? 'missing'}`,
+        ],
+        { cwd: root },
+      );
+      expect(remaining.code).toBe(0);
+      expect(remaining.stdout.trim()).toBe('');
+      const networks = await runCommand(
+        [
+          'docker',
+          'network',
+          'ls',
+          '-q',
+          '--filter',
+          `label=com.docker.compose.project=${project ?? 'missing'}`,
+        ],
+        { cwd: root },
+      );
+      expect(networks.code).toBe(0);
+      expect(networks.stdout.trim()).toBe('');
+      await succeeded(
+        sibling('exec', ['--', process.execPath, '-e', gatewayProbe]),
+      );
+    }, [() => succeeded(failed('down')), () => succeeded(sibling('down'))]);
+  },
+  120_000,
+);
 
 test('preparing a development run created before independent apps were registered preserves legacy data', async () => {
   const name = `upgrade-${randomUUID().slice(0, 8)}`;

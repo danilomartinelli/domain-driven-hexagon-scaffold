@@ -179,6 +179,11 @@ a dedicated process variable, preserving the command after `--` without shell
 re-parsing. Each independent CLI invocation starts its own Nx invocation chain, so concurrent
 configurations are not misidentified as recursive calls to the same target.
 All provisioning still executes in Nx. See [database workflows](database.md).
+The disposable test wrapper also starts an independent invocation chain per
+owned run. Parallel component targets can therefore migrate the same application
+targets against separate databases without triggering false recursion errors.
+The runner lifecycle suite holds real migration targets at a barrier to verify
+this overlap deterministically in a copied workspace.
 
 Arguments continue through the command chain, for example
 `bun run test:e2e --test-name-pattern 'Wallet persistence failure'` and
@@ -188,6 +193,10 @@ Unit discovery has no E2E preload. Bare `bun test` runs only `src/packages/core/
 `bun run nx run test-runner:test-broker` runs the pinned-image healthcheck and
 container-ownership regressions without provisioning application databases.
 This uncached subset runs in CI and is also included in `test:tooling`.
+`bun run nx run test-runner:test-gateway` selects the existing environment tests
+for loaded gateway upstreams, target overrides, occupied proxy/Admin ports and
+failed-setup cleanup. This uncached subset also runs in CI; `test:tooling`
+retains the broader development/sibling preservation cases.
 The decorator fixture is never a runtime test and remains in
 `type-fixtures:typecheck` and `user:typecheck`.
 

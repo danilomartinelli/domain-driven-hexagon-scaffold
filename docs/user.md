@@ -31,6 +31,8 @@ bun run env:down --environment=development --run=default
 REST retains GET-body address filters and query-string pagination, response
 fields, duplicate-email conflicts and deletion semantics. GraphQL retains its
 required string `options` argument, which is not parsed into filters.
+Through [Kong](database.md#gateway-urls), the same REST paths and
+`/user/graphql` use the environment's `GATEWAY_PROXY_PORT`.
 
 ## Database and pending events
 
@@ -112,5 +114,5 @@ Deleting a profile never cancels its outbox item or removes a Wallet.
 
 See [User commands](user-commands.md) for executable `user.create` requests and
 diagnostics, and [distributed recovery](recovery.md) for broker/database evidence.
-Gateway routing and independent distribution
-artifacts remain later slices of [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+Independent distribution artifacts remain a later slice of
+[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).

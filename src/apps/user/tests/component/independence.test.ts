@@ -50,6 +50,7 @@ test('User starts, creates over REST and GraphQL and restarts with only its own 
     .split('\n')
     .filter(Boolean);
   const siblings: string[] = [];
+  const siblingServices: string[] = [];
   for (const id of ids) {
     const service = await docker([
       'inspect',
@@ -57,9 +58,20 @@ test('User starts, creates over REST and GraphQL and restarts with only its own 
       '{{index .Config.Labels "com.docker.compose.service"}}',
       id,
     ]);
-    if (service !== 'postgres-user') siblings.push(id);
+    if (service !== 'postgres-user') {
+      siblings.push(id);
+      siblingServices.push(service);
+    }
   }
-  expect(siblings).toHaveLength(manifest.databases.length);
+  expect(siblingServices.sort()).toEqual(
+    [
+      ...manifest.databases
+        .filter((database) => database.app !== 'user')
+        .map((database) => `postgres-${database.app}`),
+      'rabbitmq',
+      'gateway',
+    ].sort(),
+  );
   await withCleanup(async () => {
     await stopUser();
     await docker(['stop', '--time', '3', ...siblings]);
