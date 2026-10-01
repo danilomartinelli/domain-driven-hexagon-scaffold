@@ -34,16 +34,17 @@ Their package manifests export specific root entry points, with no wildcard
 access to internals. Callers use imports such as `@starter/core/domain` and
 `@starter/nest-support/context`. The database pool provider and environment
 configuration remain application-owned. No shared project contains User/Wallet
-business entities, use cases or persistence models. Package entry-point,
-context-independent core and cycle rules run through dependency-cruiser; shared
-technical packages may not import application implementation, and applications
-under `src/apps` import neither each other .
+business entities, use cases or persistence models. The `user-created` contract
+is owned and versioned by User; Wallet consumes its serializable envelope without
+importing User implementation. Project ownership is checked against Nx's resolved
+graph, and dependency-cruiser checks file-level ownership and layer direction.
 
 ```mermaid
 graph TD
   e2e --> nest-support
   e2e --> core
   e2e --> test-runner
+  e2e --> database
   user --> nest-support
   user --> core
   user --> integration-contracts
@@ -58,6 +59,11 @@ graph TD
   test-runner --> infrastructure
   type-fixtures --> core
   nest-support --> core
+  workspace --> config
+  workspace --> core
+  workspace --> nest-support
+  workspace --> integration-contracts
+  example
 ```
 
 Database tooling has its own dotenv loader, so it depends on no application.
@@ -68,6 +74,61 @@ imports), workspace manifests and the runner's explicit command dependencies
 supply the Nx graph. Nx's built-in JavaScript analyzer is explicitly enabled;
 package-manifest discovery alone would miss application imports. Shared quality
 configuration is also an input of every deterministic target.
+
+## Executable boundaries
+
+`bun run lint:boundaries` (also `deps:validate`) runs both checks through
+`workspace:boundaries`:
+
+- [.dependency-cruiser.mjs](../.dependency-cruiser.mjs) resolves imports and
+  exports across `src`, `tests`, `scripts` and `database`, including type-only
+  dependencies, TypeScript path aliases and explicit Bun package exports.
+- [check-project-boundaries.ts](../scripts/check-project-boundaries.ts) reads
+  `bun run nx graph --print`. It validates application/shared ownership and the
+  `type:core` / `type:contracts` constraints, including manifest and implicit
+  dependencies that need not appear in a source import. All project cycles fail.
+
+| Source                                          | Allowed dependencies                                                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Application domain                              | Its domain, framework-free shared core, `oxide.ts`                                                              |
+| Application use cases, ports and command inputs | Its core (domain/application/commands), shared core, `oxide.ts`                                                 |
+| Shared core                                     | Its primitives and `oxide.ts`; no application or adapter                                                        |
+| Integration contracts                           | Their schema/validation code and Zod; no application or framework                                               |
+| Input adapters                                  | Owned use cases/ports, transport mapping and shared entry points; no persistence imports                        |
+| Composition and output adapters                 | Owned implementation and shared entry points                                                                    |
+| App component tests                             | Owned implementation, shared entry points, database environment tooling and the explicit cleanup/broker helpers |
+
+For each application, dependencies point toward its core:
+
+```mermaid
+flowchart LR
+  composition[Application composition] --> input[REST / GraphQL / CQRS / message adapters]
+  composition --> output[Database / broker adapters]
+  input --> application[Use cases and owned ports]
+  output --> application
+  application --> domain[Owned domain]
+  domain --> core[Shared plain core]
+  application --> core
+  input --> contracts[User-owned versioned contracts]
+  output --> contracts
+```
+
+Domain/application code and command inputs have no Nest, Slonik, RabbitMQ,
+transport DTO, persistence model, concrete adapter or ambient context exception.
+The allowed core is closed under imports: re-exporting an adapter from a core
+barrel fails at that export. Shared projects cannot import application code,
+so an app-to-shared-to-sibling path also fails. Production imports of test helpers,
+private package subfolders, unexported package paths and file cycles fail.
+At Nx's project granularity, app edges to the test runner and database tooling
+include component tests; the file rules restrict those edges to test code.
+
+[Boundary regressions](../scripts/tests/boundaries.test.ts) execute the real
+commands in disposable workspaces. They verify the legal graph, inject invalid
+imports/exports and declared Nx edges (including cycles), require nonzero exits
+with the expected rule, restore the files and verify success. The Nx cases warm
+the boundary cache first so changed project metadata cannot reuse a valid result.
+See [developer checks](developer-checks.md) for the full gate and
+the [generated file graph](../assets/dependency-graph.svg) for concrete dependencies.
 
 ## Commands
 

@@ -40,7 +40,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bun ./node_modules/.bin/depcruise src tests scripts database --config .dependency-cruiser.mjs --output-type err-long",
+        "command": "bun ./node_modules/.bin/depcruise src tests scripts database --config .dependency-cruiser.mjs --output-type err-long && bun scripts/check-project-boundaries.ts",
         "cwd": "."
       },
       "inputs": ["workspaceSources"]

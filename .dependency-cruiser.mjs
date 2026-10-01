@@ -1,43 +1,27 @@
 // https://github.com/Sairyss/domain-driven-hexagon#enforcing-architecture
 
 const apiLayerPaths = [
-  'controller',
-  'dtos',
-  'request',
-  'response',
-  'dto\\.ts$',
-  'controller\\.ts$',
-  'resolver\\.ts$',
+  '^src/apps/[^/]+/dtos/',
+  '^src/apps/[^/]+/.*(dto|controller|resolver)\\.ts$',
 ];
 
-const applicationLayerPaths = ['application', '\\.service\\.ts$'];
+const commandPaths = '^src/apps/[^/]+/commands/.*\\.command\\.ts$';
+const applicationLayerPaths = ['^src/apps/[^/]+/application/', commandPaths];
 
 // Nest CQRS handlers are input adapters that delegate to plain use cases.
 const cqrsHandlerPaths = [
-  'query-handler\\.ts$',
-  'command-handler\\.ts$',
-  'service\\.ts$',
+  '^src/apps/[^/]+/.*(query-handler|command-handler|service)\\.ts$',
 ];
 
-const infrastructureLayerPaths = [
-  'infrastructure',
-  'infra',
-  'database',
-  'repository',
-];
+const infrastructureLayerPaths = ['^src/apps/[^/]+/database/'];
 
-const domainLayerPaths = [
-  'domain',
-  'entity\\.ts$',
-  'aggregate\\.ts$',
-  'domain-event\\.ts$',
-  'value-object\\.ts$',
-];
+const domainLayerPaths = ['^src/apps/[^/]+/domain/'];
 
 // A closed set prevents indirect escapes through shared barrels as well.
 const corePaths = [
   '^src/packages/core/(?!tests/)',
   '^src/apps/[^/]+/(domain|application)/',
+  commandPaths,
 ];
 
 // Root files are entry points; every package subfolder is private.
@@ -56,7 +40,18 @@ const config = {
       severity: 'error',
       comment:
         'An application imports its own files and shared packages, never another application.',
-      from: { path: '^src/apps/([^/]+)/' },
+      from: { path: '^src/apps/([^/]+)/', pathNot: '^src/apps/[^/]+/tests/' },
+      to: {
+        path: '^(src|tests|scripts)/',
+        pathNot: ['^src/apps/$1/', `^${PACKAGES_ROOT}/`],
+      },
+    },
+    {
+      name: 'app-tests-use-owned-implementation',
+      severity: 'error',
+      comment:
+        'Component fixtures may use the owned environment and cleanup helpers.',
+      from: { path: '^src/apps/([^/]+)/tests/' },
       to: {
         path: '^(src|tests|scripts)/',
         pathNot: [
@@ -86,7 +81,7 @@ const config = {
       name: 'shared-is-technical',
       severity: 'error',
       from: {
-        path: '^src/packages/(core|nest-support|integration-contracts)/',
+        path: '^src/packages/',
       },
       to: { path: '^(src/(?!packages/)|tests/|scripts/|database/)' },
     },
@@ -178,7 +173,6 @@ const config = {
       from: { path: domainLayerPaths },
       to: {
         path: infrastructureLayerPaths,
-        pathNot: ['port\\.ts$'],
       },
     },
     {
@@ -202,13 +196,13 @@ const config = {
           '^src/apps/[^/]+/messaging/',
         ],
       },
-      to: { path: '^src/(modules|apps)/[^/]+/database/' },
+      to: { path: '^src/apps/[^/]+/database/' },
     },
     {
       name: 'no-command-query-to-api-deps',
       comment: 'Commands and Queries cannot depend on api layer',
       severity: 'error',
-      from: { path: [...cqrsHandlerPaths, 'command\\.ts$'] },
+      from: { path: [...cqrsHandlerPaths, commandPaths] },
       to: {
         path: apiLayerPaths,
       },

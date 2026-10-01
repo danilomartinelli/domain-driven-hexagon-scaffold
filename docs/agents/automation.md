@@ -108,7 +108,7 @@ From the repository root, initialize once if `.codegraph/` is absent:
 ```sh
 codegraph init .
 codegraph status --json
-codegraph explore --max-files 5 'runCommand'
+bun run explore --max-files=3 -- 'runCommand'
 ```
 
 The index stays local and ignored. `.worktreeinclude` copies it into Conductor
@@ -116,6 +116,12 @@ worktrees alongside `.env*`; the MCP server reconciles it with the current files
 on connection and watches later edits. Keep the default shared daemon enabled
 so multiple clients can use one workspace. Follow any staleness warning by
 reading the live file.
+
+Use the repository's `explore` command for CLI exploration. It saves the complete
+successful response under `.context/codegraph/` and returns bounded pages with
+continuation cursors, so limiting files does not leave output size unbounded.
+See [the query conventions](issue-tracker.md#conventions) for budgets, failure
+statuses and continuation syntax.
 
 Restart an existing client session to discover `codegraph_explore`. Codex requires
 a trusted checkout. Claude may report `Pending approval` for a new project MCP
