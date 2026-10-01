@@ -33,6 +33,8 @@ jobs:
         run: bun run check
       - name: Broker regression and cleanup ownership
         run: bun run nx run test-runner:test-broker
+      - name: Gateway setup and cleanup ownership
+        run: bun run nx run test-runner:test-gateway
       - name: Distributed system tests
         run: bun run test:e2e
       # Keep component failures inside the existing required check status.

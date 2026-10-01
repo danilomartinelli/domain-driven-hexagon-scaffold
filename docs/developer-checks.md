@@ -32,8 +32,11 @@ requests and pushes to `master`. All belong to the `check` job required by the
 to force the healthcheck-before-startup ordering and verifies fixture cleanup
 ownership. The distributed end-to-end suite verifies the service integration and
 all seven Gherkin cases through Kong, including separate GraphQL schemas and
-pending Wallet/deletion behavior. The broader runner lifecycle suite remains part of local
-`check:full` validation and also includes these broker checks.
+pending Wallet/deletion behavior. CI also runs
+`bun run nx run test-runner:test-gateway` for loaded upstream configuration,
+foreign-target rejection, occupied proxy/Admin ports and failed Kong setup cleanup.
+The broader runner lifecycle suite remains part of local
+`check:full` validation and also includes these broker/gateway checks.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
@@ -77,6 +80,21 @@ bun test ./scripts/tests/search.test.ts &&
   bun run nx run test-runner:typecheck &&
   bun --bun eslint scripts/search.ts scripts/lib/read-ranges.ts scripts/tests/search.test.ts --max-warnings 0
 ```
+
+Infrastructure and runner changes also affect the applications' component
+fixtures. Before staged review, select and run the affected `test-component`
+targets through Nx. Supply the actual changed paths, including staged and new
+files; for a Compose change:
+
+```sh
+bun run nx show projects --affected --files=scripts/lib/compose.ts --with-target=test-component --json
+bun run nx affected --target=test-component --files=scripts/lib/compose.ts
+```
+
+The component targets keep their owned environment wrappers. Add the applicable
+runner/gateway lifecycle target for changes to provisioning or cleanup; component
+tests alone do not cover those failures. This focused feedback precedes the full
+gate and does not replace it.
 
 Use `&&` to stop a sequential batch on failure. For independent checks, use
 separate tool calls (parallel when useful) and inspect every command's exit
@@ -143,8 +161,9 @@ group; other commands fail explicitly on output overflow rather than treating
 truncated output as a successful result. Test fixtures remove their temporary
 directories in `finally`. The guardrail suite also tests the audit CLI with real Git and Bun
 against a local HTTP registry fixture, with no external registry or Docker.
-The existing real-Docker runner suite remains `test:tooling`. Its fast broker
-subset is also available as `bun run nx run test-runner:test-broker` and runs in CI.
+The existing real-Docker runner suite remains `test:tooling`. Its focused broker
+and gateway subsets are available as `bun run nx run test-runner:test-broker`
+and `bun run nx run test-runner:test-gateway`; both run in CI.
 
 `bun run audit:changed` compares dependency files against the merge-base of
 `HEAD` and `origin/master`, including branch commits, staged/unstaged changes and

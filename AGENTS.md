@@ -49,6 +49,11 @@ the `bun run nx` wrapper and the environment/cache rules in this repository.
 
 Issues and specs are tracked in GitHub Issues for `danilomartinelli/vibecoding-starter-js` using the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
+An explicit [/implement](.agents/skills/implement/SKILL.md) invocation for an issue
+authorizes commit, push and PR creation or update after the required reviews and
+checks. A narrower session instruction takes precedence. Merge and deployment
+remain separate actions.
+
 ### Triage labels
 
 Use the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
