@@ -53,7 +53,6 @@ export class RabbitOutboxPublisher {
   private async run(): Promise<void> {
     const { signal } = this.shutdown;
     while (!signal.aborted) {
-      this.currentEvent = undefined;
       try {
         await this.publishSession();
       } catch (error: unknown) {
@@ -64,8 +63,8 @@ export class RabbitOutboxPublisher {
             service: 'user',
             operation: 'outbox.failed',
             retryDelayMs: this.retryMs,
+            ...this.currentEvent,
           },
-          this.currentEvent,
         );
       }
       if (this.shutdown.signal.aborted) break;
@@ -76,6 +75,7 @@ export class RabbitOutboxPublisher {
   }
 
   private async publishSession(): Promise<void> {
+    this.currentEvent = undefined;
     const connection = await connect(this.options, { timeout: 2_000 });
     const session = new AbortController();
     const signal = AbortSignal.any([this.shutdown.signal, session.signal]);

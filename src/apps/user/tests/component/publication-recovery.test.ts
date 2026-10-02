@@ -36,6 +36,15 @@ async function until(
   }
 }
 
+function publicationFailures(): Record<string, unknown>[] {
+  return userOutput()
+    .split('\n')
+    .slice(0, -1)
+    .filter((line) => line.trim())
+    .map((line) => z.record(z.string(), z.unknown()).parse(JSON.parse(line)))
+    .filter((record) => record.operation === 'outbox.failed');
+}
+
 async function withBroker(
   use: (channel: Channel) => Promise<void>,
 ): Promise<void> {
@@ -102,6 +111,48 @@ async function proveRecovery(
   }
 }
 
+test.each(['connection', 'selection'] as const)(
+  'each %s failure before selecting an event emits one complete publication warning',
+  async (failure) => {
+    await stopUser();
+    if (failure === 'selection')
+      await ownerDatabase().query(
+        'REVOKE SELECT ON user_outbox FROM user_runtime',
+      );
+    await withCleanup(async () => {
+      if (failure === 'selection') await startConnected();
+      else await startUser();
+      await until(() =>
+        publicationFailures().some((record) => record.retryDelayMs === 500),
+      );
+      await stopUser();
+      const failures = publicationFailures();
+      for (const retryDelayMs of [250, 500])
+        expect(
+          failures.filter((record) => record.retryDelayMs === retryDelayMs),
+        ).toHaveLength(1);
+      for (const record of failures) {
+        expect(record).toMatchObject({ level: 'warn', service: 'user' });
+        expect(record.message).toEqual(
+          expect.stringContaining('User publication uncertain'),
+        );
+        expect(record.error).toHaveProperty('message');
+        expect(record).not.toHaveProperty('eventId');
+        expect(record).not.toHaveProperty('correlationId');
+      }
+    }, [
+      stopUser,
+      async () => {
+        if (failure === 'selection')
+          await ownerDatabase().query(
+            'GRANT SELECT ON user_outbox TO user_runtime',
+          );
+      },
+    ]);
+  },
+  30_000,
+);
+
 test('a mandatory routing return leaves committed work pending even when the broker confirms', async () => {
   await withBroker(async (channel) => {
     await startConnected();
@@ -162,6 +213,16 @@ test('broker success followed by a failed completion write retains work and perm
       await stopUser();
       expect(await pending()).toBe(true);
       original = await take(channel);
+      const failures = publicationFailures();
+      expect(failures.length).toBeGreaterThan(0);
+      for (const record of failures)
+        expect(record).toMatchObject({
+          message: expect.stringContaining(
+            'User publication uncertain',
+          ) as unknown,
+          eventId: original.properties.messageId as unknown,
+          correlationId: original.properties.correlationId as unknown,
+        });
     }, [
       () =>
         ownerDatabase().query(
