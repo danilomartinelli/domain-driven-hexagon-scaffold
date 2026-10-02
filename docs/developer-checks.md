@@ -215,8 +215,24 @@ bun run characterize -- tests/integration/find-users.test.ts
 ```
 
 It copies the named files into a temporary worktree of the base, installs its
-locked dependencies and runs the named `*.test.ts` files there with a deadline;
-files under `tests/` use the provisioned runner, whose records are kept beside
+locked dependencies and runs the named `*.test.ts` files there with a deadline.
+By default (`--runner=auto`), files under `tests/` use the provisioned runner and
+application component tests use their application runner and preload. Other
+paths use native Bun tests; automatic mode rejects mixed suites. For tests that
+need no infrastructure or preload, use `--runner=native` to run native Bun tests
+regardless of path, including mixed paths:
+
+```sh
+bun run characterize -- --runner=native \
+  tests/compatibility/contracts.test.ts \
+  tests/compatibility/fixtures/baseline-consumer.ts \
+  tests/compatibility/fixtures/additive-consumer.ts \
+  tests/compatibility/fixtures/additive-producer.ts \
+  tests/compatibility/fixtures/user-created-v1.json
+```
+
+Pass every new fixture needed by the selected tests as a named file. Provisioned
+runner records are kept beside
 the output log in `.context/characterize/<commit>-<id>/`. It prints one result
 line and removes the worktree, including after interruption, unless the
 provisioned run reports a cleanup failure; then it keeps the worktree to shut

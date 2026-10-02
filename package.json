@@ -47,7 +47,7 @@
     "migration:status:tests": "bun run nx run database:migration-status --configuration=test",
     "seed:up": "bun run nx run database:seed",
     "seed:up:tests": "bun run nx run database:seed --configuration=test",
-    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/boundaries.test.ts ./scripts/tests/characterize.test.ts ./scripts/tests/test-counts.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts ./scripts/tests/database-target.test.ts ./scripts/tests/cleanup.test.ts ./scripts/tests/fixture-lint.test.ts ./scripts/tests/regression-suite.test.ts ./scripts/tests/owned-container.test.ts ./scripts/tests/docs.test.ts ./scripts/tests/search.test.ts ./scripts/tests/agent-automation.test.ts ./scripts/tests/dependency-graph.test.ts ./scripts/tests/explore.test.ts",
+    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/boundaries.test.ts ./scripts/tests/characterize.test.ts ./scripts/tests/test-counts.test.ts ./scripts/tests/failure-excerpt.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts ./scripts/tests/database-target.test.ts ./scripts/tests/cleanup.test.ts ./scripts/tests/fixture-lint.test.ts ./scripts/tests/regression-suite.test.ts ./scripts/tests/owned-container.test.ts ./scripts/tests/docs.test.ts ./scripts/tests/search.test.ts ./scripts/tests/agent-automation.test.ts ./scripts/tests/dependency-graph.test.ts ./scripts/tests/explore.test.ts",
     "audit:changed": "bun scripts/audit-changed.ts",
     "characterize": "bun scripts/characterize.ts",
     "env:prepare": "bun --no-env-file scripts/environment-cli.ts prepare",

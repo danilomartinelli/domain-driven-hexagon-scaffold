@@ -47,6 +47,7 @@ the snapshot, review and validate that difference before publishing.
 
 Use /pr for the [publication workflow](../pr/SKILL.md#publication): push, create
 or update the PR against the main branch, retain accurate closing/related issue
-references, verify the published state and update any existing session evidence.
+references, verify the published state, follow CI to completion for the published
+head and update any existing session evidence.
 Report the PR URL and distinguish local validation from remote CI. A user request
 to stop before commit or publication takes precedence; report that endpoint.

@@ -22,6 +22,7 @@ import {
   type EnvironmentManifest,
 } from '../../database/environment';
 import { composeConfiguration } from './compose';
+import { failureExcerpt } from './failure-excerpt';
 import { commandSession } from './session';
 import { bunTestCounts, describeCounts } from './test-counts';
 
@@ -190,6 +191,7 @@ export async function operateEnvironment(
     COMPOSE_REMOVE_ORPHANS: '0',
   };
   const logPath = join(location.directory, 'run.log');
+  let failureOffset = existsSync(logPath) ? statSync(logPath).size : 0;
   const session = commandSession(workspaceRoot, logPath, composeEnv);
   const compose = [
     'docker',
@@ -202,6 +204,7 @@ export async function operateEnvironment(
   let code = 1;
   let commandExitCode: number | undefined;
   let tests: ReturnType<typeof bunTestCounts>;
+  let failure: string | undefined;
   let cleanupExitCode = 0;
   const ownership = { verified: false };
   const requireSuccess = async (args: string[]) => {
@@ -313,22 +316,30 @@ export async function operateEnvironment(
       }
     }
     if (command.length) {
-      const offset = statSync(logPath).size;
+      failureOffset = statSync(logPath).size;
       const result = await session.execute(command, {
         env,
         timeout:
           action === 'exec' && environment === 'development' ? null : 300_000,
       });
       commandExitCode = result.code;
-      tests = bunTestCounts(readFileSync(logPath).subarray(offset).toString());
+      tests = bunTestCounts(
+        readFileSync(logPath).subarray(failureOffset).toString(),
+      );
       code = result.code;
     } else code = 0;
     return code;
   }
   try {
     code = await workflow();
+    if (code !== 0)
+      failure = failureExcerpt(
+        readFileSync(logPath).subarray(failureOffset).toString(),
+      );
   } catch (error) {
-    session.log(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    session.log(message);
+    failure = failureExcerpt(message);
     code = 1;
   } finally {
     if (
@@ -361,6 +372,10 @@ export async function operateEnvironment(
         2,
       ),
     );
+    if (failure)
+      session.log(
+        `Failure excerpt (bounded; full output in run.log):\n${failure}`,
+      );
     // The final line summarises the run, however much output precedes it.
     session.log(
       `Result: exit ${String(code)} (command ${String(commandExitCode ?? '-')}, cleanup ${String(cleanupExitCode)}); ` +
