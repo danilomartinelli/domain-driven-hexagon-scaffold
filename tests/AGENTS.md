@@ -17,7 +17,7 @@ User/Wallet domain classes or regenerate baselines from current production code.
 - Use [test-server helpers](setup/test-server.ts) for both external application
   processes and the two owner pools used for fixtures. `getHttpServer()` addresses
   the selected Kong proxy for both services; use `/user/graphql` and
-  `/wallet/graphql`. Direct process URLs are for startup readiness only.
+  `/wallet/graphql`. Direct process URLs are for startup and operational health probes only.
   Never import app implementation.
 - Preserve `assertTestEnvironment()` before database truncation. Setup clears
   User/Wallet data before the first test and after each test, while retaining

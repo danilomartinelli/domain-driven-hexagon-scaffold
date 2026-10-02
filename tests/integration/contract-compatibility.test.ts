@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { eventLogs } from '@tests/setup/operations';
 import { connect } from 'amqplib';
 import { sql } from 'slonik';
 import { z } from 'zod';
@@ -246,10 +247,10 @@ test('retained v1 outbox and failures survive independent compatible protocol im
     ).toBe(0);
     await until(
       () =>
-        (
-          Bun.stripANSI(wallet.output).match(
-            /eventId: 'retained-failure-event'/g,
-          ) ?? []
+        eventLogs(wallet).filter(
+          ({ operation, eventId }) =>
+            operation === 'wallet.event.committed' &&
+            eventId === 'retained-failure-event',
         ).length === 2,
     );
     // Quiesce to observe durable deduplication after the duplicate was handled.

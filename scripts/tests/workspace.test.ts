@@ -243,6 +243,32 @@ const graphSchema = z.object({
   }),
 });
 
+test('application entry point changes select distributed E2E through Nx affected', async () => {
+  const workspace = await createWorkspace();
+  try {
+    for (const app of ['user', 'wallet']) {
+      const result = await workspace.run([
+        process.execPath,
+        'run',
+        'nx',
+        'show',
+        'projects',
+        '--affected',
+        `--files=src/apps/${app}/main.ts`,
+        '--with-target=e2e',
+        '--json',
+      ]);
+      expect(result.code, result.stdout + result.stderr).toBe(0);
+      expect(
+        z.array(z.string()).parse(JSON.parse(result.stdout)),
+        app,
+      ).toContain('e2e');
+    }
+  } finally {
+    await workspace.cleanup();
+  }
+}, 60_000);
+
 test('Nx discovers source dependencies through the supported Bun entry point', async () => {
   const workspace = await createWorkspace();
   try {
@@ -262,7 +288,7 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
       wallet: ['core', 'nest-support'],
       user: ['core', 'nest-support', 'integration-contracts'],
       'nest-support': ['core'],
-      e2e: ['test-runner'],
+      e2e: ['test-runner', 'user', 'wallet'],
       'test-runner': ['database', 'infrastructure'],
     })) {
       expect(graph.dependencies).toHaveProperty(project);

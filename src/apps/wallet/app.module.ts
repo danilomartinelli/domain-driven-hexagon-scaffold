@@ -1,4 +1,9 @@
 import {
+  HealthController,
+  ServiceHealth,
+} from '@starter/nest-support/operations';
+import { sql } from 'slonik';
+import {
   Module,
   Logger,
   Inject,
@@ -36,8 +41,20 @@ import { FindWalletByUserHttpController } from './queries/find-wallet-by-user/fi
       autoSchemaFile: true,
     }),
   ],
-  controllers: [FindWalletByUserHttpController],
+  controllers: [HealthController, FindWalletByUserHttpController],
   providers: [
+    {
+      provide: ServiceHealth,
+      useFactory: (pool: DatabasePool, consumer: RabbitWalletConsumer) =>
+        new ServiceHealth('wallet', {
+          database: async () => {
+            await pool.query(sql.unsafe`SELECT id FROM wallets LIMIT 0`);
+          },
+          consumer: () => consumer.diagnostics.snapshot(),
+        }),
+      inject: [DATABASE_POOL, RabbitWalletConsumer],
+    },
+
     {
       provide: RabbitWalletConsumer,
       useFactory: (pool: DatabasePool) =>

@@ -1,3 +1,4 @@
+import { MessagingDiagnostics } from '@starter/rabbitmq/diagnostics';
 import { setTimeout as delay } from 'node:timers/promises';
 import { connect, type ConfirmChannel, type Options } from 'amqplib';
 import type { LoggerPort } from '@starter/core/logger';
@@ -27,9 +28,11 @@ async function within<T>(
 
 /** Broker acceptance ends publication, never claims Wallet processing. */
 export class RabbitOutboxPublisher {
+  readonly diagnostics = new MessagingDiagnostics();
   private readonly shutdown = new AbortController();
   private task?: Promise<void>;
   private retryMs = 250;
+  private currentEvent?: { eventId: string; correlationId: string };
 
   constructor(
     private readonly options: Options.Connect,
@@ -42,6 +45,7 @@ export class RabbitOutboxPublisher {
   }
 
   async stop(): Promise<void> {
+    this.diagnostics.unavailable();
     this.shutdown.abort();
     await this.task;
   }
@@ -55,20 +59,36 @@ export class RabbitOutboxPublisher {
         this.logger.warn(
           `User publication uncertain; pending work retries in ${String(this.retryMs)}ms.`,
           error,
+          {
+            service: 'user',
+            operation: 'outbox.failed',
+            retryDelayMs: this.retryMs,
+            ...this.currentEvent,
+          },
         );
       }
+      if (this.shutdown.signal.aborted) break;
+      this.diagnostics.retry(this.retryMs);
       await delay(this.retryMs, undefined, { signal }).catch(() => undefined);
       this.retryMs = Math.min(this.retryMs * 2, 10_000);
     }
   }
 
   private async publishSession(): Promise<void> {
+    this.currentEvent = undefined;
     const connection = await connect(this.options, { timeout: 2_000 });
     const session = new AbortController();
     const signal = AbortSignal.any([this.shutdown.signal, session.signal]);
     const end = () => {
+      this.diagnostics.unavailable();
       session.abort();
     };
+    connection.on('blocked', () => {
+      this.diagnostics.setBlocked(true);
+    });
+    connection.on('unblocked', () => {
+      this.diagnostics.setBlocked(false);
+    });
     connection.on('error', end);
     connection.on('close', end);
     try {
@@ -87,20 +107,37 @@ export class RabbitOutboxPublisher {
         })(),
         signal,
       );
-      this.logger.log('User publisher connected.');
+      if (!signal.aborted) this.diagnostics.available();
+      this.logger.log('User publisher connected.', {
+        service: 'user',
+        operation: 'outbox.connected',
+      });
       while (!signal.aborted) {
+        this.currentEvent = undefined;
         const published = await this.outbox.publishNext(async (event) => {
+          this.currentEvent = {
+            eventId: event.eventId,
+            correlationId: event.correlationId,
+          };
           await this.publish(channel, event, signal);
           this.logger.log(
             'User event routed and broker-confirmed; Wallet completion is independent.',
             {
+              service: 'user',
+              operation: 'outbox.confirmed',
               eventId: event.eventId,
               correlationId: event.correlationId,
             },
           );
         });
-        if (published) this.retryMs = 250;
-        else await delay(250, undefined, { signal }).catch(() => undefined);
+        if (published) {
+          this.retryMs = 250;
+          this.logger.log(
+            'User publication completion committed.',
+            { service: 'user', operation: 'outbox.published' },
+            this.currentEvent,
+          );
+        } else await delay(250, undefined, { signal }).catch(() => undefined);
       }
     } finally {
       end();

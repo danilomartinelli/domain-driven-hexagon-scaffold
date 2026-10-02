@@ -9,6 +9,22 @@ import type {
 export class SlonikUserOutbox implements UserOutbox {
   constructor(private readonly pool: DatabasePool) {}
 
+  async backlog(): Promise<{
+    pendingCount: number;
+    oldestAgeSeconds: number | null;
+  }> {
+    return this.pool.one(sql.type(
+      z.object({
+        pendingCount: z.number(),
+        oldestAgeSeconds: z.number().nullable(),
+      }),
+    )`
+      SELECT count(*)::integer AS "pendingCount",
+        extract(epoch FROM (now() - min(recorded_at)))::double precision AS "oldestAgeSeconds"
+      FROM user_outbox WHERE published_at IS NULL
+    `);
+  }
+
   publishNext(
     publish: (event: PendingPublication) => Promise<void>,
   ): Promise<boolean> {

@@ -1,4 +1,9 @@
 import {
+  HealthController,
+  ServiceHealth,
+} from '@starter/nest-support/operations';
+import { sql } from 'slonik';
+import {
   Module,
   Logger,
   Inject,
@@ -48,8 +53,26 @@ const interceptors = [
     // Modules
     UserModule,
   ],
-  controllers: [],
+  controllers: [HealthController],
   providers: [
+    {
+      provide: ServiceHealth,
+      useFactory: (
+        pool: DatabasePool,
+        consumer: RabbitUserCommandConsumer,
+        publisher: RabbitOutboxPublisher,
+      ) =>
+        new ServiceHealth('user', {
+          database: async () => {
+            await pool.query(sql.unsafe`SELECT id FROM users LIMIT 0`);
+          },
+          consumer: () => consumer.diagnostics.snapshot(),
+          publisher: () => publisher.diagnostics.snapshot(),
+          backlog: () => new SlonikUserOutbox(pool).backlog(),
+        }),
+      inject: [DATABASE_POOL, RabbitUserCommandConsumer, RabbitOutboxPublisher],
+    },
+
     ...interceptors,
     {
       provide: RabbitUserCommandConsumer,

@@ -9,11 +9,7 @@ import {
   wallet,
 } from '@tests/setup/test-server';
 import { withCleanup } from '../../scripts/tests/cleanup';
-import {
-  assertTestEnvironment,
-  readEnvironmentFile,
-} from '../../database/environment';
-import { runCommand } from '../../scripts/lib/command';
+import { withServiceFault } from '@tests/setup/operations';
 
 const profile = {
   email: 'atomic@example.com',
@@ -160,79 +156,43 @@ test('Wallet persistence failure preserves User and recovers without a partial W
   await observe(id);
 }, 30_000);
 
-async function docker(args: string[]): Promise<string> {
-  const result = await runCommand(['docker', ...args], {
-    cwd: process.cwd(),
-    timeout: 30_000,
-  });
-  if (result.code !== 0) throw new Error(result.stderr);
-  return result.stdout.trim();
-}
-
 test('broker stopped: REST and GraphQL creation survive User restart; pending deletion still delivers after broker recovery', async () => {
-  assertTestEnvironment();
-  const file = process.env.DDH_ENVIRONMENT_FILE;
-  if (!file) throw new Error('Missing manifest');
-  const manifest = readEnvironmentFile(file);
-  const broker = await docker([
-    'ps',
-    '-q',
-    '--filter',
-    `label=com.docker.compose.project=${manifest.project}`,
-    '--filter',
-    `label=dev.starter.owner=${manifest.owner}`,
-    '--filter',
-    'label=com.docker.compose.service=rabbitmq',
-  ]);
-  if (!broker || broker.includes('\n'))
-    throw new Error('Expected one owned broker');
   let restId = '';
   let graphqlId = '';
   let envelopes: readonly unknown[] = [];
-  await withCleanup(async () => {
-    await docker(['stop', '--time', '3', broker]);
-    await user.stop();
-    await user.start();
-    restId = await create();
-    const response = await getHttpServer()
-      .post('/user/graphql')
-      .send({
-        query: `mutation { create(input: { email: "offline@example.com", country: "England", street: "Baker street", postalCode: "28566" }) { id } }`,
-      })
-      .expect(200);
-    graphqlId = z
-      .object({ data: z.object({ create: z.object({ id: z.string() }) }) })
-      .parse(response.body).data.create.id;
-    envelopes = await getTestDatabase().any(
-      sql.unsafe`SELECT event_id, envelope FROM user_outbox ORDER BY event_id`,
-    );
-    expect(envelopes).toHaveLength(2);
-    await pending(restId);
-    await pending(graphqlId);
-    await getHttpServer().delete(`/v1/users/${restId}`).expect(200);
-    expect(await listedUserIds()).toEqual([graphqlId]);
-    await pending(restId);
-    await user.stop();
-    await user.start();
-    expect(
-      await getTestDatabase().any(
-        sql.unsafe`SELECT event_id, envelope FROM user_outbox WHERE published_at IS NULL ORDER BY event_id`,
-      ),
-    ).toEqual(envelopes);
-  }, [
+  await withServiceFault(
+    { service: 'rabbitmq', mode: 'stopped', allowDataLoss: true },
     async () => {
-      await docker(['start', broker]);
-      await until(
-        async () =>
-          (await docker([
-            'inspect',
-            '--format',
-            '{{.State.Health.Status}}',
-            broker,
-          ])) === 'healthy',
+      await user.stop();
+      await user.start();
+      restId = await create();
+      const response = await getHttpServer()
+        .post('/user/graphql')
+        .send({
+          query: `mutation { create(input: { email: "offline@example.com", country: "England", street: "Baker street", postalCode: "28566" }) { id } }`,
+        })
+        .expect(200);
+      graphqlId = z
+        .object({ data: z.object({ create: z.object({ id: z.string() }) }) })
+        .parse(response.body).data.create.id;
+      envelopes = await getTestDatabase().any(
+        sql.unsafe`SELECT event_id, envelope FROM user_outbox ORDER BY event_id`,
       );
+      expect(envelopes).toHaveLength(2);
+      await pending(restId);
+      await pending(graphqlId);
+      await getHttpServer().delete(`/v1/users/${restId}`).expect(200);
+      expect(await listedUserIds()).toEqual([graphqlId]);
+      await pending(restId);
+      await user.stop();
+      await user.start();
+      expect(
+        await getTestDatabase().any(
+          sql.unsafe`SELECT event_id, envelope FROM user_outbox WHERE published_at IS NULL ORDER BY event_id`,
+        ),
+      ).toEqual(envelopes);
     },
-  ]);
+  );
   await observe(restId);
   await observe(graphqlId);
   expect(await listedUserIds()).toEqual([graphqlId]);
