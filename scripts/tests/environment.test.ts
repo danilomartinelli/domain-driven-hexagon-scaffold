@@ -182,7 +182,12 @@ test('a named test environment prepares PostgreSQL, RabbitMQ and Kong and reject
 }, 180_000);
 
 function namedEnvironment(kind: 'test' | 'development', name: string) {
-  return (command: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) =>
+  return (
+    command: string,
+    args: string[] = [],
+    env: NodeJS.ProcessEnv = {},
+    timeout = 120_000,
+  ) =>
     runCommand(
       [
         process.execPath,
@@ -192,7 +197,7 @@ function namedEnvironment(kind: 'test' | 'development', name: string) {
         `--run=${name}`,
         ...args,
       ],
-      { cwd: root, env: { ...process.env, ...env }, timeout: 120_000 },
+      { cwd: root, env: { ...process.env, ...env }, timeout },
     );
 }
 
@@ -371,9 +376,15 @@ test('prepared regression runs reject foreign targets and preserve development a
       // below; on Bun 1.4.2, AGENT=0 takes precedence over agent detection.
       // https://bun.com/docs/test#ai-agent-integration
       const regression = await succeeded(
-        first('exec', ['--', process.execPath, 'run', 'test:e2e:prepared'], {
-          AGENT: '0',
-        }),
+        // The complete suite includes real shutdown deadlines and recovery.
+        first(
+          'exec',
+          ['--', process.execPath, 'run', 'test:e2e:prepared'],
+          {
+            AGENT: '0',
+          },
+          180_000,
+        ),
       );
       await expectRegressionSuite(root, regression.stderr + regression.stdout);
       await succeeded(first('down'));
@@ -400,7 +411,7 @@ test('prepared regression runs reject foreign targets and preserve development a
     },
     environments.map((cli) => () => succeeded(cli('down'))),
   );
-}, 240_000);
+}, 300_000);
 
 test.each([
   'USER_DB_PORT',

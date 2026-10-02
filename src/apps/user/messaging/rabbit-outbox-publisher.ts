@@ -78,7 +78,9 @@ export class RabbitOutboxPublisher {
     this.currentEvent = undefined;
     const connection = await connect(this.options, { timeout: 2_000 });
     const session = new AbortController();
-    const signal = AbortSignal.any([this.shutdown.signal, session.signal]);
+    // Stop claiming new work on shutdown, but let an accepted publication finish.
+    const signal = session.signal;
+    const accepting = AbortSignal.any([this.shutdown.signal, signal]);
     const end = () => {
       this.diagnostics.unavailable();
       session.abort();
@@ -92,7 +94,10 @@ export class RabbitOutboxPublisher {
     connection.on('error', end);
     connection.on('close', end);
     try {
-      const channel = await within(connection.createConfirmChannel(), signal);
+      const channel = await within(
+        connection.createConfirmChannel(),
+        accepting,
+      );
       channel.on('error', end);
       channel.on('close', end);
       // RabbitMQ sends mandatory returns before their confirms. Either invalidates
@@ -105,14 +110,14 @@ export class RabbitOutboxPublisher {
           await channel.assertQueue(walletQueue, { durable: true });
           await channel.bindQueue(walletQueue, exchange, routingKey);
         })(),
-        signal,
+        accepting,
       );
-      if (!signal.aborted) this.diagnostics.available();
+      if (!accepting.aborted) this.diagnostics.available();
       this.logger.log('User publisher connected.', {
         service: 'user',
         operation: 'outbox.connected',
       });
-      while (!signal.aborted) {
+      while (!accepting.aborted) {
         this.currentEvent = undefined;
         const published = await this.outbox.publishNext(async (event) => {
           this.currentEvent = {
@@ -137,7 +142,10 @@ export class RabbitOutboxPublisher {
             { service: 'user', operation: 'outbox.published' },
             this.currentEvent,
           );
-        } else await delay(250, undefined, { signal }).catch(() => undefined);
+        } else
+          await delay(250, undefined, { signal: accepting }).catch(
+            () => undefined,
+          );
       }
     } finally {
       end();
