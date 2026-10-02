@@ -246,8 +246,11 @@ test('retained v1 outbox and failures survive independent compatible protocol im
     ).toBe(0);
     await until(
       () =>
-        (wallet.output.match(/eventId: 'retained-failure-event'/g) ?? [])
-          .length === 2,
+        (
+          Bun.stripANSI(wallet.output).match(
+            /eventId: 'retained-failure-event'/g,
+          ) ?? []
+        ).length === 2,
     );
     // Quiesce to observe durable deduplication after the duplicate was handled.
     await wallet.stop();
