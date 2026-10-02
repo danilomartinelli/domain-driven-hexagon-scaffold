@@ -171,8 +171,10 @@ Infrastructure errors close the connection without ACK and retry at 250ms,
 500ms, 1s and so on, capped at 10s. Only successful processing resets this
 backoff. Connections have a 2s timeout and heartbeat; topology and close waits
 are bounded at 5s, processing at 10s, and transactional statements at 5s.
-Shutdown closes consumption before the database pool, leaving interrupted work
-recoverable. Messaging runs independently of HTTP/GraphQL, with explicit
+Shutdown cancels new deliveries, drains accepted operations and closes the
+channel and connection before the database pool, leaving interrupted work
+recoverable. See [shutdown and restart](shutdown.md) for signals, bounds and
+commit-before-ACK recovery. Messaging runs independently of HTTP/GraphQL, with explicit
 per-message context and correlated commit logs, without HTTP middleware.
 
 ## Tests

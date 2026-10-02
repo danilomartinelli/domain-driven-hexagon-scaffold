@@ -90,12 +90,12 @@ export class RabbitWalletConsumer {
   private async consumeSession(): Promise<void> {
     const { signal } = this.shutdown;
     const connection = await connect(this.options, { timeout: 2_000 });
-    let active = !signal.aborted;
+    const session = new AbortController();
     const ended = Promise.withResolvers<undefined>();
     const inFlight = new Set<Promise<void>>();
     const end = () => {
       this.diagnostics.unavailable();
-      active = false;
+      session.abort();
       ended.resolve(undefined);
     };
     connection.on('blocked', () => {
@@ -106,24 +106,27 @@ export class RabbitWalletConsumer {
     });
     connection.on('error', end);
     connection.on('close', end);
-    signal.addEventListener('abort', end, { once: true });
+    const drain = () => {
+      ended.resolve(undefined);
+    };
+    signal.addEventListener('abort', drain, { once: true });
     try {
-      if (!active) return;
+      signal.throwIfAborted();
       const channel = await within(connection.createConfirmChannel(), 5_000);
       channel.on('error', end);
       channel.on('close', end);
       // A confirmation can accompany an unroutable return: both must succeed.
       channel.on('return', end);
-      await within(
+      const subscription = await within(
         this.subscribe(channel, (message) => {
           if (!message) {
             end();
             return;
           }
-          if (!active) return;
+          if (session.signal.aborted || signal.aborted) return;
           const processing = within(this.process(channel, message), 10_000)
             .then(() => {
-              if (!active) return;
+              if (session.signal.aborted) return;
               channel.ack(message);
               // Reset only after successful work, never merely after reconnecting.
               this.retryMs = initialRetryMs;
@@ -149,15 +152,23 @@ export class RabbitWalletConsumer {
         }),
         5_000,
       );
-      this.diagnostics.available(active);
+      this.diagnostics.available(!session.signal.aborted && !signal.aborted);
       this.logger.log('Wallet messaging connected.', {
         service: 'wallet',
         operation: 'consumer.connected',
       });
       await ended.promise;
+      if (signal.aborted && !session.signal.aborted) {
+        // Cancel new deliveries while the channel remains usable for in-flight ACKs.
+        await within(channel.cancel(subscription.consumerTag), 5_000);
+        await Promise.allSettled(inFlight);
+        // Channel close is ordered after its buffered ACKs. Connection.close()
+        // alone can overtake them and unnecessarily requeue committed work.
+        await within(channel.close(), 5_000);
+      }
     } finally {
       end();
-      signal.removeEventListener('abort', end);
+      signal.removeEventListener('abort', drain);
       // Closing requeues every unacknowledged delivery, including uncertain commits.
       await within(connection.close(), 5_000).catch(() => undefined);
       await Promise.allSettled(inFlight);
@@ -167,7 +178,7 @@ export class RabbitWalletConsumer {
   private async subscribe(
     channel: ConfirmChannel,
     onMessage: (message: ConsumeMessage | null) => void,
-  ): Promise<void> {
+  ): Promise<{ consumerTag: string }> {
     const { exchange, routingKey, walletQueue, walletFailureQueue } =
       userCreatedDestination;
     await channel.assertExchange(exchange, 'direct', { durable: true });
@@ -175,7 +186,7 @@ export class RabbitWalletConsumer {
     await channel.assertQueue(walletFailureQueue, { durable: true });
     await channel.bindQueue(walletQueue, exchange, routingKey);
     await channel.prefetch(4);
-    await channel.consume(walletQueue, onMessage, { noAck: false });
+    return channel.consume(walletQueue, onMessage, { noAck: false });
   }
 
   private async process(

@@ -91,7 +91,8 @@ export class RabbitUserCommandConsumer {
   private async consumeSession(): Promise<void> {
     const connection = await connect(this.options, { timeout: 2_000 });
     const session = new AbortController();
-    const signal = AbortSignal.any([this.shutdown.signal, session.signal]);
+    const signal = session.signal;
+    const accepting = AbortSignal.any([this.shutdown.signal, signal]);
     const ended = Promise.withResolvers<undefined>();
     const inFlight = new Set<Promise<void>>();
     const end = () => {
@@ -108,30 +109,37 @@ export class RabbitUserCommandConsumer {
     connection.on('error', end);
     connection.on('close', end);
     signal.addEventListener('abort', end, { once: true });
+    const drain = () => {
+      ended.resolve(undefined);
+    };
+    this.shutdown.signal.addEventListener('abort', drain, { once: true });
     try {
-      signal.throwIfAborted();
-      const channel = await within(connection.createConfirmChannel(), signal);
+      accepting.throwIfAborted();
+      const channel = await within(
+        connection.createConfirmChannel(),
+        accepting,
+      );
       channel.on('error', end);
       channel.on('close', end);
       // Mandatory returns precede confirms; broker acceptance alone is insufficient.
       channel.on('return', end);
       const { exchange, queue, routingKey, failureQueue } =
         userCreateDestination;
-      await within(
+      const subscription = await within(
         (async () => {
           await channel.assertExchange(exchange, 'direct', { durable: true });
           await channel.assertQueue(queue, { durable: true });
           await channel.assertQueue(failureQueue, { durable: true });
           await channel.bindQueue(queue, exchange, routingKey);
           await channel.prefetch(1);
-          await channel.consume(
+          return channel.consume(
             queue,
             (message) => {
               if (!message) {
                 end();
                 return;
               }
-              if (signal.aborted) return;
+              if (accepting.aborted) return;
               const processing = within(
                 this.process(channel, message, signal),
                 signal,
@@ -165,15 +173,21 @@ export class RabbitUserCommandConsumer {
             { noAck: false },
           );
         })(),
-        signal,
+        accepting,
       );
-      if (!signal.aborted) this.diagnostics.available();
+      if (!accepting.aborted) this.diagnostics.available();
       this.logger.log('User command consumer connected.', {
         service: 'user',
         operation: 'command.connected',
       });
       await ended.promise;
+      if (this.shutdown.signal.aborted && !signal.aborted) {
+        await within(channel.cancel(subscription.consumerTag), signal);
+        await Promise.allSettled(inFlight);
+        await within(channel.close(), new AbortController().signal);
+      }
     } finally {
+      this.shutdown.signal.removeEventListener('abort', drain);
       signal.removeEventListener('abort', end);
       end();
       // Closing requeues uncertain deliveries. A command retry can return email conflict.

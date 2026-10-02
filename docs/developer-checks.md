@@ -35,8 +35,11 @@ all seven Gherkin cases through Kong, including separate GraphQL schemas and
 pending Wallet/deletion behavior. CI also runs
 `bun run nx run test-runner:test-gateway` for loaded upstream configuration,
 foreign-target rejection, occupied proxy/Admin ports and failed Kong setup cleanup.
-The broader runner lifecycle suite remains part of local
-`check:full` validation and also includes these broker/gateway checks.
+CI also selects `test-runner:test-preservation` when the compared commits change
+anything outside documentation. This exercises the complete prepared E2E suite
+while checking development and sibling environment preservation. Dispatches and
+first pushes without a baseline run it conservatively. The broader runner
+lifecycle suite remains in local `check:full` and includes these focused targets.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
 is the suites below; future service, contract and distribution suites are added
@@ -101,12 +104,22 @@ runner/gateway lifecycle target for changes to provisioning or cleanup; componen
 tests alone do not cover those failures. This focused feedback precedes the full
 gate and does not replace it.
 
+When changing application behavior, E2E coverage or runner code, run
+`bun run nx run test-runner:test-preservation` before staged review. This test
+executes the complete prepared E2E suite, so adding tests can affect its deadline
+even when provisioning code is unchanged. `bun scripts/preservation-required.ts`
+shows whether branch, staged, unstaged or new files require it; `--base` and
+`--head` select immutable commits for CI. Git comparison failures fail the command.
+
 Use `&&` to stop a sequential batch on failure. For independent checks, use
 separate tool calls (parallel when useful) and inspect every command's exit
 status. A batch is successful only if every check passed; `;` or unchecked
 parallel results can hide an earlier failure behind the last command's success.
 When saving logs, preserve the check's status and read the log in a separate
 call; a successful log reader is not evidence that the check passed.
+Long nested preservation runs report their deadline, elapsed time, time since
+last output and the existing `run.log` path every 30 seconds. Timeout diagnostics
+name the command label and budget; arguments and environment values are omitted.
 
 Once focused checks pass, stage and format the intended changes, then complete
 both staged reviews and resolve their findings. Run the full gate above only

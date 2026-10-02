@@ -6,6 +6,7 @@ export interface Readiness {
 
 export interface HealthSnapshot {
   service: string;
+  lifecycle: 'running' | 'draining' | 'stopping';
   http: Readiness;
   consumer: Readiness & MessagingState;
   publisher: Readiness;
@@ -38,6 +39,7 @@ export interface BacklogSnapshot {
 
 /** Coalesces concurrent database probes and caches their result for one second. */
 export class ServiceHealth {
+  lifecycle: HealthSnapshot['lifecycle'] = 'running';
   private readonly database: CachedProbe<void>;
   private readonly outbox?: CachedProbe<{
     pendingCount: number;
@@ -53,21 +55,34 @@ export class ServiceHealth {
   }
 
   async snapshot(): Promise<HealthSnapshot> {
-    const { available: database } = await this.database.read();
+    const { available: database } =
+      this.lifecycle === 'running'
+        ? await this.database.read()
+        : { available: false };
     const readiness = (
       state: MessagingState,
     ): Readiness & MessagingState & { reason: string | null } => ({
       ...state,
-      status: database && state.connected ? 'ready' : 'not_ready',
-      reason: !database
-        ? 'database_unavailable'
-        : state.connected
-          ? null
-          : 'messaging_unavailable',
+      status:
+        database && this.lifecycle === 'running' && state.connected
+          ? 'ready'
+          : 'not_ready',
+      reason:
+        this.lifecycle !== 'running'
+          ? this.lifecycle
+          : !database
+            ? 'database_unavailable'
+            : state.connected
+              ? null
+              : 'messaging_unavailable',
     });
     return {
       service: this.service,
-      http: { status: database ? 'ready' : 'not_ready' },
+      lifecycle: this.lifecycle,
+      http: {
+        status:
+          database && this.lifecycle === 'running' ? 'ready' : 'not_ready',
+      },
       consumer: readiness(this.sources.consumer()),
       publisher: this.sources.publisher
         ? readiness(this.sources.publisher())
@@ -78,6 +93,8 @@ export class ServiceHealth {
   async backlog(): Promise<BacklogSnapshot> {
     if (!this.outbox)
       return { service: this.service, status: 'not_applicable' };
+    if (this.lifecycle !== 'running')
+      return { service: this.service, status: 'unavailable' };
     const result = await this.outbox.read();
     return result.available
       ? { service: this.service, status: 'available', ...result.value }

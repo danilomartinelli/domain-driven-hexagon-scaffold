@@ -101,6 +101,35 @@ CLI cannot select fields.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## CI observation
+
+After publishing, run `bun run ci:watch -- --pr=<number>` from the repository.
+Use `--repo=<owner/name>` to select a repository explicitly. The helper reads
+GitHub through `gh`; it does not push, rerun jobs, edit the PR or merge.
+
+It follows this repository's `CI` workflow for the PR branch and current head,
+waits for run registration, reports only changes in active stages, and restarts
+observation when the head changes. Before reporting a terminal result it checks
+the head and latest run attempt again. Polling defaults to 15 seconds and has a
+30-minute observation deadline; `--interval-ms` and `--timeout-ms` override them.
+
+| Exit | Result        | Meaning                                              |
+| ---- | ------------- | ---------------------------------------------------- |
+| 0    | `passed`      | CI succeeded for the verified head                   |
+| 1    | `failed`      | CI ran and finished unsuccessfully; inspect its logs |
+| 2    | `unavailable` | GitHub access or response validation failed          |
+| 3    | `blocked`     | CI needs action or completed without executing steps |
+| 4    | `timed_out`   | Observation ended while CI remained pending          |
+
+Only exit 0 records approval. `blocked` does not infer a billing or permissions
+cause: inspect the linked run's annotations. Invalid CLI arguments also exit 2.
+
+The terminal JSON observation is written atomically to
+`.context/ci/pr-<number>.json`; `--output=<path>` selects another destination.
+It includes the timestamp, observed heads, PR body and closing references, run,
+jobs, outcome and exit status. Reference it when updating session evidence.
+The observation does not establish local validation or a reviewed Git tree.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

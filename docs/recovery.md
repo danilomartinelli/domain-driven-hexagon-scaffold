@@ -5,6 +5,9 @@ creation follows asynchronously. A broker confirmation means the message was
 accepted; inspect Wallet's REST or GraphQL lookup for processing completion.
 A missing Wallet yields REST 404 and GraphQL `null` while delivery is pending.
 
+For signals, the 15-second shutdown bound, draining readiness and restart
+commands, see [shutdown and restart](shutdown.md).
+
 ## Independent operational signals
 
 Probe each application's own listener (`USER_HTTP_PORT` or `WALLET_HTTP_PORT`),

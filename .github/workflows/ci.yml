@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
@@ -31,6 +33,15 @@ jobs:
       # Fast gate: formatting, docs references, lint, types, boundaries and unit tests.
       - name: Check
         run: bun run check
+      - name: Select preservation regression
+        id: preservation
+        env:
+          COMPARISON_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          COMPARISON_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bun scripts/preservation-required.ts --base="$COMPARISON_BASE" --head="$COMPARISON_HEAD"
+      - name: Preserve development and sibling environments
+        if: steps.preservation.outputs.required == 'true'
+        run: bun run nx run test-runner:test-preservation
       - name: Broker regression and cleanup ownership
         run: bun run nx run test-runner:test-broker
       - name: Gateway setup and cleanup ownership

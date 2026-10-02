@@ -109,7 +109,9 @@ its own transaction and acknowledges only after commit. Retries start at 250ms,
 double to a 10s cap, and reset only after completed publication. Empty polling
 waits 250ms. Connections time out after 2s; topology, confirmations and close wait
 at most 5s; database connection/statement waits are bounded at 5s. Shutdown
-interrupts messaging before closing the pool; restart resumes persisted work.
+stops new work, drains accepted operations and closes messaging before the pool;
+restart resumes persisted work. See [shutdown and restart](shutdown.md) for
+signals, the total deadline and failure recovery.
 Deleting a profile never cancels its outbox item or removes a Wallet.
 
 See [User commands](user-commands.md) for executable `user.create` requests and

@@ -194,10 +194,11 @@ the draft body.
    a closing reference is missing. Report current CI separately from local
    checks; successful publication is not CI approval.
 5. For an `/implement` delivery, follow the CI runs for the published head SHA
-   until they finish, unless the user requested an earlier endpoint. Discover
-   runs with `gh run list --commit <sha>`; allow for registration delay. Recheck
-   the PR head while polling and restart tracking after each new push so an
-   older successful run cannot validate a newer commit. Inspect failed-job logs
+   until they finish, unless the user requested an earlier endpoint. Use
+   `bun run ci:watch -- --pr=<number>`; see
+   [CI observation](../../../docs/agents/issue-tracker.md#ci-observation) for
+   exit statuses and evidence. The helper waits for registration, reports stage
+   changes and restarts tracking after a new head. Inspect failed-job logs
    and available artifacts, fix failures caused by the change, then repeat the
    required checks, reviews and publication. Do not finish with CI merely queued
    or in progress. If CI cannot execute or requires an external action (such as
