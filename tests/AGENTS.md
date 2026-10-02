@@ -4,6 +4,11 @@ This directory contains Gherkin scenarios in `user/` and database/API regression
 in `integration/`. Infrastructure-free application tests belong in each app's `tests/unit/`;
 package tests belong beside their package under `src/packages/`.
 
+`compatibility/` owns fixed cross-service protocol fixtures and the infrastructure-free
+`e2e:test` matrix. Its live retained-message scenario stays in `integration/`, also
+available as the uncached `e2e:test-compatibility` target. Fixtures must not import
+User/Wallet domain classes or regenerate baselines from current production code.
+
 ## Setup and isolation
 
 - Keep [the preload](setup/preload.ts) validating the selected owned test

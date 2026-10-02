@@ -3,6 +3,22 @@
   "projectType": "application",
   "tags": ["scope:tooling"],
   "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun test ./tests/compatibility/contracts.test.ts",
+        "cwd": "."
+      }
+    },
+    "test-compatibility": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/integration/contract-compatibility.test.ts",
+        "cwd": "."
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "cache": true,

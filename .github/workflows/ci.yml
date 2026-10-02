@@ -40,3 +40,15 @@ jobs:
       # Keep component failures inside the existing required check status.
       - name: Component tests
         run: bun run test:component
+
+      - name: Preserve failed run diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-run-diagnostics-${{ github.run_attempt }}
+          path: |
+            .context/test-runs/*/run.log
+            .context/test-runs/*/result.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

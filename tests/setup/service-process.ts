@@ -9,7 +9,7 @@ export class ServiceProcess {
     return `http://127.0.0.1:${String(process.env[`${this.name.toUpperCase()}_HTTP_PORT`])}`;
   }
 
-  async start(): Promise<void> {
+  async start(preload?: string): Promise<void> {
     if (this.child) throw new Error(`${this.name} already started`);
     const env: Record<string, string> = {};
     const sibling = this.name === 'user' ? 'WALLET_' : 'USER_';
@@ -25,7 +25,11 @@ export class ServiceProcess {
     }
     this.output = '';
     const child = Bun.spawn(
-      [process.execPath, `src/apps/${this.name}/main.ts`],
+      [
+        process.execPath,
+        ...(preload ? ['--preload', preload] : []),
+        `src/apps/${this.name}/main.ts`,
+      ],
       {
         env,
         stdin: 'ignore',

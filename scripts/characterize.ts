@@ -2,11 +2,11 @@
  * Run tests from this checkout against a base commit, so a behaviour-preserving
  * change can show its tests encode the behaviour that existed before it.
  *
- *   bun run characterize -- [--base <ref>] <file>...
+ *   bun run characterize -- [--base <ref>] [--runner=auto|native] <file>...
  *
  * Named files are copied into a temporary worktree of the base; `*.test.ts`
  * files run there. Distributed and application component suites use their
- * provisioned runner scope and preload.
+ * provisioned runner scope and preload unless --runner=native is selected.
  */
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs';
@@ -23,15 +23,19 @@ const CLEANUP_GRACE = 60_000;
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const baseIndex = args.indexOf('--base');
 const baseRef = baseIndex === -1 ? undefined : args[baseIndex + 1];
-const files = args
-  .filter(
-    (_, index) =>
-      baseIndex === -1 || (index !== baseIndex && index !== baseIndex + 1),
-  )
+const remaining = args.filter(
+  (_, index) =>
+    baseIndex === -1 || (index !== baseIndex && index !== baseIndex + 1),
+);
+const runnerOptions = remaining.filter((arg) => arg.startsWith('--runner'));
+const runner = runnerOptions[0] ?? '--runner=auto';
+const files = remaining
+  .filter((arg) => !runnerOptions.includes(arg))
   .map((file) => normalize(file));
 const tests = files.filter((file) => file.endsWith('.test.ts'));
 
 function testSuite(file: string): string {
+  if (runner === '--runner=native') return 'native';
   const component = /^src\/apps\/[^/]+\/tests\/component\//.exec(file);
   if (component) return component[0];
   return file.startsWith('tests/') ? 'tests/' : 'native';
@@ -123,9 +127,15 @@ async function keepRunnerRecords(
 }
 
 async function main(): Promise<number> {
-  if (!tests.length || (baseIndex !== -1 && !baseRef))
+  if (
+    !tests.length ||
+    (baseIndex !== -1 && (!baseRef || baseRef.startsWith('--'))) ||
+    runnerOptions.length > 1 ||
+    !['--runner=auto', '--runner=native'].includes(runner) ||
+    files.some((file) => file.startsWith('--'))
+  )
     throw new Error(
-      'Usage: characterize [--base <ref>] <file>... (at least one *.test.ts)',
+      'Usage: characterize [--base <ref>] [--runner=auto|native] <file>... (at least one *.test.ts)',
     );
   if (suites.size > 1)
     throw new Error(

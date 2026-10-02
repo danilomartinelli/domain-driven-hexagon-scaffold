@@ -97,8 +97,12 @@ The generated manifest and Compose configuration live under
 `.context/test-runs/<project>/` with owner-only file permissions. Treat them as
 local credentials. `run.log` and `result.json` retain command/cleanup statuses
 and, for `bun test` commands, pass/fail counts. Container logs stay in `run.log`
-and reach the terminal only when a run fails; every run ends with one `Result:`
-line naming its statuses, counts and log.
+and reach the terminal only when a run fails. A failed command repeats a bounded,
+ANSI-free failure excerpt after cleanup so verbose container output does not hide
+the diagnostic. Every run ends with one `Result:` line naming its statuses,
+counts and log. Failed CI jobs upload only `run.log` and `result.json` as the
+`test-run-diagnostics-<attempt>` artifact, retained for seven days; generated
+manifests and Compose configuration are excluded.
 The manifest provides database and broker settings to `env:exec`; shell values
 win over defaults. **Tests reject an override that differs from the selected
 owned target**, instead of silently replacing it or connecting to it.

@@ -37,6 +37,7 @@ async function runProbe(
      if (migrations.rows.length !== 2) throw new Error('Baseline migration missing');
      await client.end();
      console.log('probe completed');
+     if (${String(code)} !== 0) console.error('probe failure: expected successful delivery');
      process.exit(${String(code)});`,
     ],
     {
@@ -61,6 +62,12 @@ async function runProbe(
   const containerLog = /^\S+-1\s+\| /m;
   expect(containerLog.test(stdout)).toBe(code !== 0);
   expect(await Bun.file(join(root, log)).text()).toMatch(containerLog);
+  if (code !== 0) {
+    const summary = stdout.slice(stdout.lastIndexOf('Failure excerpt'));
+    expect(summary).toContain('probe failure: expected successful delivery');
+    expect(summary).toContain('Result: exit 23 (command 23, cleanup 0)');
+    expect(containerLog.test(summary)).toBe(false);
+  } else expect(stdout).not.toContain('Failure excerpt');
   return { project, exitCode };
 }
 

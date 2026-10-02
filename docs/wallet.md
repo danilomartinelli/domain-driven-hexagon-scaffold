@@ -139,6 +139,9 @@ The [independent baseline fixture](../src/packages/integration-contracts/tests/f
 and consumer tests establish this compatibility baseline; they do not claim
 historical release binaries have been tested.
 
+See [contract evolution](contract-evolution.md) for the exact compatibility matrix,
+live implementation transitions, retirement gates and service-owned schema policy.
+
 ## Delivery and recovery
 
 ```text

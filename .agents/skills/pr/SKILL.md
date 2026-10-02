@@ -193,7 +193,18 @@ the draft body.
    `closingIssuesReferences`. Allow for GitHub's indexing delay before concluding
    a closing reference is missing. Report current CI separately from local
    checks; successful publication is not CI approval.
-5. If the session already has an evidence record under `.context/`, update its
+5. For an `/implement` delivery, follow the CI runs for the published head SHA
+   until they finish, unless the user requested an earlier endpoint. Discover
+   runs with `gh run list --commit <sha>`; allow for registration delay. Recheck
+   the PR head while polling and restart tracking after each new push so an
+   older successful run cannot validate a newer commit. Inspect failed-job logs
+   and available artifacts, fix failures caused by the change, then repeat the
+   required checks, reviews and publication. Do not finish with CI merely queued
+   or in progress. If CI cannot execute or requires an external action (such as
+   billing, permissions or unavailable infrastructure), report that blocker
+   separately from code failures and local validation; do not claim CI approval.
+   Merge and deployment remain separate actions.
+6. If the session already has an evidence record under `.context/`, update its
    current publication section after verifying the remote state: timestamp,
    commit SHA, reviewed tree, branch/base, PR URL, closing/related issues and
    observed CI status. Preserve prior failed/passed runs as history and replace

@@ -113,6 +113,58 @@ test('tests from the checkout run against the base commit, then the worktree is 
   }
 }, 120_000);
 
+test('native runner executes infrastructure-free tests from mixed paths against the base', async () => {
+  const { root, base } = await changedRepository(
+    {},
+    {
+      'scripts/with-test-database.ts':
+        "throw new Error('Provisioning must not run');",
+      'tests/setup/preload.ts': "throw new Error('Preload must not run');",
+    },
+  );
+  try {
+    const contract = 'tests/compatibility/contract.test.ts';
+    await mkdir(dirname(join(root, contract)), { recursive: true });
+    await writeFile(
+      join(root, contract),
+      `import { expect, test } from 'bun:test';
+import { value } from '../../value';
+test('contract', () => expect(value).toBe(1));`,
+    );
+    await writeTest(root, 'expect(value).toBe(1);');
+    const files = ['--runner=native', contract, 'value.test.ts'];
+    const passing = await finished(characterize(root, base, files));
+    expect(passing.code, passing.stdout + passing.stderr).toBe(0);
+    expect(passing.stdout).toContain('bun test 2 pass, 0 fail');
+    await writeTest(root, 'expect(value).toBe(2);');
+    const failing = await finished(characterize(root, base, files));
+    expect(failing.code, failing.stdout + failing.stderr).toBe(1);
+    expect(failing.stdout).toContain('bun test 1 pass, 1 fail');
+    expect(await worktreeCount(root)).toBe(1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 120_000);
+
+test.each(['--runner=unknown', '--runner', '--runner=native --runner=auto'])(
+  'invalid runner selection fails before creating a worktree: %s',
+  async (option) => {
+    const { root, base } = await changedRepository();
+    try {
+      const result = await finished(
+        characterize(root, base, [...option.split(' '), 'value.test.ts']),
+      );
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain('Usage: characterize');
+      expect(await worktreeCount(root)).toBe(1);
+      expect(existsSync(join(root, '.context/characterize'))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  120_000,
+);
+
 test.each(['user', 'wallet', 'distributed'])(
   'characterization uses the %s runner scope and preload at the base',
   async (suite) => {
