@@ -239,8 +239,11 @@ Delivered slices of [issue #15](https://github.com/danilomartinelli/vibecoding-s
   original Gherkin and User API contracts through the proxy, with independent
   GraphQL schemas, eventual Wallet lookup and deletion during pending delivery.
 
-Remaining: operator replay tooling, distributions, broader diagnostics and
-generators (#28 to #35).
+Operator inspection and explicit replay are implemented with uncached, scoped
+[User and Wallet commands](../failure-queues.md), immutable retained deliveries
+and confirmed ownership transfer (#28).
+
+Remaining: distributions, broader diagnostics and generators (#29 to #35).
 
 ## References
 

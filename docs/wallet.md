@@ -161,8 +161,8 @@ headers are retained, with failure reason, original routing and redelivery
 metadata. Source expiration is removed. Only successful routing **and** publisher
 confirmation permit the source ACK. Interrupted retention may leave multiple
 failure copies; retaining the original identity makes future replay idempotent.
-Operator inspection and explicit replay commands belong to the later
-failure-queue workflow; this slice provides durable retention without retry loops.
+Use the [failure-queue commands](failure-queues.md) for inspection and explicit
+replay through the same decoder, preserving durable ownership until confirmation.
 
 Infrastructure errors close the connection without ACK and retry at 250ms,
 500ms, 1s and so on, capped at 10s. Only successful processing resets this

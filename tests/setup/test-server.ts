@@ -47,7 +47,12 @@ async function reset(): Promise<void> {
   );
   await withCleanup(async () => {
     const channel = await connection.createChannel();
-    for (const queue of ['wallet.user-created', 'wallet.user-created.failed']) {
+    for (const queue of [
+      'wallet.user-created',
+      'wallet.user-created.failed',
+      'user.create',
+      'user.create.failed',
+    ]) {
       await channel.assertQueue(queue, { durable: true });
       await channel.purgeQueue(queue);
     }

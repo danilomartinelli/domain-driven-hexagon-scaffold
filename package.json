@@ -91,6 +91,7 @@
     "@starter/core": "workspace:*",
     "@starter/nest-support": "workspace:*",
     "@starter/integration-contracts": "workspace:*",
+    "@starter/rabbitmq": "workspace:*",
     "amqplib": "2.2.0"
   },
   "devDependencies": {

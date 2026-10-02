@@ -98,6 +98,22 @@
         "command": "bun --bun eslint src/apps/wallet --max-warnings 0 --fix",
         "cwd": "."
       }
+    },
+    "failures-inspect": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/failure-queue.ts wallet inspect",
+        "cwd": "."
+      }
+    },
+    "failures-replay": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/failure-queue.ts wallet replay",
+        "cwd": "."
+      }
     }
   },
   "implicitDependencies": ["test-runner"]

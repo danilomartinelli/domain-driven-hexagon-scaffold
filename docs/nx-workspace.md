@@ -18,6 +18,7 @@ part of that design.
 | `type-fixtures`         | `src` (excluding nested projects)    | Compile-only decorator fixture in `src/type-tests`; no runtime or unit suite                                                                                                                                                                          |
 | `user`                  | `src/apps/user`                      | Independent User REST/GraphQL, owned profile/outbox transaction, database, migrations and seed; core and external-process component tests including the seven original Gherkin cases                                                                  |
 | `wallet`                | `src/apps/wallet`                    | Independent Wallet creation and lookup application with its own domain, creation use case, read and transaction ports, RabbitMQ consumer, adapters, migrations and seed; core tests in `tests/unit`, provisioned component suite in `tests/component` |
+| `rabbitmq`              | `src/packages/rabbitmq`              | Technical failure-queue inspection/replay transport. Application component suites cover its real broker behavior; lint and typecheck targets are local.                                                                                               |
 | `integration-contracts` | `src/packages/integration-contracts` | Versioned serializable integration envelopes and independent baseline fixtures; infrastructure-free contract tests                                                                                                                                    |
 | `core`                  | `src/packages/core`                  | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                                                                                           |
 | `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                                                                                            |
@@ -29,7 +30,7 @@ part of that design.
 | `e2e`                   | `tests`                              | Seven original Gherkin cases and database/API regressions, with opt-in setup                                                                                                                                                                          |
 | `workspace`             | `.`                                  | Repository formatting and architecture checks                                                                                                                                                                                                         |
 
-`core`, `nest-support`, `integration-contracts`, `example` and `config` are private Bun workspace packages.
+`core`, `nest-support`, `integration-contracts`, `rabbitmq`, `example` and `config` are private Bun workspace packages.
 Their package manifests export specific root entry points, with no wildcard
 access to internals. Callers use imports such as `@starter/core/domain` and
 `@starter/nest-support/context`. The database pool provider and environment
@@ -141,6 +142,17 @@ Nx binary using Bun, without downloading a CLI. It disables Nx's automatic
 turns off the daemon. Native root `eslint.config.mjs`, `prettier.config.mjs` and
 `tsconfig.json` remain usable by tools and editors and import/extend the internal
 configuration. Each code project has its own strict typecheck scope.
+
+`bun run characterize -- --base <ref> <test-file>...` copies selected tests to
+a temporary base worktree. Run one suite at a time: native tests, distributed
+tests under `tests/`, or component tests under one application's
+`src/apps/<app>/tests/component/`. Distributed and component suites provision
+their own environment and load the corresponding preload; component suites
+select `--app=<app>`. Paths may start with `./`. For example:
+
+```sh
+bun run characterize -- --base origin/master src/apps/user/tests/component/user-create-command.test.ts
+```
 
 ```sh
 bun install --frozen-lockfile

@@ -1,0 +1,12 @@
+{
+  "name": "@starter/rabbitmq",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./failure-queue": "./failure-queue.ts"
+  },
+  "dependencies": {
+    "amqplib": "2.2.0"
+  }
+}

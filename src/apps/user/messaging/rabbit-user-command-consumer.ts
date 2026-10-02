@@ -9,7 +9,7 @@ import {
 import type { LoggerPort } from '@starter/core/logger';
 import type { CreateUser } from '../application/create-user';
 import {
-  decodeUserCreateCommand,
+  decodeUserCreateDelivery,
   userCreateDestination,
   type UserCreateResponse,
 } from './user-create.contract';
@@ -164,22 +164,16 @@ export class RabbitUserCommandConsumer {
     message: ConsumeMessage,
     signal: AbortSignal,
   ): Promise<void> {
-    const decoded = decodeUserCreateCommand(message.content);
-    const replyTo = optionalText(message.properties.replyTo);
+    const decoded = decodeUserCreateDelivery(
+      message.content,
+      message.properties,
+    );
     if (!decoded.accepted) {
       await this.retain(channel, message, decoded.reason, signal);
       return;
     }
     const { commandId, correlationId, data } = decoded.command;
-    if (
-      !replyTo ||
-      replyTo.startsWith('amq.rabbitmq.reply-to') ||
-      message.properties.messageId !== commandId ||
-      message.properties.correlationId !== correlationId
-    ) {
-      await this.retain(channel, message, 'invalid-command-properties', signal);
-      return;
-    }
+    const { replyTo } = decoded;
     signal.throwIfAborted();
     const createdAt = new Date();
     const result = await this.create.execute(
