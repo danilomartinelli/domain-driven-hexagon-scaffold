@@ -7,7 +7,7 @@ interface Project {
 
 interface Graph {
   nodes: Record<string, Project | undefined>;
-  dependencies: Record<string, { target: string }[]>;
+  dependencies: Record<string, { target: string; type: string }[]>;
 }
 
 async function main(): Promise<number> {
@@ -36,12 +36,15 @@ async function main(): Promise<number> {
         `nx-project-classification: ${name} must declare its ownership tags`,
       );
     }
-    for (const { target } of graph.dependencies[name] ?? []) {
+    for (const { target, type } of graph.dependencies[name] ?? []) {
       const dependency = graph.nodes[target];
       // npm nodes are checked by dependency-cruiser at the source/layer boundary.
       if (!dependency || target === name) continue;
       const edge = `${name} -> ${target}`;
-      if (app(dependency))
+      // Distributed E2E launches applications as processes. Its declared runtime
+      // edges do not grant access to app source; file-level privacy still applies.
+      const externalProcess = name === 'e2e' && type === 'implicit';
+      if (app(dependency) && !externalProcess)
         errors.add(`nx-app-implementation-is-private: ${edge}`);
       if (shared(project) && !shared(dependency)) {
         errors.add(`nx-shared-is-technical: ${edge}`);

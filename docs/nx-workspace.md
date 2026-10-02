@@ -46,6 +46,8 @@ graph TD
   e2e --> core
   e2e --> test-runner
   e2e --> database
+  e2e --> user
+  e2e --> wallet
   user --> nest-support
   user --> core
   user --> integration-contracts
@@ -75,6 +77,13 @@ imports), workspace manifests and the runner's explicit command dependencies
 supply the Nx graph. Nx's built-in JavaScript analyzer is explicitly enabled;
 package-manifest discovery alone would miss application imports. Shared quality
 configuration is also an input of every deterministic target.
+The distributed tests start User and Wallet as external processes, so their
+runtime dependencies are declared explicitly in `tests/project.json`. Nx
+`affected` therefore selects `e2e` when either application changes, including
+entry-point changes that have no test-side TypeScript import.
+Only these implicit E2E-to-application edges are exempt from Nx's application
+privacy rule; importing application implementation from distributed tests still
+fails the file-level boundary check.
 
 ## Executable boundaries
 

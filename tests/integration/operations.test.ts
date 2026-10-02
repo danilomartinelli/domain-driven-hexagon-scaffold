@@ -10,7 +10,7 @@ import {
   eventually,
   eventLogs,
   ownedContainer,
-  restore,
+  withServiceFault,
 } from '@tests/setup/operations';
 
 test('operators can probe liveness and each applicable readiness independently', async () => {
@@ -51,103 +51,106 @@ async function backlog() {
 }
 
 test('broker outage preserves usable APIs and persistent backlog; recovery drains it with the original event correlation', async () => {
-  const broker = await ownedContainer('rabbitmq');
   let committed: ReturnType<typeof eventLogs> = [];
-  await withCleanup(async () => {
-    await docker(['stop', '--time', '3', broker]);
-    for (const service of [user, wallet]) {
-      await eventually(async () => {
-        await request(service.url).get('/health/ready/consumer').expect(503);
+  await withServiceFault(
+    { service: 'rabbitmq', mode: 'stopped', allowDataLoss: true },
+    async () => {
+      for (const service of [user, wallet]) {
+        await eventually(async () => {
+          await request(service.url).get('/health/ready/consumer').expect(503);
+        });
+        await request(service.url).get('/health/live').expect(200);
+        await request(service.url).get('/health/ready/http').expect(200);
+      }
+      await request(user.url).get('/health/ready/publisher').expect(503);
+      await request(wallet.url).get('/health/ready/publisher').expect(200);
+      await user.stop();
+      await wallet.stop();
+      const startedAt = Date.now();
+      await user.start();
+      await wallet.start();
+      expect(Date.now() - startedAt).toBeLessThan(8_000);
+      expect(await backlog()).toMatchObject({
+        pendingCount: 0,
+        oldestAgeSeconds: null,
       });
-      await request(service.url).get('/health/live').expect(200);
-      await request(service.url).get('/health/ready/http').expect(200);
-    }
-    await request(user.url).get('/health/ready/publisher').expect(503);
-    await request(wallet.url).get('/health/ready/publisher').expect(200);
-    await user.stop();
-    await wallet.stop();
-    const startedAt = Date.now();
-    await user.start();
-    await wallet.start();
-    expect(Date.now() - startedAt).toBeLessThan(8_000);
-    expect(await backlog()).toMatchObject({
-      pendingCount: 0,
-      oldestAgeSeconds: null,
-    });
-    await getHttpServer()
-      .post('/v1/users')
-      .send({
-        requestId: 'incident-rest',
-        email: 'incident-rest@example.com',
-        country: 'England',
-        street: 'Baker street',
-        postalCode: 'NW16XE',
-      })
-      .expect(201);
-    await eventually(async () => {
-      expect((await backlog()).pendingCount).toBe(1);
-    });
-    const graphql = await getHttpServer()
-      .post('/user/graphql')
-      .send({
-        query:
-          'mutation { create(input: { email: "incident-graphql@example.com", country: "England", street: "Baker street", postalCode: "NW16XE" }) { id } }',
-      })
-      .expect(200);
-    expect(graphql.body).toHaveProperty('data.create.id');
-    await getHttpServer().get('/v1/users').expect(200);
-    const lookup = await getHttpServer()
-      .post('/wallet/graphql')
-      .send({ query: '{ walletByUser(userId: "pending") { id } }' })
-      .expect(200);
-    expect(lookup.body).toEqual({ data: { walletByUser: null } });
-    await eventually(async () => {
-      const pending = await backlog();
-      expect(pending.pendingCount).toBe(2);
-      expect(pending.oldestAgeSeconds).toBeGreaterThan(0);
-    });
-    committed = eventLogs(user).filter(
-      ({ operation }) => operation === 'user.create.committed',
-    );
-    expect(committed).toHaveLength(2);
-    expect(
-      committed.some(({ correlationId }) => correlationId === 'incident-rest'),
-    ).toBe(true);
-    await user.stop();
-    await user.start();
-    expect((await backlog()).pendingCount).toBe(2);
-    const before = z
-      .object({
-        retries: z.number(),
-        failures: z.number(),
-        retryDelayMs: z.number(),
-      })
-      .parse(
-        (await request(user.url).get('/health/ready/publisher').expect(503))
-          .body,
+      await getHttpServer()
+        .post('/v1/users')
+        .send({
+          requestId: 'incident-rest',
+          email: 'incident-rest@example.com',
+          country: 'England',
+          street: 'Baker street',
+          postalCode: 'NW16XE',
+        })
+        .expect(201);
+      await eventually(async () => {
+        expect((await backlog()).pendingCount).toBe(1);
+      });
+      const graphql = await getHttpServer()
+        .post('/user/graphql')
+        .send({
+          query:
+            'mutation { create(input: { email: "incident-graphql@example.com", country: "England", street: "Baker street", postalCode: "NW16XE" }) { id } }',
+        })
+        .expect(200);
+      expect(graphql.body).toHaveProperty('data.create.id');
+      await getHttpServer().get('/v1/users').expect(200);
+      const lookup = await getHttpServer()
+        .post('/wallet/graphql')
+        .send({ query: '{ walletByUser(userId: "pending") { id } }' })
+        .expect(200);
+      expect(lookup.body).toEqual({ data: { walletByUser: null } });
+      await eventually(async () => {
+        const pending = await backlog();
+        expect(pending.pendingCount).toBe(2);
+        expect(pending.oldestAgeSeconds).toBeGreaterThan(0);
+      });
+      committed = eventLogs(user).filter(
+        ({ operation }) => operation === 'user.create.committed',
       );
-    await Promise.all(
-      Array.from({ length: 20 }, async () => {
-        await request(user.url).get('/health/ready/publisher').expect(503);
-      }),
-    );
-    const after = z
-      .object({ retries: z.number() })
-      .parse((await request(user.url).get('/health/ready/publisher')).body);
-    expect(after.retries - before.retries).toBeLessThanOrEqual(1);
-    await eventually(async () => {
-      const state = z
+      expect(committed).toHaveLength(2);
+      expect(
+        committed.some(
+          ({ correlationId }) => correlationId === 'incident-rest',
+        ),
+      ).toBe(true);
+      await user.stop();
+      await user.start();
+      expect((await backlog()).pendingCount).toBe(2);
+      const before = z
         .object({
-          failures: z.number(),
           retries: z.number(),
+          failures: z.number(),
           retryDelayMs: z.number(),
         })
+        .parse(
+          (await request(user.url).get('/health/ready/publisher').expect(503))
+            .body,
+        );
+      await Promise.all(
+        Array.from({ length: 20 }, async () => {
+          await request(user.url).get('/health/ready/publisher').expect(503);
+        }),
+      );
+      const after = z
+        .object({ retries: z.number() })
         .parse((await request(user.url).get('/health/ready/publisher')).body);
-      expect(state.failures).toBeGreaterThan(0);
-      expect(state.retries).toBeGreaterThan(0);
-      expect(state.retryDelayMs).toBeGreaterThanOrEqual(250);
-    });
-  }, [() => restore(broker)]);
+      expect(after.retries - before.retries).toBeLessThanOrEqual(1);
+      await eventually(async () => {
+        const state = z
+          .object({
+            failures: z.number(),
+            retries: z.number(),
+            retryDelayMs: z.number(),
+          })
+          .parse((await request(user.url).get('/health/ready/publisher')).body);
+        expect(state.failures).toBeGreaterThan(0);
+        expect(state.retries).toBeGreaterThan(0);
+        expect(state.retryDelayMs).toBeGreaterThanOrEqual(250);
+      });
+    },
+  );
   await eventually(async () => {
     expect(await backlog()).toMatchObject({
       pendingCount: 0,
@@ -182,53 +185,50 @@ test('database loss degrades only its owner while liveness and the sibling APIs 
     [user, wallet],
     [wallet, user],
   ]) {
-    const database = await ownedContainer(`postgres-${owner.name}`);
-    await withCleanup(async () => {
-      await docker(['pause', database]);
-      await eventually(async () => {
-        const startedAt = Date.now();
-        const health = await request(owner.url)
-          .get('/health/ready')
-          .timeout(7_000)
-          .expect(503);
-        expect(Date.now() - startedAt).toBeLessThan(7_000);
-        expect(health.body).toMatchObject({
-          http: { status: 'not_ready' },
-          consumer: { status: 'not_ready', reason: 'database_unavailable' },
-        });
-        for (const value of [
-          process.env.USER_DB_PASSWORD,
-          process.env.WALLET_DB_PASSWORD,
-          process.env.RABBITMQ_PASSWORD,
-        ]) {
-          if (value) expect(health.text).not.toContain(value);
-        }
-        expect(health.text).not.toMatch(
-          /envelope|email|street|password|postgres:\/\//i,
-        );
-      });
-      await request(owner.url).get('/health/live').expect(200);
-      await request(sibling.url).get('/health/ready/http').expect(200);
-      await request(sibling.url).get('/health/ready').expect(200);
-      const path =
-        sibling.name === 'user' ? '/v1/users' : '/v1/wallets/by-user/absent';
-      await getHttpServer()
-        .get(path)
-        .expect(sibling.name === 'user' ? 200 : 404);
-      if (owner.name === 'user') {
-        const pending = await request(user.url)
-          .get('/health/backlog')
-          .expect(503);
-        expect(pending.body).toEqual({
-          service: 'user',
-          status: 'unavailable',
-        });
-      }
-    }, [
+    await withServiceFault(
+      { service: `postgres-${owner.name}`, mode: 'unresponsive' },
       async () => {
-        await docker(['unpause', database]);
+        await eventually(async () => {
+          const startedAt = Date.now();
+          const health = await request(owner.url)
+            .get('/health/ready')
+            .timeout(7_000)
+            .expect(503);
+          expect(Date.now() - startedAt).toBeLessThan(7_000);
+          expect(health.body).toMatchObject({
+            http: { status: 'not_ready' },
+            consumer: { status: 'not_ready', reason: 'database_unavailable' },
+          });
+          for (const value of [
+            process.env.USER_DB_PASSWORD,
+            process.env.WALLET_DB_PASSWORD,
+            process.env.RABBITMQ_PASSWORD,
+          ]) {
+            if (value) expect(health.text).not.toContain(value);
+          }
+          expect(health.text).not.toMatch(
+            /envelope|email|street|password|postgres:\/\//i,
+          );
+        });
+        await request(owner.url).get('/health/live').expect(200);
+        await request(sibling.url).get('/health/ready/http').expect(200);
+        await request(sibling.url).get('/health/ready').expect(200);
+        const path =
+          sibling.name === 'user' ? '/v1/users' : '/v1/wallets/by-user/absent';
+        await getHttpServer()
+          .get(path)
+          .expect(sibling.name === 'user' ? 200 : 404);
+        if (owner.name === 'user') {
+          const pending = await request(user.url)
+            .get('/health/backlog')
+            .expect(503);
+          expect(pending.body).toEqual({
+            service: 'user',
+            status: 'unavailable',
+          });
+        }
       },
-    ]);
+    );
     await eventually(async () => {
       await request(owner.url).get('/health/ready').expect(200);
     });

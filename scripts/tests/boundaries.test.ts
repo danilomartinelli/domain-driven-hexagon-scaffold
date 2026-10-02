@@ -218,6 +218,7 @@ test('Nx ownership and cycles reject declared edges after warming the boundary c
     expect(clean.code, clean.stdout + clean.stderr).toBe(0);
     for (const [file, dependency, rule] of [
       ['project.json', 'user', 'nx-app-implementation-is-private'],
+      ['scripts/project.json', 'user', 'nx-app-implementation-is-private'],
       [
         'src/apps/user/project.json',
         'wallet',

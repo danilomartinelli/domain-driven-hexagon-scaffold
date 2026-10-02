@@ -66,6 +66,17 @@ prepares the test run named `default`. It does not migrate or seed. Direct
 owned environment, normally supplied through `env:exec`.
 The final Makefile aliases belong to the full workflow slice of issue #15.
 
+### Fault injection
+
+For distributed outage scenarios, use
+[`withServiceFault`](../tests/setup/operations.ts). It selects the container by
+the current test manifest's owner, project and service labels, and restores it
+after success or failure while preserving scenario and cleanup errors.
+`mode: 'unresponsive'` pauses the process and preserves existing data; it models
+a stalled dependency. `mode: 'stopped'` models a stopped process. Stopping a
+container backed by tmpfs destroys its data, so that mode rejects tmpfs unless
+the scenario explicitly sets `allowDataLoss: true`, as the broker-loss tests do.
+
 ## Isolation and configuration
 
 Project names are `ddh-test-<workspace hash>-<run>` or
