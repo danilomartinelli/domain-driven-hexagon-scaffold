@@ -7,6 +7,32 @@ import { withCleanup } from './cleanup';
 
 const search = new URL('../search.ts', import.meta.url).pathname;
 
+test.each(['search', 'read'])(
+  'the default %s page leaves room for the calling tool envelope',
+  async (mode) => {
+    const directory = await mkdtemp(join(tmpdir(), 'starter-search-default-'));
+    await withCleanup(async () => {
+      await writeFile(
+        join(directory, 'matches.txt'),
+        'match useful content\n'.repeat(400),
+      );
+      const query =
+        mode === 'read'
+          ? ['--read', '--', 'matches.txt', '1', '400']
+          : ['--', 'match', 'matches.txt'];
+      const result = await runCommand([process.execPath, search, ...query], {
+        cwd: directory,
+      });
+      expect(result.code, result.stderr).toBe(125);
+      const bytes = Buffer.byteLength(result.stdout + result.stderr);
+      expect(bytes).toBeLessThanOrEqual(6_000);
+      expect(bytes).toBeGreaterThan(4_000);
+      expect(result.stderr).toContain('[search:truncated]');
+      if (mode === 'read') expect(result.stderr).toContain('[search:resume]');
+    }, [() => rm(directory, { recursive: true, force: true })]);
+  },
+);
+
 test('search overflow from a quickly exiting producer reports incomplete output without a signal error', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'starter-search-overflow-'));
   await withCleanup(async () => {

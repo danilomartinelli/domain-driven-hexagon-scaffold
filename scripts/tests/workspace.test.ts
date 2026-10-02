@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
+import { tableNames as documentedTableNames } from '../lib/document-tables';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 
 test('application debug targets expose two connectable inspectors at the same time', async () => {
@@ -206,32 +207,8 @@ async function tableNames(heading: string): Promise<string[]> {
   const guide = await Bun.file(
     join(import.meta.dir, '../../docs/nx-workspace.md'),
   ).text();
-  const section = guide.split(/^## /m).find((part) => part.startsWith(heading));
-  if (!section) throw new Error(`Missing section: ${heading}`);
-  return section
-    .split('\n')
-    .filter((line) => line.startsWith('| `'))
-    .flatMap((line) =>
-      [...(line.split('|')[1] ?? '').matchAll(/`([^`]+)`/g)].map(
-        (match) => match[1],
-      ),
-    );
+  return documentedTableNames(guide, heading);
 }
-
-test('the Nx guide maps every package script that invokes Nx', async () => {
-  const { scripts } = z
-    .object({ scripts: z.record(z.string(), z.string()) })
-    .parse(await Bun.file(join(import.meta.dir, '../../package.json')).json());
-  // A documented `*` stands for one script-name segment, as in `migration:*:tests`.
-  const documented = (await tableNames('Commands')).map(
-    (name) => new RegExp(`^${name.replaceAll('*', '[^:]+')}$`),
-  );
-  const undocumented = Object.entries(scripts)
-    .filter(([, command]) => /\bnx run(-many)?\b/.test(command))
-    .map(([name]) => name)
-    .filter((name) => !documented.some((pattern) => pattern.test(name)));
-  expect(undocumented).toEqual([]);
-});
 
 const graphSchema = z.object({
   graph: z.object({

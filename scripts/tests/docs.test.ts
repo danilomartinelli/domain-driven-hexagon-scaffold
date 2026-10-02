@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCommand } from '../lib/command';
@@ -7,6 +7,51 @@ import { withCleanup } from './cleanup';
 import { isolatedEnvironment } from './workspace-fixture';
 
 const checker = new URL('../check-docs.ts', import.meta.url).pathname;
+
+test('the documentation check rejects undocumented Nx commands in the selected working tree or index', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'starter-docs-commands-'));
+  const options = { cwd: directory, env: isolatedEnvironment() };
+  await withCleanup(async () => {
+    expect((await runCommand(['git', 'init', '-q'], options)).code).toBe(0);
+    await mkdir(join(directory, 'docs'));
+    const manifest = join(directory, 'package.json');
+    const guide = join(directory, 'docs/nx-workspace.md');
+    const commands = {
+      'test:distribution': 'bun run nx run-many -t test-distribution',
+      'migration:up:tests': 'bun run nx run database:migration-up',
+      check: 'bun scripts/check.ts',
+    };
+    await writeFile(manifest, JSON.stringify({ scripts: commands }));
+    const heading =
+      '# Workspace\n\n## Commands\n\n| Command | Purpose |\n| --- | --- |\n';
+    const incomplete = `${heading}| \`migration:*:tests\` | Migrations |\n`;
+    await writeFile(guide, incomplete);
+    expect((await runCommand(['git', 'add', '.'], options)).code).toBe(0);
+    const invoke = (...args: string[]) =>
+      runCommand([process.execPath, checker, ...args], options);
+    const invalid = await invoke();
+    expect(invalid.code, invalid.stdout + invalid.stderr).toBe(1);
+    expect(invalid.stderr).toContain('test:distribution');
+    expect(invalid.stderr).not.toContain('migration:up:tests');
+
+    const complete = `${incomplete}| \`test:distribution\` | Distribution |\n`;
+    await writeFile(guide, complete);
+    expect((await invoke()).code).toBe(0);
+    const staged = await invoke('--staged');
+    expect(staged.code, staged.stdout + staged.stderr).toBe(1);
+    expect(staged.stderr).toContain('test:distribution');
+    expect((await runCommand(['git', 'add', '.'], options)).code).toBe(0);
+    await writeFile(guide, incomplete);
+    await writeFile(
+      manifest,
+      JSON.stringify({
+        scripts: { ...commands, 'test:new': 'bun run nx run user:test' },
+      }),
+    );
+    expect((await invoke('--staged')).code).toBe(0);
+    expect((await invoke()).code).toBe(1);
+  }, [() => rm(directory, { recursive: true, force: true })]);
+});
 
 test('documentation fixtures isolate the calling hook repository', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'starter-docs-hook-'));

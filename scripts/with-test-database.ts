@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { operateEnvironment } from './lib/environments';
 
-// Usage: with-test-database.ts [--app=<name>...] [--] <command>
+// Usage: with-test-database.ts [--app=<name>...] [--no-database-setup] [--] <command>
 const command = process.argv.slice(2);
 const apps: string[] = [];
 while (command[0]?.startsWith('--app='))
   apps.push(command.splice(0, 1)[0].slice(6));
+const setupDatabase = command[0] !== '--no-database-setup';
+if (!setupDatabase) command.shift();
 if (command[0] === '--') command.shift();
 try {
   // Each owned run is an independent invocation, even under one Nx parent.
@@ -17,6 +19,7 @@ try {
     randomUUID().replaceAll('-', '').slice(0, 16),
     command,
     apps.length ? apps : undefined,
+    setupDatabase,
   );
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

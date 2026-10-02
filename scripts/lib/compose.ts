@@ -122,5 +122,9 @@ export function composeConfiguration(
       retries: 30,
     },
   };
+  if (manifest.apps) {
+    delete services.gateway;
+    delete configs['kong-routes'];
+  }
   return { services, networks: { default: { labels } }, volumes, configs };
 }

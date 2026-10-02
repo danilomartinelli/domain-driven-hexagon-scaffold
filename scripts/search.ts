@@ -18,7 +18,7 @@ async function main(): Promise<number> {
   const separator = args.indexOf('--');
   const options = separator === -1 ? [] : args.slice(0, separator);
   const query = separator === -1 ? args : args.slice(separator + 1);
-  let maxBytes = 16_000;
+  let maxBytes = 6_000;
   let timeout = 10_000;
   let read = false;
   let resume: string | undefined;
@@ -52,8 +52,8 @@ async function main(): Promise<number> {
   if (!query.length)
     throw new Error(
       read
-        ? 'Usage: bun scripts/search.ts --read [--resume=<range-index>:<line>] [--max-bytes=16000] [--timeout-ms=10000] -- <file> <first-line> <last-line> ...'
-        : 'Usage: bun run search [--max-bytes=16000] [--timeout-ms=10000] -- <rg arguments>',
+        ? 'Usage: bun scripts/search.ts --read [--resume=<range-index>:<line>] [--max-bytes=6000] [--timeout-ms=10000] -- <file> <first-line> <last-line> ...'
+        : 'Usage: bun run search [--max-bytes=6000] [--timeout-ms=10000] -- <rg arguments>',
     );
   const limits = {
     cwd: process.cwd(),

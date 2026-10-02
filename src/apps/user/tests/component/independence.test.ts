@@ -69,7 +69,7 @@ test('User starts, creates over REST and GraphQL and restarts with only its own 
         .filter((database) => database.app !== 'user')
         .map((database) => `postgres-${database.app}`),
       'rabbitmq',
-      'gateway',
+      ...(manifest.apps ? [] : ['gateway']),
     ].sort(),
   );
   await withCleanup(async () => {

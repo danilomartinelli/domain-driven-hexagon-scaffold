@@ -21,7 +21,7 @@ small `maxFiles` budget, or the bounded CLI:
 [agent automation](automation.md#codegraph).
 
 The CLI saves CodeGraph stdout/stderr and exit status under
-`.context/codegraph/<capture-id>/`, then emits a page limited to 16,000 UTF-8 bytes
+`.context/codegraph/<capture-id>/`, then emits a page limited to 6,000 UTF-8 bytes
 across both output streams. `--max-bytes=<n>` selects 512..1,048,576 bytes;
 `--timeout-ms=<n>` selects a 1..60,000 ms command deadline (default 10 seconds).
 Exit 125 with `[explore:resume]` means more saved output is available. Continue
@@ -59,7 +59,7 @@ order, and reads inclusive positive ranges. Quote paths containing spaces.
 Ranges extending past EOF stop at EOF. A missing file or malformed range fails
 with exit 2; a selected line too large for the budget produces exit 125.
 
-One invocation shares a 16,000 UTF-8 byte cap across stdout, stderr and status
+One invocation shares a 6,000 UTF-8 byte cap across stdout, stderr and status
 text, plus a 10-second deadline, including all ranges in a read batch.
 Use `bun scripts/search.ts` when the budget must exclude the package runner's
 own command echo and error messages.
@@ -112,6 +112,13 @@ waits for run registration, reports only changes in active stages, and restarts
 observation when the head changes. Before reporting a terminal result it checks
 the head and latest run attempt again. Polling defaults to 15 seconds and has a
 30-minute observation deadline; `--interval-ms` and `--timeout-ms` override them.
+
+Keep the watcher attached to one execution session and consume only the new
+output returned when waiting on that session. Use bounded waits that leave room
+for user updates. Each `[ci:progress]` line is a stage change; the terminal line
+and exit status identify completion, with durable evidence in the reported JSON
+file. Read that evidence once after completion. This keeps observation in the
+watcher instead of repeatedly reading its accumulated output.
 
 | Exit | Result        | Meaning                                              |
 | ---- | ------------- | ---------------------------------------------------- |

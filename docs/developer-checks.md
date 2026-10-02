@@ -26,7 +26,7 @@ existing Prettier configuration, then `check:code` (lint, types, architecture an
 core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
 failure blocks the commit. Continuous integration runs `bun run check`,
-`bun run nx run test-runner:test-broker`, `bun run test:e2e` and `bun run test:component` on pull
+`bun run nx run test-runner:test-broker`, `bun run test:e2e` `bun run test:component` and `bun run test:distribution` on pull
 requests and pushes to `master`. All belong to the `check` job required by the
 `protect-master` ruleset. The uncached broker target uses the pinned Docker image
 to force the healthcheck-before-startup ordering and verifies fixture cleanup
@@ -42,24 +42,25 @@ first pushes without a baseline run it conservatively. The broader runner
 lifecycle suite remains in local `check:full` and includes these focused targets.
 
 Before declaring code changes ready, run `bun run check:full`. Its current scope
-is the suites below; future service, contract and distribution suites are added
+is the suites below; future suites are added
 with their migration slices. Documentation-only changes require formatting of
 the affected files, `bun run check:docs`, and verification of changed commands.
 
-| Check             | Command                   | Scope                                                                                                                                                                                               |
-| ----------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fast gate         | `bun run check`           | Formatting, documentation references and `check:code`                                                                                                                                               |
-| Full gate         | `bun run check:full`      | Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E and service component suites                                                                           |
-| Types             | `bun run typecheck`       | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                                                                           |
-| Lint              | `bun run lint`            | Same code/configuration scope; errors and warnings fail                                                                                                                                             |
-| Formatting        | `bun run format:check`    | Configured source, tooling, docs and root agent guidance                                                                                                                                            |
-| Architecture      | `bun run lint:boundaries` | Nx project ownership/cycles plus file-layer checks in `src/`, `tests/`, `scripts/` and `database/`, including type-only imports, exports and aliases; `deps:validate` is an alias                   |
-| Core and packages | `bun run test:unit`       | Every project's infrastructure-free `test` target: domain, use cases, commands, exceptions and colocated package tests                                                                              |
-| Live behavior     | `bun run test:e2e`        | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up                                                          |
-| Components        | `bun run test:component`  | Each application's `test-component` target: provisions an isolated run, migrates/seeds only that application, starts it without sibling services, checks its APIs and database ownership, cleans up |
-| Runner lifecycle  | `bun run test:tooling`    | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                                                                               |
-| Documentation     | `bun run check:docs`      | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents                                                                       |
-| Dependencies      | `bun run audit:changed`   | Complete locked tree; no advisory ignores                                                                                                                                                           |
+| Check             | Command                     | Scope                                                                                                                                                                                               |
+| ----------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fast gate         | `bun run check`             | Formatting, documentation references and `check:code`                                                                                                                                               |
+| Full gate         | `bun run check:full`        | Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E, service component suites and isolated distribution verification                                       |
+| Types             | `bun run typecheck`         | Application, tests, runner, database scripts and tool configs; includes decorator fixture                                                                                                           |
+| Lint              | `bun run lint`              | Same code/configuration scope; errors and warnings fail                                                                                                                                             |
+| Formatting        | `bun run format:check`      | Configured source, tooling, docs and root agent guidance                                                                                                                                            |
+| Architecture      | `bun run lint:boundaries`   | Nx project ownership/cycles plus file-layer checks in `src/`, `tests/`, `scripts/` and `database/`, including type-only imports, exports and aliases; `deps:validate` is an alias                   |
+| Core and packages | `bun run test:unit`         | Every project's infrastructure-free `test` target: domain, use cases, commands, exceptions and colocated package tests                                                                              |
+| Live behavior     | `bun run test:e2e`          | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up                                                          |
+| Components        | `bun run test:component`    | Each application's `test-component` target: provisions an isolated run, migrates/seeds only that application, starts it without sibling services, checks its APIs and database ownership, cleans up |
+| Distributions     | `bun run test:distribution` | Packages each service, runs it from an external directory, migrates only its owned database and verifies independent HTTP/GraphQL and messaging                                                     |
+| Runner lifecycle  | `bun run test:tooling`      | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                                                                               |
+| Documentation     | `bun run check:docs`        | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents                                                                       |
+| Dependencies      | `bun run audit:changed`     | Complete locked tree; no advisory ignores                                                                                                                                                           |
 
 `bun run lint:fix` and `bun run format` apply fixes. lint-staged formats all
 supported staged files, including docs/skills, with `--ignore-unknown`; the
@@ -142,7 +143,13 @@ The hook runs `bun run check:docs --staged` against an immutable Git index tree.
 Unstaged fixes cannot hide a broken staged link. Normal runs include new,
 unignored Markdown files and check incoming references when a target changes.
 Failures identify the source, destination and missing file/anchor; exit 1 means
-broken references and exit 2 means the checker could not complete.
+documentation errors and exit 2 means the checker could not complete.
+
+The same check validates that every root package script invoking Nx is listed
+in the Commands table in `docs/nx-workspace.md`. A documented `*` covers one
+colon-delimited script-name segment. Both the manifest and guide come from the
+selected working tree or immutable index snapshot, so unstaged edits cannot
+hide missing command documentation in a commit.
 
 Infrastructure test fixtures use `withCleanup` from `scripts/tests/cleanup.ts`.
 It attempts every registered cleanup after success or failure, preserves a lone

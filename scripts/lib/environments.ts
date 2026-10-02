@@ -110,11 +110,12 @@ async function addRegisteredDatabases(
 async function newManifest(
   environment: EnvironmentKind,
   run: string,
+  selected?: DatabaseApplication[],
 ): Promise<EnvironmentManifest> {
   const { project } = environmentLocation(environment, run);
   const nextPort = portAllocator();
   const databases: EnvironmentManifest['databases'] = [];
-  for (const app of applications)
+  for (const app of selected ?? applications)
     databases.push(await scopedDatabase(app, project, nextPort));
   return {
     environment,
@@ -123,6 +124,7 @@ async function newManifest(
     owner: randomUUID(),
     status: 'starting',
     databases,
+    ...(selected ? { apps: selected.map((app) => app.name) } : {}),
     broker: {
       port: await nextPort('RABBITMQ_PORT'),
       managementPort: await nextPort('RABBITMQ_MANAGEMENT_PORT'),
@@ -142,22 +144,28 @@ async function newManifest(
 }
 
 /**
- * `apps` selects the applications a `run` migrates and seeds (default: all).
- * Every registered database is still provisioned, so isolation checks can
- * reach the other applications' targets.
+ * Explicit `apps` scopes provisioning, migrations and seeds; no sibling database or gateway.
+ * Omit it for distributed suites and cross-database credential checks.
  */
 export async function operateEnvironment(
   action: 'prepare' | 'down' | 'exec' | 'run',
   environment: EnvironmentKind,
   run: string,
   command: string[] = [],
-  apps: string[] = applications.map((app) => app.name),
+  apps?: string[],
+  setupDatabase = true,
 ): Promise<number> {
   const location = environmentLocation(environment, run);
   const creating = action === 'prepare' || action === 'run';
   if ((action === 'exec' || action === 'run') && !command.length)
     throw new Error('A command after -- is required.');
-  const selected = apps.map((name) => selectApplication(name));
+  const selected = (apps ?? applications.map((app) => app.name)).map((name) =>
+    selectApplication(name),
+  );
+  if (apps && (!apps.length || new Set(apps).size !== apps.length))
+    throw new Error('Select distinct applications');
+  if (apps && environment !== 'test')
+    throw new Error('Scoped applications require a test environment');
   if (action === 'down' && !existsSync(location.manifestPath)) return 0;
   let manifest: EnvironmentManifest;
   const save = () => {
@@ -166,7 +174,7 @@ export async function operateEnvironment(
     });
   };
   if (creating && !existsSync(location.manifestPath)) {
-    manifest = await newManifest(environment, run);
+    manifest = await newManifest(environment, run, apps ? selected : undefined);
     mkdirSync(location.directory, { recursive: true });
     // Exclusive creation prevents a concurrent prepare from taking over the run.
     writeFileSync(location.manifestPath, JSON.stringify(manifest, null, 2), {
@@ -301,7 +309,7 @@ export async function operateEnvironment(
     if (manifest.status !== 'ready')
       throw new Error('Environment is not ready.');
     const env = environmentVariables(manifest);
-    if (action === 'run') {
+    if (action === 'run' && setupDatabase) {
       for (const app of selected) {
         for (const script of ['migration:up:tests', 'seed:up:tests']) {
           const result = await session.execute(

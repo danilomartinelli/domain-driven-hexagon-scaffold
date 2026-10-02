@@ -20,7 +20,7 @@ async function main(): Promise<number> {
   const separator = args.indexOf('--');
   const options = separator === -1 ? args : args.slice(0, separator);
   const query = separator === -1 ? [] : args.slice(separator + 1);
-  let maxBytes = 16_000;
+  let maxBytes = 6_000;
   let maxFiles = 5;
   let timeout = 10_000;
   let resume: string | undefined;
@@ -57,7 +57,7 @@ async function main(): Promise<number> {
   }
   if (resume === undefined && !query.length) {
     throw new Error(
-      'Usage: bun scripts/explore.ts [--max-bytes=16000] [--max-files=5] [--timeout-ms=10000] -- <query>',
+      'Usage: bun scripts/explore.ts [--max-bytes=6000] [--max-files=5] [--timeout-ms=10000] -- <query>',
     );
   }
   const id = cursor?.[1] ?? randomUUID();

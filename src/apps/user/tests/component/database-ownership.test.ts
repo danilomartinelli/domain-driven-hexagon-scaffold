@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test';
 import pg from 'pg';
-import { readEnvironmentFile } from '../../../../../database/environment';
 import { withCleanup } from '../../../../../scripts/tests/cleanup';
 import { ownerDatabase, userDatabase } from './user-process';
 
@@ -58,54 +57,4 @@ test('User has its own schema and migration history', async () => {
     'user_outbox',
     'users',
   ]);
-});
-
-test('User runtime and migration credentials cannot reach the other configured application databases', async () => {
-  const environmentFile = process.env.DDH_ENVIRONMENT_FILE;
-  if (!environmentFile) throw new Error('Missing DDH_ENVIRONMENT_FILE');
-  const others = readEnvironmentFile(environmentFile).databases.filter(
-    (db) => db.app !== 'user',
-  );
-  expect(others.length).toBeGreaterThan(0);
-
-  for (const other of others) {
-    for (const role of ['runtime', 'owner'] as const) {
-      const { user, password } = userDatabase(role);
-      const target = {
-        host: other.host,
-        port: other.port,
-        database: other.database,
-        user,
-        password,
-      };
-      // invalid_password, invalid_authorization_specification or insufficient_privilege
-      expect(
-        await failure(() =>
-          withClient(target, (client) => client.query('SELECT 1')),
-        ),
-        `${role} -> ${other.app}`,
-      ).toBeOneOf(['28P01', '28000', '42501']);
-    }
-  }
-});
-
-test('effective Wallet runtime credentials cannot read or write the final User database', async () => {
-  for (const statement of [
-    'SELECT * FROM users',
-    'DELETE FROM users',
-    'SELECT * FROM user_outbox',
-  ]) {
-    expect(
-      await failure(() =>
-        withClient(
-          {
-            ...userDatabase('runtime'),
-            user: process.env.WALLET_DB_USERNAME,
-            password: process.env.WALLET_DB_PASSWORD,
-          },
-          (client) => client.query(statement),
-        ),
-      ),
-    ).toBeOneOf(['28P01', '28000', '42501']);
-  }
 });

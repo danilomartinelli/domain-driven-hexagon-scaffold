@@ -8,6 +8,8 @@ start without a User process or an available broker and use only its own databas
 The [User application](user.md) commits its integration envelope in its own
 outbox and publishes it in the background after commit.
 
+For delivery outside the workspace, see [independent distributions](distribution.md).
+
 ## Run it locally
 
 Run from the repository root with Docker available. Preparing a development
