@@ -5,6 +5,8 @@ deletion under `/v1/users`, plus the existing GraphQL `create` and `findUsers`
 operations at `/graphql`. HTTP startup and creation require only the User
 database. Wallet and RabbitMQ may be stopped.
 
+For delivery outside the workspace, see [independent distributions](distribution.md).
+
 ## Run it locally
 
 Run from the repository root with Docker available:
@@ -81,13 +83,13 @@ bun run test:user:component
 bun run test:component
 ```
 
-The component suite provisions an isolated run, migrates/seeds User only and
+The component suite provisions only User PostgreSQL and RabbitMQ, migrates/seeds User and
 starts `src/apps/user/main.ts` as an external Bun process with only its runtime
 database settings. It executes the seven original Gherkin cases from
 `tests/user` using independent step bindings, the characterized REST/GraphQL
 contract, real PostgreSQL rollback after profile insertion, pending persistence
-across restart/deletion, denied cross-database credentials and startup/creation
-with sibling infrastructure stopped. Real broker tests distinguish rollback,
+across restart/deletion and startup/creation with the broker stopped.
+Cross-database credential denial runs in the distributed suite. Real broker tests distinguish rollback,
 routing returns, confirmations lost in transit, and accepted publication whose
 completion write fails. Retries retain the persisted identity. Core tests prove
 transaction intent without infrastructure.

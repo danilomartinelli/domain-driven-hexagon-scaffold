@@ -48,6 +48,9 @@ targets from `test:unit`, `lint`, `typecheck`, `test:component` and `check:full`
       The workspace tests fail on a missing project row or script.
 - [ ] [developer-checks.md](developer-checks.md): the architecture description, when
       the application adds rules or representative violations.
+- [ ] `distribution.json` declaring delivery dependencies, an uncached `distribution`
+      target, delivered run/migration commands and a live `test-distribution` target
+      that runs outside the workspace with only owned infrastructure.
 - [ ] `docs/<name>.md` with startup, migration, seed and API commands, linked from
       [database.md](database.md) and `src/apps/AGENTS.md`.
 - [ ] The registered applications in [database.md](database.md) and

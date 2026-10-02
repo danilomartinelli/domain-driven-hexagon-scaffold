@@ -31,6 +31,8 @@ const manifestSchema = z.object({
   owner: z.uuid(),
   status: z.enum(['starting', 'ready', 'stopped']),
   databases: z.array(targetSchema).min(1),
+  // A bounded service run provisions only these registered applications, without Kong.
+  apps: z.array(z.string()).min(1).optional(),
   broker: z.object({
     port,
     managementPort: port,
@@ -116,7 +118,15 @@ export function readEnvironmentFile(
     }
     listed.add(target.app);
   }
-  if (complete && applications.some((app) => !listed.has(app.name)))
+  const required = manifest.apps ?? applications.map((app) => app.name);
+  if (
+    manifest.apps &&
+    (new Set(required).size !== required.length ||
+      required.some((name) => !applications.some((app) => app.name === name)) ||
+      [...listed].some((name) => !required.includes(name)))
+  )
+    throw new Error('Invalid scoped application selection.');
+  if (complete && required.some((name) => !listed.has(name)))
     throw new Error(
       manifest.environment === 'development'
         ? 'Environment application registry changed; prepare it again to add the new application databases.'

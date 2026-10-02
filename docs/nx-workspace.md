@@ -6,8 +6,9 @@ puts the existing application and regressions under Nx **23.2.1**, with Bun
 **12.1.1**. The independent [User application](user.md) commits profiles and
 pending events in its own database and publishes them in the background. The
 [Wallet application](wallet.md) consumes those events with durable deduplication.
-Normal start commands run both processes. Generators, gateway and distributions
-remain later work in [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md).
+Normal start commands run both processes. Each service also has an
+[independent distribution](distribution.md); generator work remains tracked in
+[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md).
 The [User/Wallet language](../GLOSSARY.md) and ADR 0001 supersession note remain
 part of that design.
 
@@ -186,6 +187,7 @@ bun run check:full
 | `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets           |
 | `test:debug`                                                             | `user:test-debug`; run another project's `test-debug` target for its suite |
 | `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                              |
+| `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                    |
 | `test:component`                                                         | Every `test-component` target (`user` and `wallet`)                        |
 | `test:tooling`                                                           | `test-runner:test-live`                                                    |
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                     |
@@ -238,9 +240,10 @@ not required and connections to it are disabled.
 
 Serving, watch/debug/coverage modes, lint fixes, formatting writes, infrastructure, migrations,
 seeds, database-runner lifecycle checks, both provisioned/manual live E2E and
-service component suites always execute (`cache: false`). Required absent service/contract/distribution
-suites have no dummy targets or empty-success assertions; subsequent slices add
-them to the full gate. Use `--skip-nx-cache` to force deterministic checks when
+service component suites and isolated distribution verification always execute
+(`cache: false`). Packaging also remains uncached because it copies the installed
+platform-specific dependency tree. `user:distribution` and `wallet:distribution`
+write `dist/<app>`; `test:distribution` runs both live verification targets. Use `--skip-nx-cache` to force deterministic checks when
 collecting fresh validation evidence.
 
 ## Tooling compatibility

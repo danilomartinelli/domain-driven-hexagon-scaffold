@@ -119,6 +119,55 @@
         "command": "bun --no-env-file scripts/failure-queue.ts user replay",
         "cwd": "."
       }
+    },
+    "distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/user"],
+      "options": {
+        "command": "bun --no-env-file scripts/distribute.ts user",
+        "cwd": "."
+      }
+    },
+    "serve-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run start",
+        "cwd": "dist/user"
+      }
+    },
+    "migration-up-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run migration:up",
+        "cwd": "dist/user"
+      }
+    },
+    "migration-down-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run migration:down",
+        "cwd": "dist/user"
+      }
+    },
+    "migration-status-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run migration:status",
+        "cwd": "dist/user"
+      }
+    },
+    "test-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/distribution-user.test.ts",
+        "cwd": "."
+      }
     }
   },
   "implicitDependencies": ["test-runner"]

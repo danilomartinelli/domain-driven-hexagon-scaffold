@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test';
 import pg from 'pg';
-import { readEnvironmentFile } from '../../../../../database/environment';
 import { withCleanup } from '../../../../../scripts/tests/cleanup';
 import { ownerDatabase, walletDatabase } from './wallet-process';
 
@@ -72,33 +71,4 @@ test('Wallet has its own schema and migration history', async () => {
     'wallet_consumed_events',
     'wallets',
   ]);
-});
-
-test('Wallet runtime and migration credentials cannot reach the other configured application databases', async () => {
-  const environmentFile = process.env.DDH_ENVIRONMENT_FILE;
-  if (!environmentFile) throw new Error('Missing DDH_ENVIRONMENT_FILE');
-  const others = readEnvironmentFile(environmentFile).databases.filter(
-    (db) => db.app !== 'wallet',
-  );
-  expect(others.length).toBeGreaterThan(0);
-
-  for (const other of others) {
-    for (const role of ['runtime', 'owner'] as const) {
-      const { user, password } = walletDatabase(role);
-      const target = {
-        host: other.host,
-        port: other.port,
-        database: other.database,
-        user,
-        password,
-      };
-      // invalid_password, invalid_authorization_specification or insufficient_privilege
-      expect(
-        await failure(() =>
-          withClient(target, (client) => client.query('SELECT 1')),
-        ),
-        `${role} -> ${other.app}`,
-      ).toBeOneOf(['28P01', '28000', '42501']);
-    }
-  }
 });

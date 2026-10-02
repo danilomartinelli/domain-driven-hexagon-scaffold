@@ -43,9 +43,14 @@ bun run test:component
 
 `test:e2e` migrates/seeds both applications; `test:component` runs separate `user` and `wallet`
 suites through
-`scripts/with-test-database.ts --app=<name> -- <command>`. Without `--app`, the
-wrapper migrates and seeds every registered application. Every registered
-database is provisioned either way.
+`scripts/with-test-database.ts --app=<name> -- <command>`. An explicit `--app` provisions only the selected application databases and RabbitMQ,
+without Kong or sibling databases. Without `--app`, the wrapper provisions,
+migrates and seeds every registered application plus the gateway. Cross-database
+credential rejection runs in the distributed suite.
+
+Distribution verification uses `--no-database-setup` so each isolated artifact
+initializes its own empty database with its delivered migration command. See
+[independent distributions](distribution.md).
 
 For repeated, targeted runs against prepared infrastructure:
 

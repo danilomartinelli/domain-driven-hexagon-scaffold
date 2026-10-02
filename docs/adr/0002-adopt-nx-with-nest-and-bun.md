@@ -248,7 +248,13 @@ Operator inspection and explicit replay are implemented with uncached, scoped
 [User and Wallet commands](../failure-queues.md), immutable retained deliveries
 and confirmed ownership transfer (#28).
 
-Remaining: distributions, broader diagnostics and generators (#29 to #35).
+[Independent distributions](../distribution.md) are implemented for User and Wallet
+(#32): TypeScript, private libraries, installed dependencies, configuration and
+owned migrations run outside the workspace. Component suites provision only
+their service database and broker; cross-database credential checks run in the
+distributed suite. Distribution execution and packaging remain uncached.
+
+Remaining work continues in the operational and generator tickets (#29 to #35).
 
 ## References
 

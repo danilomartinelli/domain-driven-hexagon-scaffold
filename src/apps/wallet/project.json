@@ -114,6 +114,55 @@
         "command": "bun --no-env-file scripts/failure-queue.ts wallet replay",
         "cwd": "."
       }
+    },
+    "distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/wallet"],
+      "options": {
+        "command": "bun --no-env-file scripts/distribute.ts wallet",
+        "cwd": "."
+      }
+    },
+    "serve-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run start",
+        "cwd": "dist/wallet"
+      }
+    },
+    "migration-up-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run migration:up",
+        "cwd": "dist/wallet"
+      }
+    },
+    "migration-down-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run migration:down",
+        "cwd": "dist/wallet"
+      }
+    },
+    "migration-status-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file run migration:status",
+        "cwd": "dist/wallet"
+      }
+    },
+    "test-distribution": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts --app=wallet --no-database-setup -- bun test ./scripts/tests/distribution-wallet.test.ts",
+        "cwd": "."
+      }
     }
   },
   "implicitDependencies": ["test-runner"]
