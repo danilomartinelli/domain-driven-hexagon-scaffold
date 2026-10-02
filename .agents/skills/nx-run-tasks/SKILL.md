@@ -21,6 +21,8 @@ focused feedback. Use `bun run nx`; direct `npx nx` bypasses repository settings
   [focused feedback](../../../docs/developer-checks.md#focused-feedback), then
   run the applicable lifecycle target. Include transitive dependents even when
   no application file changed.
+- Application or E2E changes: follow the preservation selection in
+  [focused feedback](../../../docs/developer-checks.md#focused-feedback).
 
 Affected runs are focused feedback, not a replacement for the full gate. Use
 `origin/master` as the comparison base and include unstaged/new files when that

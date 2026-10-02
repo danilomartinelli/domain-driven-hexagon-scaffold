@@ -12,6 +12,11 @@ GitHub Actions restriction below and the CI restriction in
 [ADR 0001](0001-modernize-with-bun.md); the Docker-backed suites in
 `check:full` otherwise remain local.
 
+Amended on 2026-10-02: CI also runs the focused environment-preservation
+regression for changes outside documentation. It executes the complete prepared
+E2E suite while verifying development and sibling resources. The remaining
+runner lifecycle cases stay in local `check:full`.
+
 The repository will adopt Nx with `user` and `wallet` as separate Nest
 applications. Wallet's current size does not determine its intended application
 boundary. Preserve Nest 12 and Bun as the application runtime, package manager

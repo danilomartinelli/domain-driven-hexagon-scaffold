@@ -218,6 +218,8 @@ This uncached subset runs in CI and is also included in `test:tooling`.
 for loaded gateway upstreams, target overrides, occupied proxy/Admin ports and
 failed-setup cleanup. This uncached subset also runs in CI; `test:tooling`
 retains the broader development/sibling preservation cases.
+For the focused preservation target and its pre-review selection, see
+[focused feedback](developer-checks.md#focused-feedback).
 The decorator fixture is never a runtime test and remains in
 `type-fixtures:typecheck` and `user:typecheck`.
 

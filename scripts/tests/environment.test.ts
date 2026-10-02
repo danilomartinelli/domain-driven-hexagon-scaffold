@@ -186,7 +186,7 @@ function namedEnvironment(kind: 'test' | 'development', name: string) {
     command: string,
     args: string[] = [],
     env: NodeJS.ProcessEnv = {},
-    timeout = 120_000,
+    options: { timeout?: number; progress?: string } = {},
   ) =>
     runCommand(
       [
@@ -197,7 +197,20 @@ function namedEnvironment(kind: 'test' | 'development', name: string) {
         `--run=${name}`,
         ...args,
       ],
-      { cwd: root, env: { ...process.env, ...env }, timeout },
+      {
+        cwd: root,
+        env: { ...process.env, ...env },
+        timeout: options.timeout ?? 120_000,
+        progress: options.progress
+          ? {
+              label: options.progress,
+              logPath: join(
+                environmentLocation(kind, name).directory,
+                'run.log',
+              ),
+            }
+          : undefined,
+      },
     );
 }
 
@@ -383,7 +396,7 @@ test('prepared regression runs reject foreign targets and preserve development a
           {
             AGENT: '0',
           },
-          180_000,
+          { timeout: 180_000, progress: 'prepared E2E preservation' },
         ),
       );
       await expectRegressionSuite(root, regression.stderr + regression.stdout);

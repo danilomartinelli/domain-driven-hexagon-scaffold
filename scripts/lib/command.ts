@@ -18,6 +18,8 @@ export async function runCommand(
     maxOutput?: number;
     /** Keep the first output for previews; diagnostics default to the tail. */
     outputRetention?: 'head' | 'tail';
+    /** Identify long nested runs without echoing arguments or environment values. */
+    progress?: { label: string; logPath: string; intervalMs?: number };
   },
 ): Promise<CommandResult> {
   const maxOutput = options.maxOutput ?? 64_000;
@@ -29,6 +31,22 @@ export async function runCommand(
   });
   let stdout = '';
   let stderr = '';
+  const startedAt = Date.now();
+  let lastOutputAt = startedAt;
+  const label = options.progress?.label ?? args[0];
+  const logHint = options.progress ? ` Log: ${options.progress.logPath}.` : '';
+  const progress = options.progress;
+  if (progress)
+    process.stderr.write(
+      `[command:started] ${label}; deadline ${String(options.timeout ?? 30_000)} ms.${logHint}\n`,
+    );
+  const heartbeat = progress
+    ? setInterval(() => {
+        process.stderr.write(
+          `[command:running] ${label}; elapsed ${String(Date.now() - startedAt)} ms; last output ${String(Date.now() - lastOutputAt)} ms ago.${logHint}\n`,
+        );
+      }, progress.intervalMs ?? 30_000)
+    : undefined;
   const termination = { timedOut: false, outputOverflow: false };
   const terminate = (): void => {
     if (child.pid === undefined) return;
@@ -61,6 +79,7 @@ export async function runCommand(
     terminate();
   }, options.timeout ?? 30_000);
   const capture = (current: string, data: string): string => {
+    lastOutputAt = Date.now();
     if (current.length + data.length > maxOutput) {
       termination.outputOverflow = true;
       terminate();
@@ -87,6 +106,8 @@ export async function runCommand(
     });
     if (termination.outputOverflow)
       stderr += `\nCommand output exceeded ${maxOutput.toLocaleString('en-US')} characters; result is incomplete.`;
+    if (termination.timedOut)
+      stderr += `\nCommand ${label} timed out after ${String(options.timeout ?? 30_000)} ms.${logHint}`;
     return {
       code: termination.timedOut
         ? 124
@@ -99,5 +120,6 @@ export async function runCommand(
     };
   } finally {
     clearTimeout(deadline);
+    clearInterval(heartbeat);
   }
 }

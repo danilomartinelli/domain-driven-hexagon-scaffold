@@ -35,6 +35,14 @@
         "cwd": "."
       }
     },
+    "test-preservation": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests/environment.test.ts --test-name-pattern '^prepared regression runs reject foreign targets and preserve development and sibling data$'",
+        "cwd": "."
+      }
+    },
     "test-gateway": {
       "executor": "nx:run-commands",
       "cache": false,
