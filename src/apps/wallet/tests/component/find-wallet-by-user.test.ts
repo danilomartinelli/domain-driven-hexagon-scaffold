@@ -69,16 +69,21 @@ test('a User without a Wallet yields REST 404 and GraphQL null', async () => {
   }
 });
 
-test('Wallet exposes lookups only: no deposit, withdrawal, deletion or cancellation API', async () => {
+test('Wallet exposes lookups and operational probes only: no deposit, withdrawal, deletion or cancellation API', async () => {
   const document = z
     .object({ paths: z.record(z.string(), z.record(z.string(), z.unknown())) })
     .parse(await (await rest('/docs-json')).json());
   expect(
-    Object.entries(document.paths).map(([path, operations]) => [
-      path,
-      Object.keys(operations),
-    ]),
-  ).toEqual([['/v1/wallets/by-user/{userId}', ['get']]]);
+    Object.entries(document.paths)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([path, operations]) => [path, Object.keys(operations)]),
+  ).toEqual([
+    ['/health/backlog', ['get']],
+    ['/health/live', ['get']],
+    ['/health/ready', ['get']],
+    ['/health/ready/{component}', ['get']],
+    ['/v1/wallets/by-user/{userId}', ['get']],
+  ]);
 
   expect(
     await graphql(

@@ -3,6 +3,14 @@
   "projectType": "application",
   "tags": ["scope:tooling"],
   "targets": {
+    "test-operations": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/integration/operations.test.ts",
+        "cwd": "."
+      }
+    },
     "test": {
       "executor": "nx:run-commands",
       "cache": true,

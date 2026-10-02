@@ -1,3 +1,4 @@
+import { MessagingDiagnostics } from '@starter/rabbitmq/diagnostics';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   connect,
@@ -38,6 +39,7 @@ function optionalText(value: unknown): string | undefined {
 
 /** The HTTP lifecycle never waits for this independently recovering consumer. */
 export class RabbitWalletConsumer {
+  readonly diagnostics = new MessagingDiagnostics();
   private readonly shutdown = new AbortController();
   private task?: Promise<void>;
   private retryMs = initialRetryMs;
@@ -53,6 +55,7 @@ export class RabbitWalletConsumer {
   }
 
   async stop(): Promise<void> {
+    this.diagnostics.unavailable();
     this.shutdown.abort();
     await this.task;
   }
@@ -66,12 +69,19 @@ export class RabbitWalletConsumer {
         this.logger.warn(
           'Wallet messaging unavailable; deliveries remain unacknowledged.',
           error,
+          { service: 'wallet', operation: 'consumer.unavailable' },
         );
       }
       if (this.shutdown.signal.aborted) break;
       this.logger.warn(
         `Wallet messaging reconnects in ${String(this.retryMs)}ms.`,
+        {
+          service: 'wallet',
+          operation: 'consumer.retry',
+          retryDelayMs: this.retryMs,
+        },
       );
+      this.diagnostics.retry(this.retryMs);
       await delay(this.retryMs, undefined, { signal }).catch(() => undefined);
       this.retryMs = Math.min(this.retryMs * 2, maxRetryMs);
     }
@@ -84,9 +94,16 @@ export class RabbitWalletConsumer {
     const ended = Promise.withResolvers<undefined>();
     const inFlight = new Set<Promise<void>>();
     const end = () => {
+      this.diagnostics.unavailable();
       active = false;
       ended.resolve(undefined);
     };
+    connection.on('blocked', () => {
+      this.diagnostics.setBlocked(true);
+    });
+    connection.on('unblocked', () => {
+      this.diagnostics.setBlocked(false);
+    });
     connection.on('error', end);
     connection.on('close', end);
     signal.addEventListener('abort', end, { once: true });
@@ -116,6 +133,9 @@ export class RabbitWalletConsumer {
                 'Wallet delivery failed; closing the channel for recovery.',
                 error,
                 {
+                  service: 'wallet',
+                  operation: 'wallet.event.failed',
+                  eventId: optionalText(message.properties.messageId),
                   messageId: optionalText(message.properties.messageId),
                   correlationId: optionalText(message.properties.correlationId),
                 },
@@ -129,10 +149,14 @@ export class RabbitWalletConsumer {
         }),
         5_000,
       );
-      this.logger.log('Wallet messaging connected.');
+      this.diagnostics.available(active);
+      this.logger.log('Wallet messaging connected.', {
+        service: 'wallet',
+        operation: 'consumer.connected',
+      });
       await ended.promise;
     } finally {
-      active = false;
+      end();
       signal.removeEventListener('abort', end);
       // Closing requeues every unacknowledged delivery, including uncertain commits.
       await within(connection.close(), 5_000).catch(() => undefined);
@@ -162,6 +186,8 @@ export class RabbitWalletConsumer {
     if (delivery.accepted) {
       const { eventId, correlationId } = delivery.event;
       this.logger.log('Wallet event committed.', {
+        service: 'wallet',
+        operation: 'wallet.event.committed',
         eventId,
         correlationId,
         redelivered: message.fields.redelivered,
@@ -191,6 +217,12 @@ export class RabbitWalletConsumer {
       },
     );
     await channel.waitForConfirms();
-    this.logger.warn('Wallet retained an invalid or unsupported event.');
+    this.logger.warn('Wallet retained an invalid or unsupported event.', {
+      service: 'wallet',
+      operation: 'wallet.event.retained',
+      eventId: optionalText(properties.messageId),
+      correlationId: optionalText(properties.correlationId),
+      reason: delivery.reason,
+    });
   }
 }

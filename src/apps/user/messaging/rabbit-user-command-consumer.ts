@@ -1,3 +1,4 @@
+import { MessagingDiagnostics } from '@starter/rabbitmq/diagnostics';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
@@ -39,6 +40,7 @@ function optionalText(value: unknown): string | undefined {
 
 /** Independent of HTTP middleware and of the outbox publisher's connection/retries. */
 export class RabbitUserCommandConsumer {
+  readonly diagnostics = new MessagingDiagnostics();
   private readonly shutdown = new AbortController();
   private task?: Promise<void>;
   private retryMs = 250;
@@ -54,6 +56,7 @@ export class RabbitUserCommandConsumer {
   }
 
   async stop(): Promise<void> {
+    this.diagnostics.unavailable();
     this.shutdown.abort();
     await this.task;
   }
@@ -67,10 +70,19 @@ export class RabbitUserCommandConsumer {
         this.logger.warn(
           'User commands unavailable; deliveries remain unacknowledged.',
           error,
+          { service: 'user', operation: 'command.unavailable' },
         );
       }
       if (this.shutdown.signal.aborted) break;
-      this.logger.warn(`User commands reconnect in ${String(this.retryMs)}ms.`);
+      this.logger.warn(
+        `User commands reconnect in ${String(this.retryMs)}ms.`,
+        {
+          service: 'user',
+          operation: 'command.retry',
+          retryDelayMs: this.retryMs,
+        },
+      );
+      this.diagnostics.retry(this.retryMs);
       await delay(this.retryMs, undefined, { signal }).catch(() => undefined);
       this.retryMs = Math.min(this.retryMs * 2, 10_000);
     }
@@ -83,9 +95,16 @@ export class RabbitUserCommandConsumer {
     const ended = Promise.withResolvers<undefined>();
     const inFlight = new Set<Promise<void>>();
     const end = () => {
+      this.diagnostics.unavailable();
       session.abort();
       ended.resolve(undefined);
     };
+    connection.on('blocked', () => {
+      this.diagnostics.setBlocked(true);
+    });
+    connection.on('unblocked', () => {
+      this.diagnostics.setBlocked(false);
+    });
     connection.on('error', end);
     connection.on('close', end);
     signal.addEventListener('abort', end, { once: true });
@@ -128,6 +147,8 @@ export class RabbitUserCommandConsumer {
                     'User command delivery failed; closing for recovery.',
                     error,
                     {
+                      service: 'user',
+                      operation: 'command.failed',
                       commandId: optionalText(message.properties.messageId),
                       correlationId: optionalText(
                         message.properties.correlationId,
@@ -146,7 +167,11 @@ export class RabbitUserCommandConsumer {
         })(),
         signal,
       );
-      this.logger.log('User command consumer connected.');
+      if (!signal.aborted) this.diagnostics.available();
+      this.logger.log('User command consumer connected.', {
+        service: 'user',
+        operation: 'command.connected',
+      });
       await ended.promise;
     } finally {
       signal.removeEventListener('abort', end);
@@ -176,8 +201,9 @@ export class RabbitUserCommandConsumer {
     const { replyTo } = decoded;
     signal.throwIfAborted();
     const createdAt = new Date();
+    const eventId = randomUUID();
     const result = await this.create.execute(
-      { ...data, id: randomUUID(), eventId: randomUUID(), createdAt },
+      { ...data, id: randomUUID(), eventId, createdAt },
       { correlationId, causationId: commandId, timestamp: createdAt.getTime() },
     );
     signal.throwIfAborted();
@@ -199,7 +225,15 @@ export class RabbitUserCommandConsumer {
       result.isOk()
         ? 'User command committed.'
         : 'User command rejected by business rules.',
-      { commandId, correlationId },
+      {
+        service: 'user',
+        operation: result.isOk()
+          ? 'user.create.committed'
+          : 'user.create.rejected',
+        ...(result.isOk() ? { eventId } : {}),
+        commandId,
+        correlationId,
+      },
     );
     await this.send(
       channel,
@@ -243,6 +277,9 @@ export class RabbitUserCommandConsumer {
       signal,
     );
     this.logger.warn('User command retained for inspection.', {
+      service: 'user',
+      operation: 'command.retained',
+      correlationId: optionalText(properties.correlationId),
       reason,
       commandId: optionalText(properties.messageId),
     });

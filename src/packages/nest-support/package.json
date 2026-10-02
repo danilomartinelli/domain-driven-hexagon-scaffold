@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./operations": "./operations.ts",
     "./context": "./context.ts",
     "./commands": "./commands.ts",
     "./events": "./events.ts",

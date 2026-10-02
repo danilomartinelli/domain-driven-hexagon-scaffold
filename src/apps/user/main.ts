@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConsoleLogger, Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -7,7 +7,9 @@ import { userHttpPort } from './configs/environment';
 
 async function bootstrap() {
   const port = userHttpPort();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: new ConsoleLogger({ json: true, flattenParams: true }),
+  });
 
   const options = new DocumentBuilder().setTitle('User').build();
   SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, options));

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./diagnostics": "./diagnostics.ts",
     "./failure-queue": "./failure-queue.ts"
   },
   "dependencies": {
