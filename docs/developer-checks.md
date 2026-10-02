@@ -143,7 +143,13 @@ The hook runs `bun run check:docs --staged` against an immutable Git index tree.
 Unstaged fixes cannot hide a broken staged link. Normal runs include new,
 unignored Markdown files and check incoming references when a target changes.
 Failures identify the source, destination and missing file/anchor; exit 1 means
-broken references and exit 2 means the checker could not complete.
+documentation errors and exit 2 means the checker could not complete.
+
+The same check validates that every root package script invoking Nx is listed
+in the Commands table in `docs/nx-workspace.md`. A documented `*` covers one
+colon-delimited script-name segment. Both the manifest and guide come from the
+selected working tree or immutable index snapshot, so unstaged edits cannot
+hide missing command documentation in a commit.
 
 Infrastructure test fixtures use `withCleanup` from `scripts/tests/cleanup.ts`.
 It attempts every registered cleanup after success or failure, preserves a lone

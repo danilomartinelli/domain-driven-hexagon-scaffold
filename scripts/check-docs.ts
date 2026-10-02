@@ -8,8 +8,10 @@ import {
 } from 'node:path';
 import GithubSlugger from 'github-slugger';
 import { decodeHTML, decodeHTMLAttribute } from 'entities';
+import { z } from 'zod';
 import { runCommand } from './lib/command';
 import { documentFiles } from './lib/document-files';
+import { tableNames } from './lib/document-tables';
 
 interface MarkdownDocument {
   anchors: Set<string>;
@@ -67,6 +69,43 @@ async function parseMarkdown(source: string): Promise<MarkdownDocument> {
   return document;
 }
 
+async function checkCommandDocumentation(
+  files: Awaited<ReturnType<typeof documentFiles>>,
+): Promise<string[]> {
+  if ((await files.kind('package.json')) !== 'file') return [];
+  const { scripts } = z
+    .object({ scripts: z.record(z.string(), z.string()).default({}) })
+    .parse(JSON.parse(await files.read('package.json')));
+  const commands = Object.entries(scripts)
+    .filter(([, command]) => /\bnx run(-many)?\b/.test(command))
+    .map(([name]) => name);
+  if (!commands.length) return [];
+  const guide = 'docs/nx-workspace.md';
+  if ((await files.kind(guide)) !== 'file')
+    return [`${guide}: missing command documentation`];
+  let names: string[];
+  try {
+    names = tableNames(await files.read(guide), 'Commands');
+  } catch (error) {
+    return [
+      `${guide}: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+  // A documented wildcard covers one colon-delimited script-name segment.
+  const documented = names.map(
+    (name) =>
+      new RegExp(
+        `^${name
+          .split('*')
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+          .join('[^:]+')}$`,
+      ),
+  );
+  return commands
+    .filter((name) => !documented.some((pattern) => pattern.test(name)))
+    .map((name) => `${guide}: undocumented Nx command: ${name}`);
+}
+
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   if (args.length > 1 || (args.length === 1 && args[0] !== '--staged'))
@@ -85,7 +124,7 @@ async function main(): Promise<number> {
     if ((await files.kind(file)) !== 'file') continue;
     documents.set(path, await parseMarkdown(await files.read(file)));
   }
-  const failures: string[] = [];
+  const failures = await checkCommandDocumentation(files);
   for (const [source, document] of documents) {
     for (const link of document.links) {
       if (!link || /^[a-z][a-z\d+.-]*:/i.test(link) || link.startsWith('//'))
@@ -130,7 +169,7 @@ async function main(): Promise<number> {
   }
   for (const failure of failures) console.error(failure);
   console.log(
-    `docs: ${String(documents.size)} Markdown files checked; ${String(failures.length)} broken references.`,
+    `docs: ${String(documents.size)} Markdown files checked; ${String(failures.length)} documentation errors.`,
   );
   return failures.length ? 1 : 0;
 }

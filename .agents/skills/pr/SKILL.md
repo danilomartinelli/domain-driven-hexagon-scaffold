@@ -197,8 +197,8 @@ the draft body.
    until they finish, unless the user requested an earlier endpoint. Use
    `bun run ci:watch -- --pr=<number>`; see
    [CI observation](../../../docs/agents/issue-tracker.md#ci-observation) for
-   exit statuses and evidence. The helper waits for registration, reports stage
-   changes and restarts tracking after a new head. Inspect failed-job logs
+   exit statuses and session handling. Keep one watcher session and consume its
+   incremental output until its terminal result. Inspect failed-job logs
    and available artifacts, fix failures caused by the change, then repeat the
    required checks, reviews and publication. Do not finish with CI merely queued
    or in progress. If CI cannot execute or requires an external action (such as

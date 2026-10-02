@@ -14,6 +14,11 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { selectApplication } from '../../database/applications';
+import {
+  containsPath,
+  installedPackage,
+  packageInstallPath,
+} from './distribution-paths';
 
 const root = realpathSync(fileURLToPath(new URL('../../', import.meta.url)));
 const manifestSchema = z.object({
@@ -34,17 +39,6 @@ const readManifest = (directory: string) =>
 const writeJson = (path: string, value: unknown) => {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 };
-
-/** Resolve installed packages by location, retaining nested versions from the frozen install. */
-function installedPackage(name: string, from: string): string | undefined {
-  let directory = from;
-  while (directory === root || directory.startsWith(`${root}/`)) {
-    const candidate = join(directory, 'node_modules', name);
-    if (existsSync(join(candidate, 'package.json'))) return candidate;
-    directory = dirname(directory);
-  }
-  return undefined;
-}
 
 function copySource(from: string, to: string): void {
   cpSync(from, to, {
@@ -67,7 +61,7 @@ export function distribute(name: string, output?: string): string {
   const app = selectApplication(name);
   const appSource = join(root, 'src/apps', app.name);
   const migrations = relative(appSource, fileURLToPath(app.migrations));
-  if (migrations.startsWith('..'))
+  if (!containsPath(appSource, fileURLToPath(app.migrations)))
     throw new Error('Migrations must belong to the selected application');
   const pinnedBun = readFileSync(join(root, '.bun-version'), 'utf8').trim();
   if (Bun.version !== pinnedBun)
@@ -99,7 +93,7 @@ export function distribute(name: string, output?: string): string {
       from: string,
       required = true,
     ): void {
-      const installed = installedPackage(packageName, from);
+      const installed = installedPackage(root, packageName, from);
       if (!installed) {
         if (required)
           throw new Error(
@@ -108,8 +102,8 @@ export function distribute(name: string, output?: string): string {
         return;
       }
       const source = realpathSync(installed);
-      const privatePackage = source.startsWith(join(root, 'src/packages/'));
-      if (!privatePackage && !source.startsWith(join(root, 'node_modules/')))
+      const privatePackage = containsPath(join(root, 'src/packages'), source);
+      if (!privatePackage && !containsPath(join(root, 'node_modules'), source))
         throw new Error(
           `Dependency outside the installed workspace: ${packageName}`,
         );
@@ -118,10 +112,7 @@ export function distribute(name: string, output?: string): string {
         ? join('node_modules', manifest.name)
         : relative(root, source);
       const target = join(temporary, path);
-      const installedPath = relative(root, installed).replace(
-        /^src\/packages\/([^/]+)\/node_modules\//,
-        'node_modules/@starter/$1/node_modules/',
-      );
+      const installedPath = packageInstallPath(root, installed);
       const alias = join(temporary, installedPath);
       if (alias !== target && !existsSync(alias)) {
         mkdirSync(dirname(alias), { recursive: true });
@@ -160,7 +151,7 @@ export function distribute(name: string, output?: string): string {
       if (!version)
         throw new Error(`Undeclared distribution dependency: ${dependency}`);
       copyPackage(dependency, root);
-      const installed = installedPackage(dependency, root);
+      const installed = installedPackage(root, dependency, root);
       if (!installed) throw new Error(`Missing ${dependency}`);
       direct[dependency] = readManifest(installed).version;
     }

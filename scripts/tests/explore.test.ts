@@ -34,12 +34,12 @@ test('the default page carries most of its budget as CodeGraph content', async (
     expect(result.code, result.stderr).toBe(125);
     expect(
       Buffer.byteLength(result.stdout + result.stderr),
-    ).toBeLessThanOrEqual(16_000);
+    ).toBeLessThanOrEqual(6_000);
     const lines = result.stdout
       .split('\n')
       .filter((output) => output.endsWith(line));
     expect(lines.length * Buffer.byteLength(`${line}\n`)).toBeGreaterThan(
-      12_000,
+      4_000,
     );
   } finally {
     await workspace.cleanup();
