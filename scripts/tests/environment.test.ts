@@ -389,14 +389,15 @@ test('prepared regression runs reject foreign targets and preserve development a
       // below; on Bun 1.4.2, AGENT=0 takes precedence over agent detection.
       // https://bun.com/docs/test#ai-agent-integration
       const regression = await succeeded(
-        // The complete suite includes real shutdown deadlines and recovery.
+        // CI's standalone suite exceeded 180 seconds; this run also keeps
+        // development and sibling environments alive.
         first(
           'exec',
           ['--', process.execPath, 'run', 'test:e2e:prepared'],
           {
             AGENT: '0',
           },
-          { timeout: 180_000, progress: 'prepared E2E preservation' },
+          { timeout: 300_000, progress: 'prepared E2E preservation' },
         ),
       );
       await expectRegressionSuite(root, regression.stderr + regression.stdout);
@@ -424,7 +425,7 @@ test('prepared regression runs reject foreign targets and preserve development a
     },
     environments.map((cli) => () => succeeded(cli('down'))),
   );
-}, 300_000);
+}, 480_000);
 
 test.each([
   'USER_DB_PORT',
