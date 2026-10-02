@@ -1,0 +1,10 @@
+{
+  "type": "user.created",
+  "version": 1,
+  "source": "user",
+  "eventId": "4efebd63-a9d1-424d-990b-23c726cd7230",
+  "occurredAt": "2026-09-30T12:00:00.000Z",
+  "correlationId": "registration-42",
+  "causationId": "create-user-42",
+  "data": { "userId": "1f713fd5-ebcc-4954-981c-389628259a2d" }
+}

@@ -64,6 +64,10 @@ and diagnostic errors do not print payloads or broker credentials.
 
 ## Explicit replay
 
+Before replaying after a service update, check the destination's supported
+versions and the [contract retirement gates](contract-evolution.md#coexistence-retirement-and-replay).
+A newer local validator alone does not establish deployed consumer compatibility.
+
 Copy the 64-character `receipt` from inspection. It fingerprints the retained
 bytes and AMQP properties, not a mutable queue position or delivery tag.
 Identical retained copies have the same receipt; each invocation transfers at
