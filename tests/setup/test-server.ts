@@ -1,5 +1,5 @@
 import { assertTestEnvironment } from '../../database/environment';
-import { afterAll, afterEach, beforeAll } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach } from 'bun:test';
 import { createPool, sql, type DatabasePool } from 'slonik';
 import { connect } from 'amqplib';
 import request from 'supertest';
@@ -10,6 +10,8 @@ export const user = new ServiceProcess('user');
 export const wallet = new ServiceProcess('wallet');
 let userPool: DatabasePool | undefined;
 let walletPool: DatabasePool | undefined;
+let state: 'starting' | 'ready' | 'failed' | 'closed' = 'starting';
+let failure: unknown;
 export function getHttpServer(): ReturnType<typeof request> {
   return request(`http://127.0.0.1:${String(process.env.GATEWAY_PROXY_PORT)}`);
 }
@@ -66,22 +68,44 @@ async function reset(): Promise<void> {
 }
 
 async function close(): Promise<void> {
-  await withCleanup(async () => {
-    await withCleanup(() => user.stop(), [() => wallet.stop()]);
-  }, [() => userPool?.end(), () => walletPool?.end()]);
+  const pools = [userPool, walletPool];
+  userPool = undefined;
+  walletPool = undefined;
+  if (state !== 'failed') state = 'closed';
+  await withCleanup(
+    async () => {
+      await withCleanup(() => user.stop(), [() => wallet.stop()]);
+    },
+    pools.map((pool) => () => pool?.end()),
+  );
 }
 
-beforeAll(async () => {
+async function prepare(operation: () => Promise<void>): Promise<void> {
   try {
-    assertTestEnvironment();
-    userPool = await createPool(uri('USER'));
-    walletPool = await createPool(uri('WALLET'));
-    await reset();
+    await operation();
+    state = 'ready';
   } catch (error) {
+    state = 'failed';
+    failure = error;
     await withCleanup(() => {
       throw error;
     }, [close]);
   }
+}
+
+beforeAll(async () => {
+  await prepare(async () => {
+    assertTestEnvironment();
+    userPool = await createPool(uri('USER'));
+    walletPool = await createPool(uri('WALLET'));
+    await reset();
+  });
 }, 30_000);
-afterEach(reset, 30_000);
+beforeEach(() => {
+  if (state === 'failed') throw failure;
+  if (state !== 'ready') throw new Error('Test environment is not ready');
+});
+afterEach(async () => {
+  if (state === 'ready') await prepare(reset);
+}, 30_000);
 afterAll(close, 30_000);

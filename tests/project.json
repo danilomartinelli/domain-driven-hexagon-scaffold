@@ -15,7 +15,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bun test ./tests/compatibility/contracts.test.ts",
+        "command": "bun test ./tests/compatibility/contracts.test.ts ./tests/setup/*.test.ts",
         "cwd": "."
       }
     },
