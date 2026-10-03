@@ -53,6 +53,11 @@ export default defineConfig(
     },
   },
   {
+    files: ['tooling/generators/**/*.mjs'],
+    // TypeScript checks the JSDoc signatures; this rule only accepts TS syntax.
+    rules: { '@typescript-eslint/explicit-module-boundary-types': 'off' },
+  },
+  {
     files: [
       'src/apps/*/tests/component/**/*.ts',
       'tests/**/*.ts',

@@ -27,6 +27,7 @@
       "{workspaceRoot}/scripts/**/*",
       "{workspaceRoot}/database/**/*",
       "{workspaceRoot}/docker/**/*",
+      "{workspaceRoot}/tooling/generators/**/*",
       "sharedGlobals"
     ]
   },

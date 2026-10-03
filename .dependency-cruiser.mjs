@@ -1,4 +1,54 @@
 // https://github.com/Sairyss/domain-driven-hexagon#enforcing-architecture
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+
+// Generated cores receive the same file-level protection as the original core,
+// including direct framework imports that Nx represents as external npm nodes.
+const corePackages = new Set(['core']);
+/** @type {string[]} */
+const packageEntrypoints = [];
+/** @param {string} value */
+function escapePattern(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+const packages = new URL('./src/packages/', import.meta.url);
+for (const entry of readdirSync(packages, { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const manifestPath = new URL(`${entry.name}/package.json`, packages);
+  if (existsSync(manifestPath)) {
+    const manifest = /** @type {unknown} */ (
+      JSON.parse(readFileSync(manifestPath, 'utf8'))
+    );
+    if (
+      manifest &&
+      typeof manifest === 'object' &&
+      'exports' in manifest &&
+      manifest.exports &&
+      typeof manifest.exports === 'object'
+    ) {
+      for (const target of Object.values(manifest.exports)) {
+        // A declared public entry point may legitimately have no consumers yet.
+        if (typeof target === 'string' && /^\.\/[^/]+\.ts$/.test(target)) {
+          packageEntrypoints.push(
+            `^${escapePattern(`src/packages/${entry.name}/${target.slice(2)}`)}$`,
+          );
+        }
+      }
+    }
+  }
+  const projectPath = new URL(`${entry.name}/project.json`, packages);
+  if (!existsSync(projectPath)) continue;
+  const project = /** @type {unknown} */ (
+    JSON.parse(readFileSync(projectPath, 'utf8'))
+  );
+  if (
+    project &&
+    typeof project === 'object' &&
+    'tags' in project &&
+    Array.isArray(project.tags) &&
+    project.tags.includes('type:core')
+  )
+    corePackages.add(entry.name);
+}
 
 const apiLayerPaths = [
   '^src/apps/[^/]+/dtos/',
@@ -19,7 +69,9 @@ const domainLayerPaths = ['^src/apps/[^/]+/domain/'];
 
 // A closed set prevents indirect escapes through shared barrels as well.
 const corePaths = [
-  '^src/packages/core/(?!tests/)',
+  ...[...corePackages].map(
+    (name) => `^src/packages/${escapePattern(name)}/(?!tests/)`,
+  ),
   '^src/apps/[^/]+/(domain|application)/',
   commandPaths,
 ];
@@ -228,6 +280,7 @@ const config = {
       from: {
         orphan: true,
         pathNot: [
+          ...packageEntrypoints,
           '(^|/)\\.[^/]+\\.(js|cjs|mjs|ts|json)$', // dot files
           '\\.d\\.ts$', // TypeScript declaration files
           '(^|/)tsconfig\\.json$', // TypeScript config

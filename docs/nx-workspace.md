@@ -7,8 +7,9 @@ puts the existing application and regressions under Nx **23.2.1**, with Bun
 pending events in its own database and publishes them in the background. The
 [Wallet application](wallet.md) consumes those events with durable deduplication.
 Normal start commands run both processes. Each service also has an
-[independent distribution](distribution.md); generator work remains tracked in
-[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md).
+[independent distribution](distribution.md). The local plugin supplies
+[private library generators](library-generators.md); application generation
+remains tracked in [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md).
 The [User/Wallet language](../GLOSSARY.md) and ADR 0001 supersession note remain
 part of that design.
 
@@ -25,6 +26,7 @@ part of that design.
 | `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                                                                                            |
 | `example`               | `src/packages/example`               | Existing deep-module search-term example and its real unit test; optional starter template                                                                                                                                                            |
 | `config`                | `tooling/config`                     | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                                                                                               |
+| `generators`            | `tooling/generators`                 | Local `ts-lib`/`nest-lib` plugin; uncached CLI validation in owned scratch workspaces                                                                                                                                                                 |
 | `database`              | `database`                           | Registry and migration/seed tooling for the two owned databases; exercised by live checks, no standalone unit suite                                                                                                                                   |
 | `infrastructure`        | `docker`                             | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                                                                                                 |
 | `test-runner`           | `scripts`                            | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                                                                                                     |
@@ -32,7 +34,8 @@ part of that design.
 | `workspace`             | `.`                                  | Repository formatting and architecture checks                                                                                                                                                                                                         |
 
 `core`, `nest-support`, `integration-contracts`, `rabbitmq`, `example` and `config` are private Bun workspace packages.
-Their package manifests export specific root entry points, with no wildcard
+The `generators` private workspace package supplies the Nx generator collection.
+Runtime package manifests export specific root entry points, with no wildcard
 access to internals. Callers use imports such as `@starter/core/domain` and
 `@starter/nest-support/context`. The database pool provider and environment
 configuration remain application-owned. No shared project contains User/Wallet
@@ -126,7 +129,8 @@ flowchart LR
 
 Domain/application code and command inputs have no Nest, Slonik, RabbitMQ,
 transport DTO, persistence model, concrete adapter or ambient context exception.
-The allowed core is closed under imports: re-exporting an adapter from a core
+Shared packages tagged `type:core` receive the same file-level protection as
+the original core. The allowed core is closed under imports: re-exporting an adapter from a core
 barrel fails at that export. Shared projects cannot import application code,
 so an app-to-shared-to-sibling path also fails. Production imports of test helpers,
 private package subfolders, unexported package paths and file cycles fail.
@@ -251,9 +255,9 @@ collecting fresh validation evidence.
 Registry manifests were rechecked on September 29, 2026. Nx **23.2.1** was the
 maintained stable release. Its matching `@nx/nest` still declares
 `@nestjs/common` and `@nestjs/core` peers `>=10.0.0 <12.0.0`, so this baseline uses
-`nx:run-commands` and repository-owned configuration. Only `nx` is installed;
-there is no mismatched `@nx/*` release or Nest downgrade. Future local generators
-belong to their own migration slice.
+`nx:run-commands` and repository-owned configuration. The local library plugin
+uses `@nx/devkit` **23.2.1**, aligned with `nx`; it does not install `@nx/nest`
+or downgrade Nest. See [library generation](library-generators.md).
 
 The existing compatible TypeScript 6.0.3, typescript-eslint 8.71.0, ESLint 10.11.0
 and Prettier 3.9.9 are retained. Nx's vulnerable transitive `smol-toml` 1.6.1 is

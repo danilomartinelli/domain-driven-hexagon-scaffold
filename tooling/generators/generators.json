@@ -1,0 +1,14 @@
+{
+  "generators": {
+    "ts-lib": {
+      "factory": "./ts-lib.mjs",
+      "schema": "./ts-lib.schema.json",
+      "description": "Generate a private framework-free TypeScript core library."
+    },
+    "nest-lib": {
+      "factory": "./nest-lib.mjs",
+      "schema": "./nest-lib.schema.json",
+      "description": "Generate a private Nest adapter or provider composition library."
+    }
+  }
+}
