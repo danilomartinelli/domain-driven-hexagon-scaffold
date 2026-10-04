@@ -6,6 +6,7 @@
   "generators": "./generators.json",
   "dependencies": {
     "@nx/devkit": "23.2.1",
-    "prettier": "3.9.9"
+    "prettier": "3.9.9",
+    "typescript": "6.0.3"
   }
 }

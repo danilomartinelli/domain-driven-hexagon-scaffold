@@ -107,9 +107,15 @@ test('generated libraries are consumable and checked through Nx, Bun and archite
       core,
       'export function normalizeLabel(value: string): string { return value.trim().toLowerCase(); }\n',
     );
+    await writeFile(adapter, "export * from './lib/providers';\n");
+    await mkdir(join(workspace.root, 'src/packages/label-adapter/lib'));
     await writeFile(
-      adapter,
-      "import { Injectable } from '@nestjs/common';\nimport { normalizeLabel } from '@starter/label-core';\n@Injectable()\nexport class LabelAdapter { format(value: string): string { return normalizeLabel(value); } }\n",
+      join(workspace.root, 'src/packages/label-adapter/lib/providers.ts'),
+      "export { LabelAdapterImplementation as LabelAdapter } from './adapter';\n",
+    );
+    await writeFile(
+      join(workspace.root, 'src/packages/label-adapter/lib/adapter.ts'),
+      "import { Injectable } from '@nestjs/common';\nimport { normalizeLabel } from '@starter/label-core';\n@Injectable()\nexport class LabelAdapterImplementation { format(value: string): string { return normalizeLabel(value); } }\n",
     );
     const manifestPath = join(
       workspace.root,
@@ -219,8 +225,8 @@ test('invalid presets and collisions leave existing work unchanged', async () =>
     await writeFile(sentinel, '// existing work\n');
     const lock = await readFile(join(workspace.root, 'bun.lock'), 'utf8');
     for (const args of [
-      generate('ts-lib', 'occupied', '--force'),
-      generate('nest-lib', 'occupied', '--force'),
+      generate('ts-lib', 'occupied'),
+      generate('nest-lib', 'occupied'),
       generate('ts-lib', 'user'),
       generate('ts-lib', '../escaped'),
       generate('nest-lib', 'invalid', '--layer=core'),
@@ -241,6 +247,11 @@ test('invalid presets and collisions leave existing work unchanged', async () =>
     ]) {
       const result = await workspace.run(args);
       expect(result.code, result.stdout + result.stderr).not.toBe(0);
+      if (args.includes('occupied')) {
+        expect(result.stdout + result.stderr).toContain(
+          'Destination or project already exists',
+        );
+      }
       expect(await readFile(sentinel, 'utf8')).toBe('// existing work\n');
       expect(
         await Bun.file(
@@ -255,3 +266,90 @@ test('invalid presets and collisions leave existing work unchanged', async () =>
     await workspace.cleanup();
   }
 }, 90_000);
+
+test.each([
+  ['Missing', '@starter/core/domain'],
+  ['DefinitelyMissing', '@starter/nest-support/context'],
+  ['RequestContextMiddleware', '@starter/nest-support/http'],
+  ['BaseEntityProps', '@starter/core/domain'],
+])(
+  'composition rejects absent provider %s from public entry point %s before writing',
+  async (provider, providerImport) => {
+    const workspace = await isolatedWorkspace();
+    try {
+      const lock = await readFile(join(workspace.root, 'bun.lock'), 'utf8');
+      const manifest = await readFile(
+        join(workspace.root, 'package.json'),
+        'utf8',
+      );
+      const destinations = await readdir(join(workspace.root, 'src/packages'));
+      const result = await workspace.run(
+        generate(
+          'nest-lib',
+          'invalid',
+          '--layer=composition',
+          `--provider=${provider}`,
+          `--providerImport=${providerImport}`,
+        ),
+      );
+      expect(result.code, result.stdout + result.stderr).not.toBe(0);
+      expect(result.stdout + result.stderr).toContain(
+        `Provider ${provider} is not a runtime export of ${providerImport}`,
+      );
+      expect(await readdir(join(workspace.root, 'src/packages'))).toEqual(
+        destinations,
+      );
+      expect(await readFile(join(workspace.root, 'package.json'), 'utf8')).toBe(
+        manifest,
+      );
+      expect(await readFile(join(workspace.root, 'bun.lock'), 'utf8')).toBe(
+        lock,
+      );
+    } finally {
+      await workspace.cleanup();
+    }
+  },
+  30_000,
+);
+
+test('composition rejects type-only reexports of a provider class before writing', async () => {
+  const workspace = await isolatedWorkspace();
+  try {
+    const entry = join(workspace.root, 'src/packages/nest-support/context.ts');
+    const providerPath = './lib/application/context/RequestContextMiddleware';
+    const lock = await readFile(join(workspace.root, 'bun.lock'), 'utf8');
+    const destinations = await readdir(join(workspace.root, 'src/packages'));
+    for (const source of [
+      `export type { RequestContextMiddleware } from '${providerPath}';\n`,
+      `export { type RequestContextMiddleware } from '${providerPath}';\n`,
+      `export * from './provider-types';\n`,
+    ]) {
+      await writeFile(entry, source);
+      await writeFile(
+        join(workspace.root, 'src/packages/nest-support/provider-types.ts'),
+        `export type { RequestContextMiddleware } from '${providerPath}';\n`,
+      );
+      const result = await workspace.run(
+        generate(
+          'nest-lib',
+          'invalid',
+          '--layer=composition',
+          '--provider=RequestContextMiddleware',
+          '--providerImport=@starter/nest-support/context',
+        ),
+      );
+      expect(result.code, result.stdout + result.stderr).not.toBe(0);
+      expect(result.stdout + result.stderr).toContain(
+        'Provider RequestContextMiddleware is not a runtime export of @starter/nest-support/context',
+      );
+      expect(await readdir(join(workspace.root, 'src/packages'))).toEqual(
+        destinations,
+      );
+      expect(await readFile(join(workspace.root, 'bun.lock'), 'utf8')).toBe(
+        lock,
+      );
+    }
+  } finally {
+    await workspace.cleanup();
+  }
+}, 30_000);

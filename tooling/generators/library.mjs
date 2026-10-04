@@ -1,11 +1,47 @@
 import { getProjects, installPackagesTask, readJson } from '@nx/devkit';
+import { join, relative } from 'node:path';
 import { format, resolveConfig } from 'prettier';
+import ts from 'typescript';
 
 /** @typedef {{name: string, layer?: 'core' | 'adapter' | 'composition', provider?: string, providerImport?: string}} LibraryOptions */
 
 /** @param {string} command @param {boolean} [cache] @returns {import('@nx/devkit').TargetConfiguration} */
 function target(command, cache = true) {
   return { executor: 'nx:run-commands', cache, options: { command, cwd: '.' } };
+}
+
+/** Check the selected export as a value without loading or executing provider code.
+ * @param {import('@nx/devkit').Tree} tree
+ * @param {string} entry
+ * @param {string} provider
+ * @returns {boolean}
+ */
+function hasRuntimeExport(tree, entry, provider) {
+  const probe = join(tree.root, '__provider_check__.ts');
+  const source = `import { ${provider} } from ${JSON.stringify(`./${entry}`)};\n${provider};\n`;
+  const options = {
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    allowImportingTsExtensions: true,
+    noEmit: true,
+    noLib: true,
+    types: [],
+  };
+  const host = ts.createCompilerHost(options);
+  host.getCurrentDirectory = () => tree.root;
+  host.readFile = (path) =>
+    path === probe
+      ? source
+      : (tree.read(relative(tree.root, path), 'utf-8') ?? undefined);
+  host.fileExists = (path) =>
+    path === probe || tree.exists(relative(tree.root, path));
+  host.directoryExists = (path) =>
+    tree.children(relative(tree.root, path)).length > 0;
+  // Retain virtual workspace paths when installed packages are symlinked.
+  host.realpath = (path) => path;
+  const program = ts.createProgram([probe], options, host);
+  const file = program.getSourceFile(probe);
+  return !!file && program.getSemanticDiagnostics(file).length === 0;
 }
 
 /** Generate through Nx's virtual tree; installation runs only after the tree is committed.
@@ -51,9 +87,17 @@ export async function generateLibrary(tree, options, layer) {
     const manifest = /** @type {{exports?: Record<string, unknown>}} */ (
       readJson(tree, `src/packages/${match[2]}/package.json`)
     );
-    if (!manifest.exports?.[match[4] ? `./${match[4]}` : '.']) {
+    const entry = manifest.exports?.[match[4] ? `./${match[4]}` : '.'];
+    if (typeof entry !== 'string') {
       throw new Error(
         'providerImport must be an explicitly exported workspace entry point.',
+      );
+    }
+    if (
+      !hasRuntimeExport(tree, `src/packages/${match[2]}/${entry}`, provider)
+    ) {
+      throw new Error(
+        `Provider ${provider} is not a runtime export of ${providerImport}.`,
       );
     }
     dependencies[match[1]] = 'workspace:*';

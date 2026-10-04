@@ -34,7 +34,10 @@ This creates `TextCompositionModule` with that provider in `providers` and
 `exports`; it does not invent providers or their constructor dependencies.
 Supply providers whose dependencies are already available, and extend the
 composition when more wiring is needed. Private subfolder imports and
-undeclared package entry points are rejected. No empty module is generated.
+undeclared package entry points are rejected. Before writing files, the generator
+checks that the selected entry point exports the provider as a runtime value,
+following reexports and aliases without executing provider code. Missing names
+and type-only exports are rejected. No empty module is generated.
 
 ## Generated files and consumption
 
@@ -77,8 +80,7 @@ the orphan check still rejects unexported, unused files.
 
 `--dry-run` previews file changes without writing the destination, installing
 packages or changing the lockfile. Existing destinations and duplicate project
-names fail before writes, including with `--force`. Paths, nested packages and
-invalid presets are rejected.
+names fail before writes. Paths, nested packages and invalid presets are rejected.
 
 ```sh
 bun run nx run generators:test
