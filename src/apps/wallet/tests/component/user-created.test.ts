@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { z } from 'zod';
 import { withCleanup } from '../../../../../scripts/tests/cleanup';
 import {
   destination,
@@ -199,6 +200,72 @@ test('broker authentication failure logs its diagnostic while HTTP remains avail
     (await fetch(`${walletUrl()}/v1/wallets/by-user/user-offline`)).status,
   ).toBe(404);
 }, 20_000);
+
+test('a database failure preserves oversized envelope identities when AMQP properties are absent', async () => {
+  const eventId = 'é'.repeat(128);
+  const correlationId = `request-${eventId}`;
+  const body = userCreated(eventId, 'user-retry');
+  expect(Buffer.byteLength(eventId)).toBeGreaterThan(255);
+  expect(Buffer.byteLength(correlationId)).toBeGreaterThan(255);
+  await withCleanup(async () => {
+    await ownerDatabase().query(
+      `ALTER TABLE wallets ADD CONSTRAINT test_reject_wallet CHECK ("userId" <> 'user-retry')`,
+    );
+    await withBroker(async (channel) => {
+      await publish(channel, body);
+      await eventually(() => {
+        const failures = walletOutput()
+          .split('\n')
+          .slice(0, -1)
+          .filter((line) => line.trim())
+          .map((line) =>
+            z.record(z.string(), z.unknown()).parse(JSON.parse(line)),
+          )
+          .filter((record) => record.operation === 'wallet.event.failed');
+        expect(failures.length).toBeGreaterThan(0);
+        for (const record of failures) {
+          expect(record).toMatchObject({
+            eventId,
+            messageId: eventId,
+            correlationId,
+          });
+          expect(record.error).toHaveProperty(
+            'cause.constraint',
+            'test_reject_wallet',
+          );
+        }
+        return Promise.resolve();
+      }, 2_000);
+      expect(
+        (await ownerDatabase().query('SELECT * FROM wallets')).rows,
+      ).toEqual([]);
+      expect(
+        (await ownerDatabase().query('SELECT * FROM wallet_consumed_events'))
+          .rows,
+      ).toEqual([]);
+      await ownerDatabase().query(
+        'ALTER TABLE wallets DROP CONSTRAINT test_reject_wallet',
+      );
+      await eventually(async () => {
+        expect(
+          (
+            await ownerDatabase().query(
+              'SELECT event_id, correlation_id FROM wallet_consumed_events',
+            )
+          ).rows,
+        ).toEqual([{ event_id: eventId, correlation_id: correlationId }]);
+      });
+    });
+  }, [
+    () =>
+      withCleanup(stopWallet, [
+        () =>
+          ownerDatabase().query(
+            'ALTER TABLE wallets DROP CONSTRAINT IF EXISTS test_reject_wallet',
+          ),
+      ]),
+  ]);
+}, 30_000);
 
 test('a database failure logs its diagnostic and delivery identity, rolls back and retries with backoff', async () => {
   await stopWallet();

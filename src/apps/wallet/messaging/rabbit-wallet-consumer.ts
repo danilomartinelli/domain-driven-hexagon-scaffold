@@ -7,7 +7,10 @@ import {
   type Options,
 } from 'amqplib';
 import type { LoggerPort } from '@starter/core/logger';
-import { userCreatedDestination } from '@starter/integration-contracts/user-created';
+import {
+  decodeUserCreatedEvent,
+  userCreatedDestination,
+} from '@starter/integration-contracts/user-created';
 import type { CreateWallet } from '../application/create-wallet';
 import { handleUserCreated } from './user-created-consumer';
 
@@ -132,15 +135,21 @@ export class RabbitWalletConsumer {
               this.retryMs = initialRetryMs;
             })
             .catch((error: unknown) => {
+              const delivery = decodeUserCreatedEvent(message.content);
+              const event = delivery.accepted ? delivery.event : undefined;
+              const messageId =
+                optionalText(message.properties.messageId) ?? event?.eventId;
               this.logger.warn(
                 'Wallet delivery failed; closing the channel for recovery.',
                 error,
                 {
                   service: 'wallet',
                   operation: 'wallet.event.failed',
-                  eventId: optionalText(message.properties.messageId),
-                  messageId: optionalText(message.properties.messageId),
-                  correlationId: optionalText(message.properties.correlationId),
+                  eventId: messageId,
+                  messageId,
+                  correlationId:
+                    optionalText(message.properties.correlationId) ??
+                    event?.correlationId,
                 },
               );
               end();

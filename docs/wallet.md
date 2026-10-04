@@ -114,6 +114,14 @@ Messages must be valid UTF-8. Identities are nonempty strings of at most 255
 UTF-16 code units, with no NUL or unpaired surrogate; `occurredAt` is an ISO
 timestamp in years 0001–9999, with UTC or an offset below 16 hours. These bounds
 ensure accepted identities and timestamps can be persisted unchanged in meaning.
+These are JSON envelope limits, not AMQP property limits. The optional AMQP
+`messageId` and `correlationId` properties each allow at most 255 UTF-8 bytes.
+The User publisher copies an identity into its matching property only when it
+fits; otherwise that property is absent. The complete original identity stays
+in the envelope and structured logs. Wallet validates and deduplicates from
+the envelope, independently of those optional properties. This also allows
+previously retained v1 Unicode envelopes to publish without rewriting their
+identities or blocking later events.
 User email and address are neither required nor
 included by the producer mapper. The producer assigns `eventId` once when
 recording the publication, keeping it, the User identity and correlation metadata

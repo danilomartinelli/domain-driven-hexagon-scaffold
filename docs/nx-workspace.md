@@ -162,7 +162,13 @@ Nx binary using Bun, without downloading a CLI. It disables Nx's automatic
 `.env` loading, preserving the existing explicit environment selection, and
 turns off the daemon. It also sets `NX_PROCESS_KILL_GRACE_PERIOD` to 90 seconds:
 after Ctrl-C, Nx otherwise force-kills a task tree after about five seconds,
-before an environment runner can finish its owned cleanup. `run-many` scripts
+before an environment runner can finish its owned cleanup.
+The [Nx preload](../scripts/nx-preload.ts) translates an inherited `NO_COLOR`
+into `FORCE_COLOR=0` before Nx starts. This preserves uncolored output through
+nested tasks and avoids conflicting-variable warnings. `NO_COLOR` takes
+precedence when both variables are supplied; without it, an explicit
+`FORCE_COLOR` preference is preserved. The preload runs in the Nx process, so it
+adds no supervisor or signal-forwarding layer. `run-many` scripts
 over uncached targets choose `--output-style=stream` (servers and watch modes) or
 `--output-style=static` (finite suites, coverage and fixes), so non-interactive
 logs keep every task's output, including each provisioned run's `Result:` line.
@@ -263,7 +269,7 @@ The decorator fixture is never a runtime test and remains in
 Only lint, typecheck, unit tests, formatting checks and architecture checks are
 cacheable. Inputs include the owning project's files, source dependencies, Bun
 runtime version, lockfile, root manifests and shared TypeScript/ESLint/Prettier,
-Bun and Nx configuration. Repository-wide checks declare repository-wide inputs;
+Bun and Nx configuration, including the Nx preload. Repository-wide checks declare repository-wide inputs;
 formatting also includes documentation, root guidance and editor configuration.
 The workspace guardrail tests exercise invalidation by dependency source, project
 tests, shared TypeScript/ESLint configuration and the decorator fixture in an

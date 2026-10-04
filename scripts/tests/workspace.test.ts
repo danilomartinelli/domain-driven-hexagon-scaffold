@@ -15,6 +15,66 @@ import { tableNames as documentedTableNames } from '../lib/document-tables';
 import { readProjectGraph } from '../lib/nx-graph';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 
+test.each([
+  { noColor: '1', forceColor: undefined, colored: false },
+  { noColor: '1', forceColor: '1', colored: false },
+  { noColor: undefined, forceColor: '1', colored: true },
+])(
+  'nested Nx commands honor color preferences without conflicting-variable warnings: %j',
+  async ({ noColor, forceColor, colored }) => {
+    const workspace = await createWorkspace();
+    try {
+      const projectPath = join(workspace.root, 'project.json');
+      const project = z
+        .looseObject({ targets: z.record(z.string(), z.unknown()) })
+        .parse(await Bun.file(projectPath).json());
+      project.targets['color-outer'] = {
+        executor: 'nx:run-commands',
+        cache: false,
+        options: {
+          command:
+            'bun run nx run workspace:boundaries --skip-nx-cache --output-style=stream',
+        },
+      };
+      await writeFile(projectPath, JSON.stringify(project));
+      const result = await runCommand(
+        [
+          process.execPath,
+          'run',
+          'nx',
+          'run',
+          'workspace:color-outer',
+          '--output-style=stream',
+        ],
+        {
+          cwd: workspace.root,
+          timeout: 30_000,
+          env: {
+            ...isolatedEnvironment(),
+            NO_COLOR: noColor,
+            FORCE_COLOR: forceColor,
+            NX_TUI: 'false',
+            NX_CACHE_DIRECTORY: join(workspace.root, '.nx/cache'),
+            NX_WORKSPACE_DATA_DIRECTORY: join(
+              workspace.root,
+              '.nx/workspace-data',
+            ),
+          },
+        },
+      );
+      const output = result.stdout + result.stderr;
+      expect(result.code, output).toBe(0);
+      expect(output).toContain('Nx project boundaries passed.');
+      expect(output).not.toContain("The 'NO_COLOR' env is ignored");
+      // Bun echoes the package script to stderr before loading our Nx preload.
+      expect(result.stdout.includes('\u001b[')).toBe(colored);
+    } finally {
+      await workspace.cleanup();
+    }
+  },
+  40_000,
+);
+
 test('application debug targets expose two connectable inspectors at the same time', async () => {
   const workspace = await createWorkspace();
   try {

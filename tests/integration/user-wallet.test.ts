@@ -108,6 +108,34 @@ test('REST creation eventually yields one zero-balance Wallet through both APIs;
   expect(await observe(id)).toEqual(before);
 }, 30_000);
 
+test('multibyte REST correlation metadata preserves Wallet creation and does not block later registrations', async () => {
+  const correlations = ['é'.repeat(128), 'later-safe-correlation'];
+  const ids: string[] = [];
+  for (const [index, requestId] of correlations.entries()) {
+    const response = await getHttpServer()
+      .post('/v1/users')
+      .send({
+        ...profile,
+        email: `unicode-${String(index)}@example.com`,
+        requestId,
+      })
+      .expect(201);
+    ids.push(z.object({ id: z.string() }).parse(response.body).id);
+  }
+  for (const id of ids) await observe(id);
+  await until(published);
+  for (const [index, id] of ids.entries()) {
+    expect(
+      await getTestDatabase().one(sql.type(
+        z.object({ correlationId: z.string() }),
+      )`
+      SELECT envelope->>'correlationId' AS "correlationId" FROM user_outbox
+      WHERE envelope->'data'->>'userId' = ${id}
+    `),
+    ).toEqual({ correlationId: correlations[index] });
+  }
+}, 30_000);
+
 test('GraphQL creation eventually yields one Wallet with its own independent schema', async () => {
   const response = await getHttpServer()
     .post('/user/graphql')

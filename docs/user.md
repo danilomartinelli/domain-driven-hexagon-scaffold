@@ -61,6 +61,9 @@ It contains no email or address. A supplied REST `requestId` becomes the
 correlation identity when it satisfies the wire contract; otherwise the generated
 command identity is used, preserving profile API acceptance. `published_at IS NULL` identifies pending work;
 later publication attempts must reuse the stored envelope and identity.
+Valid Unicode request metadata remains intact in that envelope even when it
+exceeds the 255-byte UTF-8 limit of the optional AMQP `correlationId` property;
+publication omits that property rather than changing the stored correlation.
 
 There is no foreign key from outbox to profile. Deleting a profile neither
 deletes nor cancels pending creation. Runtime privileges permit profile
@@ -101,10 +104,15 @@ The publisher starts independently of HTTP/GraphQL. It declares the durable
 `user.events` direct exchange and `wallet.user-created` subscription even while
 Wallet is stopped. A transaction selects committed pending work with
 `FOR UPDATE SKIP LOCKED`; competing User publishers cannot claim the same row
-simultaneously. It sends the stored envelope with stable `messageId`, persistent
+simultaneously. It sends the stored envelope with stable event identity, persistent
 delivery and mandatory routing, then updates `published_at` only after a publisher
 confirmation without a routing return. The database commit of that update is
 separate from broker acceptance. Neither means Wallet has finished processing.
+The optional `messageId` and `correlationId` properties mirror their envelope
+identities when each fits AMQP's 255-byte UTF-8 limit. Oversized Unicode identities
+remain unchanged in the JSON body and logs; their matching AMQP property is
+omitted. Pending v1 envelopes from earlier versions therefore drain after
+upgrading User, without a database rewrite or a coordinated Wallet release.
 
 A return, NACK, missing confirmation, disconnect or failed completion write leaves
 work pending. Uncertain success may produce duplicates; Wallet deduplicates in
