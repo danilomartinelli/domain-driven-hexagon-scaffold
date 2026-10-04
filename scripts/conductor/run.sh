@@ -15,7 +15,7 @@ export WALLET_HTTP_PORT="$((CONDUCTOR_PORT + 1))"
 cleanup() {
   local status=$?
   trap - EXIT
-  bun run env:down --environment=development --run=conductor || {
+  bun run dev:down --run=conductor || {
     local cleanup_status=$?
     if (( status == 0 )); then status=$cleanup_status; fi
   }
@@ -25,8 +25,4 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-bun run env:prepare --environment=development --run=conductor
-for app in user wallet; do
-  DATABASE_APP="$app" bun run env:exec --environment=development --run=conductor -- bun run migration:up
-done
-bun run env:exec --environment=development --run=conductor -- bun run start:dev
+bun run dev --run=conductor

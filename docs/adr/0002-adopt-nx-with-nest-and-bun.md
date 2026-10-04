@@ -261,7 +261,15 @@ or business use cases. Scratch CLI checks, isolated artifact execution and an ow
 broker probe cover dry runs, collisions, metadata, recovery and bounded shutdown.
 Adding persistence still requires the explicit database/environment checklist.
 
-The remaining integrated developer-workflow slice is tracked in #35.
+#35 completes the integrated developer workflow. `make dev`, `make test`,
+`make check` and `make down` each delegate to one package script backed by
+uncached Nx targets; `make dev` prepares development infrastructure, migrates
+every registered application and watches both services. Workflow guardrails
+enforce the Makefile delegation, the full gate's suites, the cache contract and
+non-empty native, component, system, distribution and runner suites. The
+[migration evidence map](../migration-evidence.md) links all twenty acceptance
+criteria to their executable checks. This records the implementation; pull
+request, merge and deployment status are tracked separately.
 
 ## References
 

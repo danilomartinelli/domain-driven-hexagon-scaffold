@@ -12,6 +12,16 @@
       "group": "test"
     },
     {
+      "label": "Run system E2E",
+      "type": "shell",
+      "command": "bun run test:e2e",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
       "label": "Typecheck workspace",
       "type": "shell",
       "command": "bun run typecheck",
@@ -32,9 +42,19 @@
       "group": "test"
     },
     {
-      "label": "Watch User and Wallet",
+      "label": "Develop User and Wallet",
       "type": "shell",
-      "command": "bun run start:dev",
+      "command": "bun run dev",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Stop development infrastructure",
+      "type": "shell",
+      "command": "bun run dev:down",
       "options": {
         "cwd": "${workspaceFolder}"
       },

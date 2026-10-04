@@ -27,6 +27,14 @@
         "cwd": "."
       }
     },
+    "dev": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/environment-cli.ts --nx dev",
+        "cwd": "."
+      }
+    },
     "up": {
       "executor": "nx:run-commands",
       "cache": false,

@@ -23,8 +23,8 @@ claiming a target exists; read the relevant source configuration when explaining
 why it is configured that way. For uncommitted changes, choose the matching Nx
 affected options rather than assuming `--head=HEAD` includes them.
 
-User and Wallet own their business code independently; `core` and `nest-support` hold
-technical packages. Check entry-point and cycle rules in `src/packages/AGENTS.md`.
+User and Wallet own their business code independently; `core`, `nest-support`,
+`rabbitmq` and `integration-contracts` hold technical and contract packages. Check entry-point and cycle rules in `src/packages/AGENTS.md`.
 Keep Nx Cloud disabled. Discover current applications with
 `bun run nx show projects --type app --json`; confirm generator availability
 against the installed plugins.

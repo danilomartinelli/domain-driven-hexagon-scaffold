@@ -1,15 +1,16 @@
-# Nx/Bun migration baseline
+# Nx workspace
 
-Issue [#17](https://github.com/danilomartinelli/vibecoding-starter-js/issues/17)
-puts the existing application and regressions under Nx **23.2.1**, with Bun
-**1.4.2** for installation, application execution and native tests. Nest stays on
-**12.1.1**. The independent [User application](user.md) commits profiles and
+The workspace runs under Nx **23.2.1**, with Bun **1.4.2** for installation,
+application execution and native tests. Nest stays on **12.1.1**. The
+independent [User application](user.md) commits profiles and
 pending events in its own database and publishes them in the background. The
 [Wallet application](wallet.md) consumes those events with durable deduplication.
 Normal start commands run both processes. Each service also has an
 [independent distribution](distribution.md). The local plugin supplies
 [application and private library generators](library-generators.md), following
-[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md).
+[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md). The
+[migration evidence map](migration-evidence.md) links each delivered requirement
+to its executable checks.
 The [User/Wallet language](../GLOSSARY.md) and ADR 0001 supersession note remain
 part of that design.
 
@@ -23,12 +24,12 @@ part of that design.
 | `rabbitmq`              | `src/packages/rabbitmq`              | Technical failure-queue inspection/replay transport. Application component suites cover its real broker behavior; lint and typecheck targets are local.                                                                                               |
 | `integration-contracts` | `src/packages/integration-contracts` | Versioned serializable integration envelopes and independent baseline fixtures; infrastructure-free contract tests                                                                                                                                    |
 | `core`                  | `src/packages/core`                  | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                                                                                           |
-| `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                                                                                            |
+| `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite                                                                                                |
 | `example`               | `src/packages/example`               | Existing deep-module search-term example and its real unit test; optional starter template                                                                                                                                                            |
 | `config`                | `tooling/config`                     | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                                                                                               |
 | `generators`            | `tooling/generators`                 | Local `nest-app`/`ts-lib`/`nest-lib` plugin; uncached CLI and distribution validation in owned scratch workspaces, plus a separate live broker component probe                                                                                        |
 | `database`              | `database`                           | Registry and migration/seed tooling for the two owned databases; exercised by live checks, no standalone unit suite                                                                                                                                   |
-| `infrastructure`        | `docker`                             | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                                                                                                 |
+| `infrastructure`        | `docker`                             | Compose definitions plus uncached development workflow, preparation, command and shutdown targets; formatting applies, no TypeScript/unit target                                                                                                      |
 | `test-runner`           | `scripts`                            | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                                                                                                     |
 | `e2e`                   | `tests`                              | Infrastructure-free compatibility matrix (`test`); seven original Gherkin cases and database/API regressions with opt-in setup, including retained-message transitions (`test-compatibility`)                                                         |
 | `workspace`             | `.`                                  | Repository formatting and architecture checks                                                                                                                                                                                                         |
@@ -48,6 +49,7 @@ graph, and dependency-cruiser checks file-level ownership and layer direction.
 graph TD
   e2e --> nest-support
   e2e --> core
+  e2e --> integration-contracts
   e2e --> test-runner
   e2e --> database
   e2e --> user
@@ -55,21 +57,26 @@ graph TD
   user --> nest-support
   user --> core
   user --> integration-contracts
+  user --> rabbitmq
   user --> test-runner
   user --> database
   wallet --> nest-support
   wallet --> core
   wallet --> integration-contracts
+  wallet --> rabbitmq
   wallet --> test-runner
   wallet --> database
   test-runner --> database
   test-runner --> infrastructure
+  generators --> test-runner
   type-fixtures --> core
   nest-support --> core
   workspace --> config
+  workspace --> generators
   workspace --> core
   workspace --> nest-support
   workspace --> integration-contracts
+  workspace --> rabbitmq
   example
 ```
 
@@ -153,9 +160,15 @@ runs the conditional registry check and `characterize` runs selected tests
 against a base worktree, both directly. `bun run nx` invokes the installed local
 Nx binary using Bun, without downloading a CLI. It disables Nx's automatic
 `.env` loading, preserving the existing explicit environment selection, and
-turns off the daemon. Native root `eslint.config.mjs`, `prettier.config.mjs` and
-`tsconfig.json` remain usable by tools and editors and import/extend the internal
-configuration. Each code project has its own strict typecheck scope.
+turns off the daemon. It also sets `NX_PROCESS_KILL_GRACE_PERIOD` to 90 seconds:
+after Ctrl-C, Nx otherwise force-kills a task tree after about five seconds,
+before an environment runner can finish its owned cleanup. `run-many` scripts
+over uncached targets choose `--output-style=stream` (servers and watch modes) or
+`--output-style=static` (finite suites, coverage and fixes), so non-interactive
+logs keep every task's output, including each provisioned run's `Result:` line.
+Native root `eslint.config.mjs`, `prettier.config.mjs` and `tsconfig.json`
+remain usable by tools and editors and import/extend the internal configuration.
+Each code project has its own strict typecheck scope.
 
 `bun run characterize -- --base <ref> <test-file>...` copies selected tests to
 a temporary base worktree. Run one suite at a time: native tests, distributed
@@ -167,6 +180,16 @@ select `--app=<app>`. Paths may start with `./`. For example:
 ```sh
 bun run characterize -- --base origin/master src/apps/user/tests/component/user-create-command.test.ts
 ```
+
+The root `Makefile` provides convenience aliases. Each runs one package script
+and holds no ordering, readiness or cleanup logic of its own:
+
+| Make         | Package script       | Effect                                                                                             |
+| ------------ | -------------------- | -------------------------------------------------------------------------------------------------- |
+| `make dev`   | `bun run dev`        | Prepare development infrastructure, migrate every application, watch User and Wallet               |
+| `make test`  | `bun run test:e2e`   | Provision an isolated test run, migrate/seed it, run the system E2E suite and remove its resources |
+| `make check` | `bun run check:full` | Run the full local quality gate                                                                    |
+| `make down`  | `bun run dev:down`   | Stop this workspace's development `default` run; named volumes remain                              |
 
 ```sh
 bun install --frozen-lockfile
@@ -180,26 +203,27 @@ bun run check
 bun run check:full
 ```
 
-| Package command                                                          | Nx target(s)                                                               |
-| ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| `lint`, `typecheck`, `lint:fix`                                          | All applicable project `lint` / `typecheck` / `lint-fix` targets           |
-| `test`, `test:unit`                                                      | Every project's `test` target                                              |
-| `start`, `start:dev`, `start:debug`, `start:prod`                        | `user` and `wallet`: `serve`, `watch`, `debug`; production sets `NODE_ENV` |
-| `start:user`, `start:user:dev`, `start:user:debug`                       | `user:serve`, `watch`, `debug`                                             |
-| `test:user:component`                                                    | `user:test-component`                                                      |
-| `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                           |
-| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets           |
-| `test:debug`                                                             | `user:test-debug`; run another project's `test-debug` target for its suite |
-| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                              |
-| `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                    |
-| `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)          |
-| `test:tooling`                                                           | `test-runner:test-live`                                                    |
-| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                     |
-| `seed:up`                                                                | `database:seed`                                                            |
-| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                |
-| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                   |
-| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                              |
-| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                           |
+| Package command                                                          | Nx target(s)                                                                  |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `lint`, `typecheck`, `lint:fix`                                          | All applicable project `lint` / `typecheck` / `lint-fix` targets              |
+| `test`, `test:unit`                                                      | Every project's `test` target                                                 |
+| `start`, `start:dev`, `start:debug`, `start:prod`                        | `user` and `wallet`: `serve`, `watch`, `debug`; production sets `NODE_ENV`    |
+| `start:user`, `start:user:dev`, `start:user:debug`                       | `user:serve`, `watch`, `debug`                                                |
+| `test:user:component`                                                    | `user:test-component`                                                         |
+| `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                              |
+| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets              |
+| `test:debug`                                                             | `user:test-debug`; run another project's `test-debug` target for its suite    |
+| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                 |
+| `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                       |
+| `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)             |
+| `test:tooling`                                                           | `test-runner:test-live`                                                       |
+| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                        |
+| `seed:up`                                                                | `database:seed`                                                               |
+| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                   |
+| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                      |
+| `dev`, `dev:down`                                                        | `infrastructure:dev`, `down` for a development run (`default` unless `--run`) |
+| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                 |
+| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                              |
 
 The environment CLI carries its argument array into its uncached Nx target through
 a dedicated process variable, preserving the command after `--` without shell
@@ -241,9 +265,15 @@ cacheable. Inputs include the owning project's files, source dependencies, Bun
 runtime version, lockfile, root manifests and shared TypeScript/ESLint/Prettier,
 Bun and Nx configuration. Repository-wide checks declare repository-wide inputs;
 formatting also includes documentation, root guidance and editor configuration.
-The workspace guardrail tests exercise source/configuration invalidation in an
-isolated cache on every invocation. Conditional dependency audits always query
-the registry when applicable. Both run outside Nx; see [developer checks](developer-checks.md#workspace-and-dependency-guardrails).
+The workspace guardrail tests exercise invalidation by dependency source, project
+tests, shared TypeScript/ESLint configuration and the decorator fixture in an
+isolated cache on every invocation. [Workflow guardrails](../scripts/tests/workflow.test.ts)
+read Nx's resolved targets: only these deterministic target names may be cached,
+every provisioning, live, serving, replay or artifact command is uncached, and
+apps, shared cores and contracts keep non-empty cacheable native suites. Each
+required component, system, distribution and runner suite must keep its uncached
+target and test files. Conditional dependency audits always query
+the registry when applicable. Both run outside Nx; see [the quality reference](quality-reference.md#workspace-and-dependency-guardrails).
 These checks produce no build artifact. `.nx` is local and ignored; Nx Cloud is
 not required and connections to it are disabled.
 

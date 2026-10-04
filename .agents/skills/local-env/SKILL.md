@@ -15,17 +15,19 @@ inspect its status before continuing. Do not display generated credentials.
 
 - **Ordinary E2E:** prefer `bun run test:e2e`, optionally with a test-name pattern.
   It owns preparation, migrations, seeds, tests and cleanup.
-- **Development:** use `env:prepare`, then `env:exec` for migrations and initial
-  seeds, then `env:exec` for `start:dev`. Preparation alone does not initialize
-  schema or data. For an existing volume, check migration/seed state; seeds cannot
-  be repeated safely. Keep a requested development server running and report how
-  to stop its selected run.
+- **Development:** prefer `bun run dev` (`make dev`, optionally `--run=<id>`).
+  It prepares the run, applies every application's migrations and watches both
+  services, leaving infrastructure running after they exit. It does not seed:
+  for a new volume, seed each application once through `env:exec`; seeds cannot
+  be repeated safely. Use `env:prepare`/`env:exec` for one service. Keep a
+  requested development server running and report how to stop its selected run.
 - **Repeated test work:** follow the prepared-test commands with the same run ID
   through prepare, migration, seed and execution. Retain the preload for direct
   test-file invocation. Always attempt `env:down` after success, failure or
   interruption. Test run IDs cannot be reused after shutdown.
-- **Shutdown:** call `env:down` with the selected environment and run. Preserve
-  sibling runs and development volumes; never substitute global Docker cleanup.
+- **Shutdown:** call `env:down` with the selected environment and run, or
+  `bun run dev:down` (`make down`) for development. Preserve sibling runs and
+  development volumes; never substitute global Docker cleanup.
 
 Keep migrations and seeds inside `env:exec`. Conflicting test target overrides
 must fail before connecting. Report the environment/run, successful lifecycle

@@ -9,7 +9,8 @@ For delivery outside the workspace, see [independent distributions](distribution
 
 ## Run it locally
 
-Run from the repository root with Docker available:
+Run from the repository root with Docker available. `make dev` migrates and
+starts both services; these commands run User alone:
 
 ```sh
 bun run env:prepare --environment=development --run=default
@@ -118,5 +119,4 @@ Deleting a profile never cancels its outbox item or removes a Wallet.
 
 See [User commands](user-commands.md) for executable `user.create` requests and
 diagnostics, and [distributed recovery](recovery.md) for broker/database evidence.
-Independent distribution artifacts remain a later slice of
-[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+The [independent distribution](distribution.md) runs User outside the workspace.

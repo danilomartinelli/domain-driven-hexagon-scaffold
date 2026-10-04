@@ -12,6 +12,10 @@ applicable, with the reason, in the pull request.
 These mechanics need no edit: `type-fixtures` excludes `src/apps`, the
 architecture rules match every `src/apps/*`, and `run-many` reaches the new
 targets from `test:unit`, `lint`, `typecheck`, `test:component` and `check:full`.
+The [workflow guardrails](../scripts/tests/workflow.test.ts) require every
+`type:app` project to keep non-empty `test`, `test-component` and
+`test-distribution` suites. A generated app therefore fails `bun run check` until
+its tests and the distribution verification below exist.
 
 ## Project
 
@@ -20,7 +24,9 @@ targets from `test:unit`, `lint`, `typecheck`, `test:component` and `check:full`
       `implicitDependencies: ["test-runner"]`. Add a `tsconfig.json` extending the root.
 - [ ] The layout in [src/apps/AGENTS.md](../src/apps/AGENTS.md), with configuration
       read from the application's own environment variables.
-- [ ] `package.json`: `start:<name>`, `start:<name>:dev` and `start:<name>:debug`.
+- [ ] `package.json`: `start:<name>`, `start:<name>:dev` and `start:<name>:debug`,
+      plus the project in `start`, `start:dev` and `start:debug` so `make dev`
+      serves it. `bun run dev` already migrates every registered application.
 
 ## Database
 

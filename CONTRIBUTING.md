@@ -7,8 +7,9 @@ the checks every change must pass.
 
 1. Fork the repository (maintainers branch directly) and create a branch from `master`.
 2. Complete the [developer setup](docs/developer-checks.md#setup): the Bun
-   version in `.bun-version`, ripgrep (`rg`) and `bun install --frozen-lockfile`.
-3. For database-backed work, follow [the database workflow](docs/database.md#development).
+   version in `.bun-version`, ripgrep (`rg`), `make` and `bun install --frozen-lockfile`.
+3. With Docker running, `make dev` prepares local infrastructure, migrates and
+   starts both services; `make down` stops it. See [the database workflow](docs/database.md#development).
 
 Read [AGENTS.md](AGENTS.md) before editing: its project layout, package rules and
 validation steps apply to human contributors as well as coding agents.
@@ -17,12 +18,14 @@ validation steps apply to human contributors as well as coding agents.
 
 | Change                              | Before opening a pull request                                                   |
 | ----------------------------------- | ------------------------------------------------------------------------------- |
-| Code, configuration or dependencies | `bun run check:full` (Docker must be running)                                   |
+| Code, configuration or dependencies | `bun run check:full` or `make check` (Docker must be running)                   |
 | Documentation only                  | Format the affected files, run `bun run check:docs` and verify changed commands |
 
 The pre-commit hook runs formatting, `check:code` and staged documentation
 checks, plus the dependency audit when dependency files are staged. Continuous
-integration runs `bun run check` on every pull request. See [developer checks](docs/developer-checks.md) for each suite.
+integration runs `bun run check`, focused Docker-backed runner subsets and the
+E2E, component and distribution suites on every pull request; the remaining
+runner lifecycle cases run in the local full gate. See [developer checks](docs/developer-checks.md) for each suite.
 
 ## Pull requests
 

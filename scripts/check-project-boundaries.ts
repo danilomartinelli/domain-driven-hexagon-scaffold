@@ -1,23 +1,15 @@
 /** Validate ownership on Nx's resolved graph, including manifest/implicit edges. */
-import { runCommand } from './lib/command';
+import { readProjectGraph, type ProjectGraph } from './lib/nx-graph';
 
-interface Project {
-  data: { root: string; tags?: string[] };
-}
+type Project = ProjectGraph['nodes'][string];
 
-interface Graph {
-  nodes: Record<string, Project | undefined>;
-  dependencies: Record<string, { target: string; type: string }[]>;
-}
+/** Dependency targets include npm nodes, which have no project entry. */
+type Graph = Omit<ProjectGraph, 'nodes'> & {
+  nodes: Partial<ProjectGraph['nodes']>;
+};
 
 async function main(): Promise<number> {
-  const result = await runCommand(['bun', 'run', 'nx', 'graph', '--print'], {
-    cwd: process.cwd(),
-    timeout: 30_000,
-    maxOutput: 4_000_000,
-  });
-  if (result.code !== 0) throw new Error(result.stdout + result.stderr);
-  const { graph } = JSON.parse(result.stdout) as { graph: Graph };
+  const graph: Graph = await readProjectGraph(process.cwd());
   const errors = new Set<string>();
   const tagged = (project: Project, tag: string): boolean =>
     project.data.tags?.includes(tag) ?? false;

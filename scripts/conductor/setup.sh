@@ -7,6 +7,7 @@ if [[ "$(bun --version)" != "$expected_bun" ]]; then
   exit 1
 fi
 rg --version
+make --version
 bun install --frozen-lockfile
 bun --bun ./node_modules/.bin/nx --version
 bun --bun ./node_modules/.bin/prettier --version

@@ -63,6 +63,8 @@ export function installShutdown(
           operation: 'shutdown.completed',
           elapsedMs: Date.now() - started,
         });
+        // Bun's --watch keeps an otherwise empty process alive.
+        process.exit();
       });
     })().catch((error: unknown) => {
       logger.error(

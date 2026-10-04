@@ -13,7 +13,9 @@ and [developer checks](../docs/developer-checks.md) for the validation contract.
   before connecting. Development intentionally permits shell overrides.
 - Preserve command, interruption and cleanup statuses. Attempt owned cleanup
   after failed or interrupted runs; cleanup failure must fail an otherwise
-  successful run. Keep logs and results under `.context/test-runs/`.
+  successful run. Keep logs and results under `.context/test-runs/`. The
+  development workflow (`dev`) cleans up only a failed infrastructure startup;
+  ready infrastructure outlives its migrations and applications until `dev:down`.
 - Keep provisioning, live tests and environment execution uncached in Nx
   (`cache: false`). Test run IDs cannot be reused; development runs can be
   prepared again using their existing manifest.
@@ -24,6 +26,8 @@ and [developer checks](../docs/developer-checks.md) for the validation contract.
   Preserve deadline enforcement, process-group termination and explicit failure
   on output overflow. Complete Git file inventories use `maxOutput: Infinity`.
   The environment runner has its own lifecycle-aware command session.
+- Read Nx's resolved project graph with [readProjectGraph](lib/nx-graph.ts);
+  tests pass `isolated: true` so the checkout's Nx data stays untouched.
 - Use [createWorkspace](tests/workspace-fixture.ts) for checks that mutate source
   or configuration. Keep workspace package links and Nx caches inside the
   temporary copy; leave the checkout and its cache untouched.

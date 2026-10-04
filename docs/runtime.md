@@ -6,13 +6,12 @@ directly, without producing `dist/`:
 
 ```sh
 bun install --frozen-lockfile
-bun run env:prepare --environment=development --run=default
-for app in user wallet; do
-  DATABASE_APP="$app" bun run env:exec --environment=development --run=default -- bun run migration:up
-done
-bun run env:exec --environment=development --run=default -- bun run start:dev
+make dev # or: bun run dev
 ```
 
+`make dev` prepares the development infrastructure, migrates both databases and
+watches both applications; see the [database workflow](database.md#development).
+Inside a prepared environment (`env:exec`),
 `start` runs the independent User and Wallet processes; `start:dev` watches both,
 `start:debug` opens their Bun inspectors, and `start:prod` sets `NODE_ENV=production`.
 The debug targets bind separate loopback endpoints: User uses `127.0.0.1:6499`
@@ -23,12 +22,12 @@ environment. Each exposes its own `/docs`, `/docs-json` and `/graphql`; User
 REST is `/v1/users`, Wallet lookup is `/v1/wallets/by-user/:userId`.
 Use `start:user` or `start:wallet` to run one service. Applications require only
 their own database credentials plus broker settings; HTTP startup never waits
-for broker availability. Source and runtime dependencies are still required for
-execution; independent distributions remain later work.
+for broker availability. Running from source requires the workspace dependencies;
+each service also has an [independent distribution](distribution.md).
 
-CLI and User message-command controllers remain registered examples without a
-CLI bootstrap or command consumer. Wallet's integration-event consumer and
-User's outbox publisher are active. See [adapter compatibility](adapters.md).
+The CLI controller remains a registered example without a CLI bootstrap. User's
+[`user.create` command consumer](user-commands.md), Wallet's integration-event
+consumer and User's outbox publisher are active. See [adapter compatibility](adapters.md).
 Both applications load no dotenv file; database tooling alone reads `.env`
 outside a prepared environment. See [database settings](database.md#isolation-and-configuration)
 and [the Nx guide](nx-workspace.md) for environment and cache rules.
@@ -95,17 +94,18 @@ inside the selected environment.
 `jest-cucumber` **4.5.0** receives `describe` and `test` from `bun:test`; hooks and
 assertions also use Bun. The existing feature text and observable assertions
 are unchanged: valid creation/listing, five invalid-input rows, and deletion.
-Nest, its HTTP server, validation, event handlers and PostgreSQL are real.
-The application pool also performs cleanup; `afterAll` awaits `app.close()`,
-which awaits pool shutdown. Setup failures after application creation also
-close the application.
+User and Wallet run as separate Bun processes behind the owned Kong gateway, with
+real Nest HTTP servers, validation, RabbitMQ and PostgreSQL. Each scenario stops
+both processes, purges their queues and clears both databases before restarting
+them. `afterAll` stops both processes and closes the test pools, including after
+a setup failure.
 
 ```sh
 bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/create-user/create-user.test.ts # six cases
 bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/user/delete-user/delete-user.test.ts # one case
 bun run test:e2e # seven original Gherkin cases and database/API regressions
-bun run test:watch # core only
-bun run test:cov # core only
+bun run test:watch # every project's unit suite
+bun run test:cov # every project's unit suite
 bun run test:debug # inspector pauses before execution
 ```
 

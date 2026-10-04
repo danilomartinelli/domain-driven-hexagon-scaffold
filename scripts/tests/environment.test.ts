@@ -11,6 +11,7 @@ import {
 import { runCommand } from '../lib/command';
 import { composeProbeConfiguration } from './compose-fixture';
 import { availablePort } from '../lib/environments';
+import { until } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
 import { expectRegressionSuite } from './regression-suite';
 
@@ -249,6 +250,155 @@ test('development exec survives command deadlines while test exec stays bounded'
     expect(testRun.stdout).not.toContain('\nCOMMAND_SURVIVED\n');
   }, [() => succeeded(dev('down')), () => succeeded(regression('down'))]);
 }, 180_000);
+
+/** Running containers or retained volumes carrying a run's Compose project label. */
+async function projectResources(project: string, resource: 'ps' | 'volume') {
+  const result = await runCommand(
+    [
+      'docker',
+      ...(resource === 'ps' ? ['ps'] : ['volume', 'ls']),
+      '-q',
+      '--filter',
+      `label=com.docker.compose.project=${project}`,
+    ],
+    { cwd: root },
+  );
+  expect(result.code, result.stderr).toBe(0);
+  return result.stdout.trim().split(/\s+/).filter(Boolean);
+}
+
+test('the development workflow migrates and serves both applications until interrupted, then down keeps volumes', async () => {
+  const name = `workflow-${randomUUID().slice(0, 8)}`;
+  const { project } = environmentLocation('development', name);
+  const probe = (url: string) =>
+    fetch(url, { signal: AbortSignal.timeout(2_000) }).then(
+      async (response) => ({
+        status: response.status,
+        body: await response.text(),
+      }),
+      () => undefined,
+    );
+  const ready = () => {
+    try {
+      const manifest = readEnvironment('development', name);
+      return manifest.status === 'ready' ? manifest : undefined;
+    } catch {
+      // Preparation has not written a complete manifest yet.
+      return undefined;
+    }
+  };
+  await withCleanup(async () => {
+    // Ctrl-C under `make dev` reaches the whole foreground process group.
+    const workflow = Bun.spawn(
+      [process.execPath, 'run', 'dev', `--run=${name}`],
+      {
+        cwd: root,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        detached: true,
+      },
+    );
+    let output = '';
+    const collect = async (stream: ReadableStream<Uint8Array>) => {
+      const decoder = new TextDecoder();
+      for await (const chunk of stream)
+        output = (output + decoder.decode(chunk, { stream: true })).slice(
+          -32_000,
+        );
+    };
+    const logs = Promise.all([
+      collect(workflow.stdout),
+      collect(workflow.stderr),
+    ]);
+    const interrupt = async () => {
+      process.kill(-workflow.pid, 'SIGINT');
+      return workflow.exited;
+    };
+    try {
+      await withCleanup(async () => {
+        const observed: { users?: { status: number; body: string } } = {};
+        await until(
+          async () => {
+            if (workflow.exitCode !== null || workflow.signalCode !== null)
+              throw new Error('The development workflow exited early');
+            const manifest = ready();
+            if (!manifest) return false;
+            const gateway = `http://127.0.0.1:${String(manifest.gateway.proxyPort)}`;
+            const [users, wallet] = await Promise.all([
+              probe(`${gateway}/v1/users`),
+              probe(`${gateway}/v1/wallets/by-user/${randomUUID()}`),
+            ]);
+            observed.users = users;
+            // Both schemas exist only after their migrations.
+            return users?.status === 200 && wallet?.status === 404;
+          },
+          150_000,
+          'Both applications through the gateway',
+        );
+        // Seeds are not idempotent, so the workflow never inserts them.
+        expect(
+          z
+            .object({ data: z.array(z.unknown()) })
+            .parse(JSON.parse(observed.users?.body ?? 'null')).data,
+        ).toEqual([]);
+        const manifest = ready();
+        if (!manifest) throw new Error('The development manifest disappeared');
+        const containers = (await projectResources(project, 'ps')).sort();
+        expect(containers).not.toEqual([]);
+
+        expect(await interrupt()).not.toBe(0);
+        await until(
+          async () => {
+            const live = await Promise.all(
+              [manifest.gateway.userPort, manifest.gateway.walletPort].map(
+                (port) => probe(`http://127.0.0.1:${String(port)}/health/live`),
+              ),
+            );
+            return live.every((response) => response === undefined);
+          },
+          20_000,
+          'Application shutdown',
+        );
+        // The runner records the interrupted run only after both applications
+        // exit; Nx force-kills a task tree that outlives its grace period.
+        const { directory } = environmentLocation('development', name);
+        await until(
+          () => Bun.file(join(directory, 'result.json')).exists(),
+          30_000,
+          'Interrupted run record',
+        );
+        // Nx's leaf-first shutdown may signal the runner after its command exits.
+        expect(await Bun.file(join(directory, 'run.log')).text()).toMatch(
+          /^Result: exit \d+ \(command \d+, cleanup 0\)/m,
+        );
+        expect((await projectResources(project, 'ps')).sort()).toEqual(
+          containers,
+        );
+        const volumes = (await projectResources(project, 'volume')).sort();
+        expect(volumes).not.toEqual([]);
+
+        const stopped = await runCommand(
+          [process.execPath, 'run', 'dev:down', `--run=${name}`],
+          { cwd: root, timeout: 120_000 },
+        );
+        expect(stopped.code, stopped.stdout + stopped.stderr).toBe(0);
+        expect(await projectResources(project, 'ps')).toEqual([]);
+        expect((await projectResources(project, 'volume')).sort()).toEqual(
+          volumes,
+        );
+      }, [
+        async () => {
+          if (workflow.exitCode === null && workflow.signalCode === null)
+            await interrupt();
+          await logs;
+        },
+      ]);
+    } catch (error) {
+      throw new Error(`${String(error)}\n${output}`, { cause: error });
+    }
+  }, [() => succeeded(namedEnvironment('development', name)('down'))]);
+}, 240_000);
 
 const seedProbe = `
   const {Client} = await import('pg');

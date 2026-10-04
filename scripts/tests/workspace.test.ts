@@ -12,6 +12,7 @@ import { join, relative } from 'node:path';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { tableNames as documentedTableNames } from '../lib/document-tables';
+import { readProjectGraph } from '../lib/nx-graph';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 
 test('application debug targets expose two connectable inspectors at the same time', async () => {
@@ -210,16 +211,6 @@ async function tableNames(heading: string): Promise<string[]> {
   return documentedTableNames(guide, heading);
 }
 
-const graphSchema = z.object({
-  graph: z.object({
-    nodes: z.record(z.string(), z.unknown()),
-    dependencies: z.record(
-      z.string(),
-      z.array(z.object({ target: z.string() })),
-    ),
-  }),
-});
-
 test('application entry point changes select distributed E2E through Nx affected', async () => {
   const workspace = await createWorkspace();
   try {
@@ -249,17 +240,10 @@ test('application entry point changes select distributed E2E through Nx affected
 test('Nx discovers source dependencies through the supported Bun entry point', async () => {
   const workspace = await createWorkspace();
   try {
-    const result = await workspace.run([
-      process.execPath,
-      'run',
-      'nx',
-      'graph',
-      '--file=graph.json',
-    ]);
-    expect(result.code, result.stdout + result.stderr).toBe(0);
-    const { graph } = graphSchema.parse(
-      await Bun.file(join(workspace.root, 'graph.json')).json(),
-    );
+    const graph = await readProjectGraph(workspace.root, {
+      env: isolatedEnvironment(),
+      isolated: true,
+    });
     for (const [project, dependencies] of Object.entries({
       'type-fixtures': ['core'],
       wallet: ['core', 'nest-support'],
@@ -361,3 +345,62 @@ test('cached typechecking is invalidated by dependency source, shared config and
     await workspace.cleanup();
   }
 }, 180_000);
+
+test('cached lint and unit tests are invalidated by shared ESLint configuration and project tests', async () => {
+  const workspace = await createWorkspace();
+  const run = (target: 'lint' | 'test'): ReturnType<typeof workspace.run> =>
+    workspace.run([
+      process.execPath,
+      'run',
+      'nx',
+      'run',
+      `core:${target}`,
+      '--output-style=static',
+    ]);
+  try {
+    for (const target of ['lint', 'test'] as const) {
+      const initial = await run(target);
+      expect(initial.code, initial.stdout + initial.stderr).toBe(0);
+      const repeated = await run(target);
+      expect(repeated.code, repeated.stdout + repeated.stderr).toBe(0);
+      expect(repeated.stdout).toContain('Nx read the output from the cache');
+    }
+
+    const config = Bun.file(join(workspace.root, 'tooling/config/eslint.mjs'));
+    const originalConfig = await config.text();
+    const invalidConfig = originalConfig.replace(
+      "{ selector: 'LabeledStatement',",
+      "{ selector: 'Program', message: 'Shared lint rule changed' },\n  { selector: 'LabeledStatement',",
+    );
+    expect(invalidConfig).not.toBe(originalConfig);
+    await Bun.write(config, invalidConfig);
+    const configFailure = await run('lint');
+    expect(configFailure.code).not.toBe(0);
+    expect(configFailure.stdout + configFailure.stderr).toContain(
+      'Shared lint rule changed',
+    );
+    await Bun.write(config, originalConfig);
+
+    const probe = join(
+      workspace.root,
+      'src/packages/core/tests/cache-probe.test.ts',
+    );
+    await Bun.write(
+      probe,
+      "import { expect, test } from 'bun:test';\n\ntest('cache probe sees the new test', () => {\n  expect('changed').toBe('cached');\n});\n",
+    );
+    const testFailure = await run('test');
+    expect(testFailure.code).not.toBe(0);
+    expect(testFailure.stdout + testFailure.stderr).toContain(
+      'cache probe sees the new test',
+    );
+    await rm(probe);
+
+    for (const target of ['lint', 'test'] as const) {
+      const restored = await run(target);
+      expect(restored.code, restored.stdout + restored.stderr).toBe(0);
+    }
+  } finally {
+    await workspace.cleanup();
+  }
+}, 120_000);

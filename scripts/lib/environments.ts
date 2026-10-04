@@ -143,12 +143,22 @@ async function newManifest(
   };
 }
 
+/** `dev` serves both applications once every registered database is migrated. */
+const developmentCommand = [
+  process.execPath,
+  '--no-env-file',
+  'run',
+  'start:dev',
+];
+
 /**
  * Explicit `apps` scopes provisioning, migrations and seeds; no sibling database or gateway.
  * Omit it for distributed suites and cross-database credential checks.
+ * `dev` prepares development infrastructure, migrates every registered
+ * application and serves both; once ready, its infrastructure outlives them.
  */
 export async function operateEnvironment(
-  action: 'prepare' | 'down' | 'exec' | 'run',
+  action: 'prepare' | 'down' | 'exec' | 'run' | 'dev',
   environment: EnvironmentKind,
   run: string,
   command: string[] = [],
@@ -156,9 +166,12 @@ export async function operateEnvironment(
   setupDatabase = true,
 ): Promise<number> {
   const location = environmentLocation(environment, run);
-  const creating = action === 'prepare' || action === 'run';
+  const creating = action === 'prepare' || action === 'run' || action === 'dev';
   if ((action === 'exec' || action === 'run') && !command.length)
     throw new Error('A command after -- is required.');
+  if (action === 'dev' && (environment !== 'development' || command.length))
+    throw new Error('Usage: dev [--run=<id>] (development only, no command)');
+  const commandToRun = action === 'dev' ? developmentCommand : command;
   const selected = (apps ?? applications.map((app) => app.name)).map((name) =>
     selectApplication(name),
   );
@@ -215,6 +228,7 @@ export async function operateEnvironment(
   let failure: string | undefined;
   let cleanupExitCode = 0;
   const ownership = { verified: false };
+  const infrastructure = { ready: false };
   const requireSuccess = async (args: string[]) => {
     const result = await session.execute(args, {
       capture: true,
@@ -300,6 +314,7 @@ export async function operateEnvironment(
       }
       manifest.status = 'ready';
       save();
+      infrastructure.ready = true;
     }
     if (action === 'down') {
       code = await shutdown(false);
@@ -309,26 +324,33 @@ export async function operateEnvironment(
     if (manifest.status !== 'ready')
       throw new Error('Environment is not ready.');
     const env = environmentVariables(manifest);
-    if (action === 'run' && setupDatabase) {
-      for (const app of selected) {
-        for (const script of ['migration:up:tests', 'seed:up:tests']) {
-          const result = await session.execute(
-            [process.execPath, '--no-env-file', 'run', script],
-            { env: { ...env, DATABASE_APP: app.name } },
-          );
-          if (result.code !== 0) {
-            code = result.code;
-            return code;
-          }
+    const setup =
+      action === 'dev'
+        ? ['migration:up']
+        : action === 'run' && setupDatabase
+          ? ['migration:up:tests', 'seed:up:tests']
+          : [];
+    for (const app of selected) {
+      for (const script of setup) {
+        const result = await session.execute(
+          [process.execPath, '--no-env-file', 'run', script],
+          { env: { ...env, DATABASE_APP: app.name } },
+        );
+        if (result.code !== 0) {
+          code = result.code;
+          return code;
         }
       }
     }
-    if (command.length) {
+    if (commandToRun.length) {
       failureOffset = statSync(logPath).size;
-      const result = await session.execute(command, {
+      const result = await session.execute(commandToRun, {
         env,
         timeout:
-          action === 'exec' && environment === 'development' ? null : 300_000,
+          action === 'dev' ||
+          (action === 'exec' && environment === 'development')
+            ? null
+            : 300_000,
       });
       commandExitCode = result.code;
       tests = bunTestCounts(
@@ -353,7 +375,9 @@ export async function operateEnvironment(
     if (
       ownership.verified &&
       (action === 'run' ||
-        (creating && (code !== 0 || session.interrupted !== 0)))
+        (creating &&
+          !(action === 'dev' && infrastructure.ready) &&
+          (code !== 0 || session.interrupted !== 0)))
     ) {
       try {
         cleanupExitCode = await shutdown(

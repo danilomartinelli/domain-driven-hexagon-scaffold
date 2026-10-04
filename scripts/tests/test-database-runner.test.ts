@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import type { Subprocess } from 'bun';
 import { join } from 'node:path';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -143,12 +144,82 @@ async function assertCleanedUp(
   return project;
 }
 
+/** Run a command until its output shows the marker, then interrupt it once. */
+async function interruptAtMarker(
+  command: string[],
+  marker: string,
+  interrupt: (child: Subprocess) => void,
+  {
+    detached = false,
+    deadlineMs = 60_000,
+    deadlineAfterMarkerMs,
+  }: {
+    detached?: boolean;
+    deadlineMs?: number;
+    deadlineAfterMarkerMs?: number;
+  } = {},
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const child = Bun.spawn(command, {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    detached,
+  });
+  const stderr = new Response(child.stderr).text();
+  let stdout = '';
+  let interrupted = false;
+  let forceKill: ReturnType<typeof setTimeout> | undefined;
+  const signal = (value: 'SIGTERM' | 'SIGKILL') => {
+    try {
+      if (detached) process.kill(-child.pid, value);
+      else child.kill(value);
+    } catch (error) {
+      if (!(
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ESRCH'
+      ))
+        throw error;
+    }
+  };
+  // Nx tasks own separate process groups. Let Nx forward termination and wait
+  // for runner cleanup before escalating, using the package wrapper's grace.
+  const terminate = () => {
+    signal('SIGTERM');
+    forceKill = setTimeout(() => {
+      signal('SIGKILL');
+    }, 90_000);
+  };
+  let timeout = setTimeout(terminate, deadlineMs);
+  try {
+    for await (const chunk of child.stdout.pipeThrough(
+      new TextDecoderStream(),
+    )) {
+      stdout += chunk;
+      if (!interrupted && stdout.includes(marker)) {
+        interrupted = true;
+        if (deadlineAfterMarkerMs !== undefined) {
+          clearTimeout(timeout);
+          timeout = setTimeout(terminate, deadlineAfterMarkerMs);
+        }
+        interrupt(child);
+      }
+    }
+    const exitCode = await child.exited;
+    expect(interrupted, stdout + (await stderr)).toBe(true);
+    return { stdout, stderr: await stderr, exitCode };
+  } finally {
+    clearTimeout(timeout);
+    clearTimeout(forceKill);
+  }
+}
+
 async function runInterruptedProbe(
   script: string,
   marker: string,
   commandExitCode: number,
 ): Promise<void> {
-  const child = Bun.spawn(
+  const { stdout, stderr, exitCode } = await interruptAtMarker(
     [
       process.execPath,
       'scripts/with-test-database.ts',
@@ -157,30 +228,13 @@ async function runInterruptedProbe(
       '-e',
       script,
     ],
-    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+    marker,
+    (child) => {
+      child.kill('SIGTERM');
+    },
   );
-  const stderr = new Response(child.stderr).text();
-  let stdout = '';
-  let interrupted = false;
-  const timeout = setTimeout(() => {
-    child.kill('SIGTERM');
-  }, 60_000);
-  try {
-    for await (const chunk of child.stdout.pipeThrough(
-      new TextDecoderStream(),
-    )) {
-      stdout += chunk;
-      if (!interrupted && stdout.includes(marker)) {
-        interrupted = true;
-        child.kill('SIGTERM');
-      }
-    }
-    expect(await child.exited, stdout + (await stderr)).toBe(143);
-    expect(interrupted).toBe(true);
-    await assertCleanedUp(stdout, await stderr, 143, commandExitCode);
-  } finally {
-    clearTimeout(timeout);
-  }
+  expect(exitCode, stdout + stderr).toBe(143);
+  await assertCleanedUp(stdout, stderr, 143, commandExitCode);
 }
 
 test('interrupting a running command returns SIGTERM status after resource cleanup', async () => {
@@ -198,3 +252,39 @@ test('an interruption during cleanup is retained while owned resources are remov
     0,
   );
 }, 90_000);
+
+test.each(['interrupt', 'deadline'])(
+  'an Nx-hosted run cleans up and records after %s while its command drains past the default kill grace',
+  async (termination) => {
+    const { stdout, stderr } = await interruptAtMarker(
+      [
+        process.execPath,
+        'run',
+        'nx',
+        'run',
+        'test-runner:with-database',
+        '--',
+        process.execPath,
+        'scripts/tests/fixtures/draining-command.ts',
+      ],
+      '\nprobe draining\n',
+      (child) => {
+        // The deadline case deliberately leaves termination to the harness.
+        if (termination === 'deadline') return;
+        // Ctrl-C reaches the whole foreground group; Nx then stops the task tree.
+        process.kill(-child.pid, 'SIGINT');
+      },
+      {
+        detached: true,
+        deadlineMs: 80_000,
+        // Inject the deadline only after startup reaches the draining command.
+        deadlineAfterMarkerMs: termination === 'deadline' ? 1_000 : undefined,
+      },
+    );
+    await assertCleanedUp(stdout, stderr, 143, 143);
+    const pid = /probe process: (\d+)/.exec(stdout)?.[1];
+    expect(pid).toBeDefined();
+    expect(() => process.kill(Number(pid), 0)).toThrow();
+  },
+  180_000,
+);

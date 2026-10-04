@@ -31,12 +31,15 @@ when a cached database probe was healthy. Wallet's publisher remains
 User reports `unavailable`, never a false zero. Once HTTP closes, probes fail to
 connect.
 
-Normal shutdown closes owned HTTP, AMQP and database handles and exits naturally.
+Normal shutdown closes owned HTTP, AMQP and database handles. Once the event loop
+is empty, it records completion and calls `process.exit()`, because `bun --watch`
+(`start:dev`) would otherwise keep the drained process alive.
 The deadline also catches handles that remain open after Nest closes. Structured
 records include `service`, `signal`, `deadlineMs` and these operations:
 
 - `shutdown.started`: new work is refused.
-- `shutdown.completed`: natural exit after resource closure; includes `elapsedMs`.
+- `shutdown.completed`: the event loop emptied after resource closure; includes
+  `elapsedMs`. The process exits immediately afterwards.
 - `shutdown.timed_out` or `shutdown.failed`: nonzero termination, without a
   completion record. These never imply that in-flight work succeeded.
 
@@ -98,9 +101,10 @@ They distinguish graceful termination, missing confirmation, forced deadline
 and `SIGKILL`. The gate can lose an outbound ACK after the real Wallet commit;
 it does not replace the consumer or database transaction with a test worker.
 Assertions cover drained requests and commands, pending publication, rollback,
-commit-before-ACK redelivery, preserved balances, correlated logs, natural exit
-and closed database sessions. Polling is bounded; fixtures release locks, restore
-paused services and close their owned sockets even after failure.
+commit-before-ACK redelivery, preserved balances, correlated logs, exit after an
+empty event loop and closed database sessions. Polling is bounded; fixtures
+release locks, restore paused services and close their owned sockets even after
+failure.
 
 ```sh
 bun scripts/with-test-database.ts -- bun test --preload ./tests/setup/preload.ts ./tests/integration/shutdown*.test.ts

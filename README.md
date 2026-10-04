@@ -22,15 +22,19 @@ Run the individual [developer checks](docs/developer-checks.md) for strict types
 lint, formatting and architecture.
 Database commands also execute directly under Bun. See the [database guide](docs/database.md)
 for local PostgreSQL, SQL migrations and seeds.
-Run the application with `bun run start:dev` and the existing Gherkin cases with
-`bun run test:e2e`. `bun test` runs the infrastructure-free core suite. See the
+With Docker running, `make dev` prepares the local infrastructure, migrates both
+databases and watches the User and Wallet applications; `make down` stops the
+infrastructure and keeps its data. `make test` runs the existing Gherkin cases and
+system regressions in isolated infrastructure, and `make check` runs the full
+local gate. `bun run test:unit` runs the infrastructure-free suites. See the
 [runtime guide](docs/runtime.md) for setup, type checking, and the seven original
 Gherkin cases plus the real-database rollback regressions.
 The [dependency inventory](docs/dependencies.md) records compatible versions and
 security fixes. Run `bun audit` separately to recheck the complete dependency tree.
-The [Nx/Bun baseline](docs/nx-workspace.md) now orchestrates the independent User and Wallet applications,
-private technical packages and regressions. Delivered and remaining migration
-work is tracked in [ADR 0002's implementation status](docs/adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+The [Nx workspace](docs/nx-workspace.md) orchestrates the independent User and Wallet applications,
+private technical packages and regressions. The delivered migration is recorded in
+[ADR 0002's implementation status](docs/adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status)
+and its [evidence map](docs/migration-evidence.md).
 
 Patterns and principles presented here are **framework/language agnostic**. Therefore, the above technologies can be easily replaced with any alternative. No matter what language or framework is used, any application can benefit from principles described below.
 
@@ -448,12 +452,12 @@ Examples:
 
 - [user-created.domain-event.ts](src/apps/user/domain/events/user-created.domain-event.ts) - simple object that holds data related to published event.
 - [create-user.ts](src/apps/user/application/create-user.ts) and [delete-user.ts](src/apps/user/application/delete-user.ts) - plain use cases request an atomic scope and explicitly record resulting facts through application-owned ports.
-- [user-write-transaction.ts](src/apps/user/database/user-write-transaction.ts) - the Slonik adapter commits a profile and durable pending event together. The [publisher](src/apps/user/messaging/rabbit-outbox-publisher.ts) delivers it after commit; see the asynchronous cutover.
-- [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - dispatches facts with identity and explicit operation metadata; aggregates and repositories do not publish.
+- [user-write-transaction.ts](src/apps/user/database/user-write-transaction.ts) - the Slonik adapter commits a profile and durable pending event together. The [publisher](src/apps/user/messaging/rabbit-outbox-publisher.ts) delivers it to Wallet through RabbitMQ after commit.
+- [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - a technical helper that dispatches in-process facts with identity and explicit operation metadata; the User and Wallet applications publish through the outbox instead, and aggregates and repositories do not publish.
 - [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts) - repository insert/delete persist only, using the connection supplied by the transaction adapter.
 - [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts) - Nest CQRS input adapter maps the command and metadata into the plain use case.
 
-See the [current write path and remaining transition](docs/runtime.md#persistence-and-transaction-review).
+See the [current write path](docs/runtime.md#persistence-and-transaction-review).
 
 To have a better understanding on domain events and implementation read this:
 
