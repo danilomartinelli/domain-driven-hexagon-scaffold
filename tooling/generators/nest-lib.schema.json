@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "$default": { "$source": "argv", "index": 0 },
+      "description": "Unique project name under src/packages."
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["adapter", "composition"],
+      "default": "adapter"
+    },
+    "provider": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*$",
+      "description": "Existing injectable class to provide and export in a composition module."
+    },
+    "providerImport": {
+      "type": "string",
+      "description": "Explicit public workspace entry point exporting that provider."
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

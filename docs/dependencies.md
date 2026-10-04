@@ -134,7 +134,9 @@ completion of CLI and messaging examples**, as required by
 
 ## Nx baseline additions
 
-Nx 23.2.1 is pinned as the only Nx package; `@nx/nest` 23.2.1 excludes Nest 12
+Nx and `@nx/devkit` are pinned together at 23.2.1. The devkit supplies the
+virtual tree and installation callback for the private `@starter/generators`
+workspace plugin; Prettier formats generated files. `@nx/nest` 23.2.1 excludes Nest 12
 from its peer range, so repository-owned run-command targets preserve the
 application versions. Private `@starter/core`, `@starter/nest-support`,
 `@starter/example` and `@starter/config` packages use explicit exports and

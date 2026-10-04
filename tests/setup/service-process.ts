@@ -1,4 +1,6 @@
 import type { Subprocess } from 'bun';
+import { createConnection } from 'node:net';
+import { randomUUID } from 'node:crypto';
 
 export class ServiceProcess {
   private child?: Subprocess<'ignore', 'pipe', 'pipe'>;
@@ -15,6 +17,35 @@ export class ServiceProcess {
     overrides: Record<string, string> = {},
   ): Promise<void> {
     if (this.child) throw new Error(`${this.name} already started`);
+    // The manifest allocates this port before infrastructure setup. Check it
+    // again so a foreign listener cannot satisfy the HTTP readiness probe.
+    const port = Number(new URL(this.url).port || '80');
+    await new Promise<void>((resolve, reject) => {
+      const probe = createConnection({ host: '127.0.0.1', port });
+      const unavailable = (cause: Error) => {
+        probe.destroy();
+        reject(
+          new Error(
+            `${this.name} HTTP port ${String(port)} is unavailable; retry with a fresh test environment.`,
+            { cause },
+          ),
+        );
+      };
+      probe.once('connect', () => {
+        unavailable(new Error('An existing listener accepted the connection'));
+      });
+      probe.once('error', (cause: NodeJS.ErrnoException) => {
+        if (cause.code === 'ECONNREFUSED') {
+          probe.destroy();
+          resolve();
+        } else {
+          unavailable(cause);
+        }
+      });
+      probe.setTimeout(1_000, () => {
+        unavailable(new Error('Port availability probe timed out'));
+      });
+    });
     const env: Record<string, string> = {};
     const sibling = this.name === 'user' ? 'WALLET_' : 'USER_';
     for (const [key, value] of Object.entries(process.env)) {
@@ -28,14 +59,17 @@ export class ServiceProcess {
         env[key] = value;
     }
     this.output = '';
+    const identity = randomUUID();
     const child = Bun.spawn(
       [
         process.execPath,
+        '--preload',
+        new URL('./service-identity-preload.ts', import.meta.url).pathname,
         ...(preload ? ['--preload', preload] : []),
         `src/apps/${this.name}/main.ts`,
       ],
       {
-        env: { ...env, ...overrides },
+        env: { ...env, ...overrides, STARTER_TEST_HTTP_IDENTITY: identity },
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
@@ -52,15 +86,20 @@ export class ServiceProcess {
     ]);
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
-      if (child.exitCode !== null)
+      if (child.exitCode !== null) {
+        await this.collected;
         throw new Error(`${this.name} exited: ${this.output}`);
-      try {
-        const response = await fetch(`${this.url}/docs-json`, {
-          signal: AbortSignal.timeout(1_000),
-        });
+      }
+      const response = await fetch(`${this.url}/docs-json`, {
+        signal: AbortSignal.timeout(1_000),
+      }).catch(() => undefined);
+      if (response) {
+        if (response.headers.get('x-starter-test-instance') !== identity) {
+          throw new Error(
+            `${this.name} HTTP port ${String(port)} answered from another process; retry with a fresh test environment.`,
+          );
+        }
         if (response.ok) return;
-      } catch {
-        /* Poll the actual listener, within the startup deadline. */
       }
       await Bun.sleep(50);
     }

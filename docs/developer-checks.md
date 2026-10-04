@@ -90,6 +90,12 @@ bun test ./scripts/tests/search.test.ts &&
   bun --bun eslint scripts/search.ts scripts/lib/read-ranges.ts scripts/tests/search.test.ts --max-warnings 0
 ```
 
+When adding or changing an Nx target, or a test that invokes Nx, also run the
+actual target with `bun run nx run <project>:<target> --skip-nx-cache` before
+staged review. Direct Bun invocations are useful for the inner loop but do not
+exercise the task environment inherited from Nx. Use
+[nx-run-tasks](../.agents/skills/nx-run-tasks/SKILL.md) to select the target.
+
 Infrastructure and runner changes also affect the applications' component
 fixtures. Before staged review, select and run the affected `test-component`
 targets through Nx. Supply the actual changed paths, including staged and new

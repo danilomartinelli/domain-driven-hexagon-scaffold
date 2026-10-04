@@ -84,6 +84,9 @@ export async function createWorkspace(): Promise<Workspace> {
           env: {
             ...isolatedEnvironment(),
             NX_SKIP_NX_CACHE: 'false',
+            // Nested Nx tasks may inherit forced graph reuse. These fixtures
+            // mutate projects and must rebuild the graph after each change.
+            NX_FORCE_REUSE_CACHED_GRAPH: 'false',
             NX_CACHE_DIRECTORY: join(root, '.nx/cache'),
             NX_WORKSPACE_DATA_DIRECTORY: join(root, '.nx/workspace-data'),
             NX_TUI: 'false',

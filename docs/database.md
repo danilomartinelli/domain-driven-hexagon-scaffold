@@ -99,6 +99,14 @@ All published infrastructure ports bind to loopback. Ports are allocated per
 run, or explicitly selected at first preparation with `USER_DB_PORT`, `WALLET_DB_PORT`, `RABBITMQ_PORT` and `RABBITMQ_MANAGEMENT_PORT`. An occupied
 port fails startup and triggers cleanup. Allocation cannot reserve a port
 across Docker startup; a race also fails closed and can be retried with a fresh run.
+The distributed E2E fixture checks its HTTP ports again before spawning each
+application, so a listener that appeared after allocation cannot satisfy the
+startup probe. This check is not a reservation across process startup: a test-only
+child preload tags HTTP responses with a fresh process identity, and the startup
+probe rejects responses from another listener. A setup or reset failure blocks
+later scenarios with the original error and closes each
+pool once; it does not retry against closed resources or mark scenarios passed.
+HTTP ports stay fixed because Kong routes to the selected manifest.
 
 The manifest configures `GATEWAY_NAME`, `GATEWAY_HOST` (default
 `host.docker.internal`), `GATEWAY_PROXY_PORT`, `GATEWAY_ADMIN_PORT`,
