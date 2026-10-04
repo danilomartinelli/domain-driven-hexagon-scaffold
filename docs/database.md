@@ -172,6 +172,9 @@ keep running until they exit or receive a signal.
 Each ownership inspection/log command has 15 seconds; Compose shutdown has 30
 seconds. SIGINT/SIGTERM terminate the active process group, with forced
 termination after five seconds, then attempt cleanup and return 130/143.
+Under Nx, Ctrl-C stops the task tree leaf-first and force-kills survivors after
+its grace period; the `nx` wrapper sets `NX_PROCESS_KILL_GRACE_PERIOD` to 90
+seconds so the runner can finish these bounded steps and record its result.
 A cleanup failure turns a successful wrapped test run into failure. A forcibly
 killed runner or unavailable Docker daemon may leave resources for a later
 `env:down` using the same run ID.

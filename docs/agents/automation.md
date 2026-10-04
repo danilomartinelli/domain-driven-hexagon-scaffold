@@ -85,8 +85,9 @@ inherits `launchctl` environment, not your shell's. Query library versions from
 
 Nx's official plugin and `nx mcp` bootstrap the official Nx MCP package on first
 use. The shared skills use `bun run nx`, preserve explicit environment selection,
-and keep Nx Cloud disabled. The Claude plugin inherits `NX_DAEMON=false` and
-`NX_LOAD_DOT_ENV_FILES=false` from project settings. Nx skills are informed by the
+and keep Nx Cloud disabled. The Claude plugin inherits `NX_DAEMON=false`,
+`NX_LOAD_DOT_ENV_FILES=false` and `NX_PROCESS_KILL_GRACE_PERIOD=90000` from project
+settings, matching the `nx` package script. Nx skills are informed by the
 [official integration](https://github.com/nrwl/nx-ai-agents-config) and adapted to
 [this workspace's contracts](../nx-workspace.md).
 

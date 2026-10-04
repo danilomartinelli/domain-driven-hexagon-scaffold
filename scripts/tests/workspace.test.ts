@@ -12,6 +12,7 @@ import { join, relative } from 'node:path';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { tableNames as documentedTableNames } from '../lib/document-tables';
+import { readProjectGraph } from '../lib/nx-graph';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 
 test('application debug targets expose two connectable inspectors at the same time', async () => {
@@ -210,16 +211,6 @@ async function tableNames(heading: string): Promise<string[]> {
   return documentedTableNames(guide, heading);
 }
 
-const graphSchema = z.object({
-  graph: z.object({
-    nodes: z.record(z.string(), z.unknown()),
-    dependencies: z.record(
-      z.string(),
-      z.array(z.object({ target: z.string() })),
-    ),
-  }),
-});
-
 test('application entry point changes select distributed E2E through Nx affected', async () => {
   const workspace = await createWorkspace();
   try {
@@ -249,17 +240,10 @@ test('application entry point changes select distributed E2E through Nx affected
 test('Nx discovers source dependencies through the supported Bun entry point', async () => {
   const workspace = await createWorkspace();
   try {
-    const result = await workspace.run([
-      process.execPath,
-      'run',
-      'nx',
-      'graph',
-      '--file=graph.json',
-    ]);
-    expect(result.code, result.stdout + result.stderr).toBe(0);
-    const { graph } = graphSchema.parse(
-      await Bun.file(join(workspace.root, 'graph.json')).json(),
-    );
+    const graph = await readProjectGraph(workspace.root, {
+      env: isolatedEnvironment(),
+      isolated: true,
+    });
     for (const [project, dependencies] of Object.entries({
       'type-fixtures': ['core'],
       wallet: ['core', 'nest-support'],

@@ -160,9 +160,15 @@ runs the conditional registry check and `characterize` runs selected tests
 against a base worktree, both directly. `bun run nx` invokes the installed local
 Nx binary using Bun, without downloading a CLI. It disables Nx's automatic
 `.env` loading, preserving the existing explicit environment selection, and
-turns off the daemon. Native root `eslint.config.mjs`, `prettier.config.mjs` and
-`tsconfig.json` remain usable by tools and editors and import/extend the internal
-configuration. Each code project has its own strict typecheck scope.
+turns off the daemon. It also sets `NX_PROCESS_KILL_GRACE_PERIOD` to 90 seconds:
+after Ctrl-C, Nx otherwise force-kills a task tree after about five seconds,
+before an environment runner can finish its owned cleanup. `run-many` scripts
+over uncached targets choose `--output-style=stream` (servers and watch modes) or
+`--output-style=static` (finite suites, coverage and fixes), so non-interactive
+logs keep every task's output, including each provisioned run's `Result:` line.
+Native root `eslint.config.mjs`, `prettier.config.mjs` and `tsconfig.json`
+remain usable by tools and editors and import/extend the internal configuration.
+Each code project has its own strict typecheck scope.
 
 `bun run characterize -- --base <ref> <test-file>...` copies selected tests to
 a temporary base worktree. Run one suite at a time: native tests, distributed
@@ -267,7 +273,7 @@ every provisioning, live, serving, replay or artifact command is uncached, and
 apps, shared cores and contracts keep non-empty cacheable native suites. Each
 required component, system, distribution and runner suite must keep its uncached
 target and test files. Conditional dependency audits always query
-the registry when applicable. Both run outside Nx; see [developer checks](developer-checks.md#workspace-and-dependency-guardrails).
+the registry when applicable. Both run outside Nx; see [the quality reference](quality-reference.md#workspace-and-dependency-guardrails).
 These checks produce no build artifact. `.nx` is local and ignored; Nx Cloud is
 not required and connections to it are disabled.
 

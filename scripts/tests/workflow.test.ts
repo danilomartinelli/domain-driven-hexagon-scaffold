@@ -1,70 +1,27 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
+import { readProjectGraph, type ProjectGraph } from '../lib/nx-graph';
 import { isolatedEnvironment } from './workspace-fixture';
 
 const root = join(import.meta.dir, '../..');
 
 const manifestSchema = z.object({ scripts: z.record(z.string(), z.string()) });
 
-const targetSchema = z.object({
-  cache: z.boolean().optional(),
-  inputs: z.array(z.unknown()).optional(),
-  options: z.object({ command: z.string().optional() }).optional(),
-});
-
-const graphSchema = z.object({
-  graph: z.object({
-    nodes: z.record(
-      z.string(),
-      z.object({
-        data: z.object({
-          tags: z.array(z.string()).optional(),
-          targets: z.record(z.string(), targetSchema).optional(),
-        }),
-      }),
-    ),
-  }),
-});
-
 async function readPackageScripts(): Promise<Record<string, string>> {
   return manifestSchema.parse(await Bun.file(join(root, 'package.json')).json())
     .scripts;
 }
 
-let projects:
-  Promise<z.infer<typeof graphSchema>['graph']['nodes']> | undefined;
+let projects: Promise<ProjectGraph['nodes']> | undefined;
 
-/**
- * Resolved targets, including target defaults, as Nx executes them. Computed
- * once with temporary Nx data so the checkout's graph and caches stay untouched.
- */
+/** Resolved targets, read once without touching the checkout's Nx data. */
 function resolvedProjects() {
-  projects ??= (async () => {
-    const data = await mkdtemp(join(tmpdir(), 'ddh-workflow-nx-'));
-    try {
-      const result = await runCommand(
-        [process.execPath, 'run', 'nx', 'graph', '--print'],
-        {
-          cwd: root,
-          env: {
-            ...isolatedEnvironment(),
-            NX_WORKSPACE_DATA_DIRECTORY: data,
-            NX_CACHE_DIRECTORY: join(data, 'cache'),
-          },
-          timeout: 30_000,
-          maxOutput: 4_000_000,
-        },
-      );
-      expect(result.code, result.stdout + result.stderr).toBe(0);
-      return graphSchema.parse(JSON.parse(result.stdout)).graph.nodes;
-    } finally {
-      await rm(data, { recursive: true, force: true });
-    }
-  })();
+  projects ??= readProjectGraph(root, {
+    env: isolatedEnvironment(),
+    isolated: true,
+  }).then((graph) => graph.nodes);
   return projects;
 }
 
@@ -289,3 +246,28 @@ test('editor tasks invoke existing package scripts', async () => {
     expect(Object.keys(packageScripts), command).toContain(script);
   }
 });
+
+test('run-many over live targets prints every task output outside a TTY', async () => {
+  const projects = await resolvedProjects();
+  const packageScripts = await readPackageScripts();
+  // A live target is uncached in every project that defines it.
+  const live = (target: string) => {
+    const definitions = Object.values(projects).flatMap(
+      ({ data }) => data.targets?.[target] ?? [],
+    );
+    return (
+      definitions.length > 0 &&
+      definitions.every((definition) => definition.cache === false)
+    );
+  };
+  const checked: string[] = [];
+  for (const [name, command] of Object.entries(packageScripts)) {
+    const target = /\bnx run-many\b.*--target=([\w-]+)/.exec(command)?.[1];
+    if (!target || !live(target)) continue;
+    checked.push(name);
+    // Nx's non-interactive default collapses successful tasks to one line.
+    expect(command, name).toMatch(/--output-style=(static|stream)\b/);
+  }
+  for (const name of ['start:dev', 'test:component', 'test:distribution'])
+    expect(checked).toContain(name);
+}, 60_000);

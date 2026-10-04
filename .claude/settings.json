@@ -20,7 +20,8 @@
   },
   "env": {
     "NX_DAEMON": "false",
-    "NX_LOAD_DOT_ENV_FILES": "false"
+    "NX_LOAD_DOT_ENV_FILES": "false",
+    "NX_PROCESS_KILL_GRACE_PERIOD": "90000"
   },
   "enabledMcpjsonServers": ["codegraph", "context7"],
   "hooks": {

@@ -11,7 +11,10 @@ for the subject. If those inputs are missing, return the missing inputs to the p
 Do not choose a new base or review a moving working copy.
 
 Pay attention to framework-free core, explicit package entry points, business
-ownership, real integration seams, and environment resource ownership. Apply the
+ownership, real integration seams, and environment resource ownership. Guides,
+READMEs and agent instructions describe the delivered behavior; planned, pending
+or remaining work belongs only in its issue or the owning ADR's implementation
+status. Check changed documentation and the guides describing changed behavior. Apply the
 skill's smell baseline as judgement calls; repository conventions take precedence.
 Skip findings already enforced by the repository's quality tools.
 

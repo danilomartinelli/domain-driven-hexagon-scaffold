@@ -26,6 +26,8 @@ and [developer checks](../docs/developer-checks.md) for the validation contract.
   Preserve deadline enforcement, process-group termination and explicit failure
   on output overflow. Complete Git file inventories use `maxOutput: Infinity`.
   The environment runner has its own lifecycle-aware command session.
+- Read Nx's resolved project graph with [readProjectGraph](lib/nx-graph.ts);
+  tests pass `isolated: true` so the checkout's Nx data stays untouched.
 - Use [createWorkspace](tests/workspace-fixture.ts) for checks that mutate source
   or configuration. Keep workspace package links and Nx caches inside the
   temporary copy; leave the checkout and its cache untouched.

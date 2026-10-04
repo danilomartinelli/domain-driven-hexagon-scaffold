@@ -31,7 +31,8 @@ Run commands from the repository root. Use the Bun version in `.bun-version`,
 install ripgrep (`rg`) and `make`, and run `bun install --frozen-lockfile`. Complete the
 tool checks in [developer setup](docs/developer-checks.md#setup) before running
 tests, formatting or Nx tasks. Use `bun run nx` for Nx commands; the wrapper
-disables automatic dotenv loading and the daemon.
+disables automatic dotenv loading and the daemon and gives interrupted runners
+time to clean up.
 
 For local development, run `make dev` (`bun run dev`): it prepares this
 workspace's Docker services, applies migrations and watches both applications.

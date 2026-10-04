@@ -320,7 +320,7 @@ test('the development workflow migrates and serves both applications until inter
         const observed: { users?: { status: number; body: string } } = {};
         await until(
           async () => {
-            if (workflow.exitCode !== null)
+            if (workflow.exitCode !== null || workflow.signalCode !== null)
               throw new Error('The development workflow exited early');
             const manifest = ready();
             if (!manifest) return false;
@@ -360,6 +360,18 @@ test('the development workflow migrates and serves both applications until inter
           20_000,
           'Application shutdown',
         );
+        // The runner records the interrupted run only after both applications
+        // exit; Nx force-kills a task tree that outlives its grace period.
+        const { directory } = environmentLocation('development', name);
+        await until(
+          () => Bun.file(join(directory, 'result.json')).exists(),
+          30_000,
+          'Interrupted run record',
+        );
+        // Nx's leaf-first shutdown may signal the runner after its command exits.
+        expect(await Bun.file(join(directory, 'run.log')).text()).toMatch(
+          /^Result: exit \d+ \(command \d+, cleanup 0\)/m,
+        );
         expect((await projectResources(project, 'ps')).sort()).toEqual(
           containers,
         );
@@ -377,7 +389,8 @@ test('the development workflow migrates and serves both applications until inter
         );
       }, [
         async () => {
-          if (workflow.exitCode === null) await interrupt();
+          if (workflow.exitCode === null && workflow.signalCode === null)
+            await interrupt();
           await logs;
         },
       ]);
