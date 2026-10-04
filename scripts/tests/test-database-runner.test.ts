@@ -149,7 +149,15 @@ async function interruptAtMarker(
   command: string[],
   marker: string,
   interrupt: (child: Subprocess) => void,
-  { detached = false, deadlineMs = 60_000 } = {},
+  {
+    detached = false,
+    deadlineMs = 60_000,
+    deadlineAfterMarkerMs,
+  }: {
+    detached?: boolean;
+    deadlineMs?: number;
+    deadlineAfterMarkerMs?: number;
+  } = {},
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const child = Bun.spawn(command, {
     cwd: root,
@@ -160,12 +168,29 @@ async function interruptAtMarker(
   const stderr = new Response(child.stderr).text();
   let stdout = '';
   let interrupted = false;
-  // A stuck direct runner still cleans up after SIGTERM; a stuck detached Nx
-  // group is killed whole so no task process outlives the test.
-  const timeout = setTimeout(() => {
-    if (detached) process.kill(-child.pid, 'SIGKILL');
-    else child.kill('SIGTERM');
-  }, deadlineMs);
+  let forceKill: ReturnType<typeof setTimeout> | undefined;
+  const signal = (value: 'SIGTERM' | 'SIGKILL') => {
+    try {
+      if (detached) process.kill(-child.pid, value);
+      else child.kill(value);
+    } catch (error) {
+      if (!(
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ESRCH'
+      ))
+        throw error;
+    }
+  };
+  // Nx tasks own separate process groups. Let Nx forward termination and wait
+  // for runner cleanup before escalating, using the package wrapper's grace.
+  const terminate = () => {
+    signal('SIGTERM');
+    forceKill = setTimeout(() => {
+      signal('SIGKILL');
+    }, 90_000);
+  };
+  let timeout = setTimeout(terminate, deadlineMs);
   try {
     for await (const chunk of child.stdout.pipeThrough(
       new TextDecoderStream(),
@@ -173,6 +198,10 @@ async function interruptAtMarker(
       stdout += chunk;
       if (!interrupted && stdout.includes(marker)) {
         interrupted = true;
+        if (deadlineAfterMarkerMs !== undefined) {
+          clearTimeout(timeout);
+          timeout = setTimeout(terminate, deadlineAfterMarkerMs);
+        }
         interrupt(child);
       }
     }
@@ -181,6 +210,7 @@ async function interruptAtMarker(
     return { stdout, stderr: await stderr, exitCode };
   } finally {
     clearTimeout(timeout);
+    clearTimeout(forceKill);
   }
 }
 
@@ -223,24 +253,38 @@ test('an interruption during cleanup is retained while owned resources are remov
   );
 }, 90_000);
 
-test('an Nx-hosted run whose command drains past the default kill grace still cleans up and records', async () => {
-  const { stdout, stderr } = await interruptAtMarker(
-    [
-      process.execPath,
-      'run',
-      'nx',
-      'run',
-      'test-runner:with-database',
-      '--',
-      process.execPath,
-      'scripts/tests/fixtures/draining-command.ts',
-    ],
-    '\nprobe draining\n',
-    (child) => {
-      // Ctrl-C reaches the whole foreground group; Nx then stops the task tree.
-      process.kill(-child.pid, 'SIGINT');
-    },
-    { detached: true, deadlineMs: 80_000 },
-  );
-  await assertCleanedUp(stdout, stderr, 143, 143);
-}, 90_000);
+test.each(['interrupt', 'deadline'])(
+  'an Nx-hosted run cleans up and records after %s while its command drains past the default kill grace',
+  async (termination) => {
+    const { stdout, stderr } = await interruptAtMarker(
+      [
+        process.execPath,
+        'run',
+        'nx',
+        'run',
+        'test-runner:with-database',
+        '--',
+        process.execPath,
+        'scripts/tests/fixtures/draining-command.ts',
+      ],
+      '\nprobe draining\n',
+      (child) => {
+        // The deadline case deliberately leaves termination to the harness.
+        if (termination === 'deadline') return;
+        // Ctrl-C reaches the whole foreground group; Nx then stops the task tree.
+        process.kill(-child.pid, 'SIGINT');
+      },
+      {
+        detached: true,
+        deadlineMs: 80_000,
+        // Inject the deadline only after startup reaches the draining command.
+        deadlineAfterMarkerMs: termination === 'deadline' ? 1_000 : undefined,
+      },
+    );
+    await assertCleanedUp(stdout, stderr, 143, 143);
+    const pid = /probe process: (\d+)/.exec(stdout)?.[1];
+    expect(pid).toBeDefined();
+    expect(() => process.kill(Number(pid), 0)).toThrow();
+  },
+  180_000,
+);

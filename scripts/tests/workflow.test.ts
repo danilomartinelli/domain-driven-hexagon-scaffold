@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
+import { parse } from 'dotenv';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { readProjectGraph, type ProjectGraph } from '../lib/nx-graph';
@@ -54,61 +55,73 @@ function reachable(
   return [...seen];
 }
 
-test('make aliases delegate to package scripts whose full gate reaches every required suite', async () => {
-  const dryRun = await runCommand(
-    ['make', '-n', 'dev', 'test', 'check', 'down'],
-    {
-      cwd: root,
-      env: { ...isolatedEnvironment(), MAKEFLAGS: '' },
-    },
-  );
-  expect(dryRun.code, dryRun.stderr).toBe(0);
-  expect(dryRun.stdout.trim().split('\n')).toEqual([
-    'bun run dev',
-    'bun run test:e2e',
-    'bun run check:full',
-    'bun run dev:down',
-  ]);
+test('example database targets can use distinct host ports together', async () => {
+  const example = parse(await Bun.file(join(root, '.env.example')).text());
+  expect(example.USER_DB_PORT).toBeDefined();
+  expect(example.WALLET_DB_PORT).toBeDefined();
+  expect(example.USER_DB_PORT).not.toBe(example.WALLET_DB_PORT);
+});
 
-  const packageScripts = await readPackageScripts();
-  // Environment actions run through their uncached infrastructure targets.
-  expect(packageScripts.dev).toBe(
-    'bun --no-env-file scripts/environment-cli.ts dev',
-  );
-  expect(packageScripts['dev:down']).toBe(
-    'bun --no-env-file scripts/environment-cli.ts down --environment=development',
-  );
-  const infrastructure = (await resolvedProjects()).infrastructure.data.targets;
-  for (const action of ['dev', 'down']) {
-    expect(infrastructure?.[action]?.cache).toBe(false);
-    expect(infrastructure?.[action]?.options?.command).toBe(
-      `bun --no-env-file scripts/environment-cli.ts --nx ${action}`,
+test.each(['0', '1'])(
+  'make aliases at MAKELEVEL=%s delegate to package scripts whose full gate reaches every required suite',
+  async (makeLevel) => {
+    const dryRun = await runCommand(
+      ['make', '--no-print-directory', '-n', 'dev', 'test', 'check', 'down'],
+      {
+        cwd: root,
+        env: { ...isolatedEnvironment(), MAKEFLAGS: '', MAKELEVEL: makeLevel },
+      },
     );
-  }
-  expect(packageScripts['test:e2e']).toBe('bun run nx run e2e:e2e');
+    expect(dryRun.code, dryRun.stderr).toBe(0);
+    expect(dryRun.stdout.trim().split('\n')).toEqual([
+      'bun run dev',
+      'bun run test:e2e',
+      'bun run check:full',
+      'bun run dev:down',
+    ]);
 
-  const fast = reachable(packageScripts, 'check');
-  for (const suite of [
-    'format:check',
-    'lint',
-    'typecheck',
-    'lint:boundaries',
-    'test:unit',
-    'check:workspace',
-    'check:docs',
-  ])
-    expect(fast, suite).toContain(suite);
-  const full = reachable(packageScripts, 'check:full');
-  for (const suite of [
-    ...fast,
-    'audit:changed',
-    'test:tooling',
-    'test:e2e',
-    'test:component',
-    'test:distribution',
-  ])
-    expect(full, suite).toContain(suite);
-}, 60_000);
+    const packageScripts = await readPackageScripts();
+    // Environment actions run through their uncached infrastructure targets.
+    expect(packageScripts.dev).toBe(
+      'bun --no-env-file scripts/environment-cli.ts dev',
+    );
+    expect(packageScripts['dev:down']).toBe(
+      'bun --no-env-file scripts/environment-cli.ts down --environment=development',
+    );
+    const infrastructure = (await resolvedProjects()).infrastructure.data
+      .targets;
+    for (const action of ['dev', 'down']) {
+      expect(infrastructure?.[action]?.cache).toBe(false);
+      expect(infrastructure?.[action]?.options?.command).toBe(
+        `bun --no-env-file scripts/environment-cli.ts --nx ${action}`,
+      );
+    }
+    expect(packageScripts['test:e2e']).toBe('bun run nx run e2e:e2e');
+
+    const fast = reachable(packageScripts, 'check');
+    for (const suite of [
+      'format:check',
+      'lint',
+      'typecheck',
+      'lint:boundaries',
+      'test:unit',
+      'check:workspace',
+      'check:docs',
+    ])
+      expect(fast, suite).toContain(suite);
+    const full = reachable(packageScripts, 'check:full');
+    for (const suite of [
+      ...fast,
+      'audit:changed',
+      'test:tooling',
+      'test:e2e',
+      'test:component',
+      'test:distribution',
+    ])
+      expect(full, suite).toContain(suite);
+  },
+  60_000,
+);
 
 test('only deterministic checks are cacheable; live and provisioning targets always execute', async () => {
   const deterministic = [
