@@ -5,8 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep timed-out generated message handlers tracked through drain, retain permanent payload rejections and preserve failure metadata.
+- Expose parallel Nx runner validation as an uncached focused target and run it in CI.
+
 ### Added
 
+- Local Nx `nest-app` hybrid generator with independent HTTP/GraphQL and RabbitMQ
+  lifecycle, explicit metadata, bounded shutdown and standalone distributions.
+  Scratch-workspace and owned-broker probes validate generated projects.
 - Independent User application with an owned database and atomic profile/outbox
   persistence, preserved REST/GraphQL/Gherkin behavior and operation without Wallet
   or RabbitMQ. Pending events survive restart and profile deletion.

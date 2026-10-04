@@ -2,6 +2,7 @@
   "name": "generators",
   "projectType": "library",
   "tags": ["scope:tooling", "type:tooling"],
+  "implicitDependencies": ["test-runner"],
   "targets": {
     "lint": {
       "executor": "nx:run-commands",
@@ -19,7 +20,14 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun test ./scripts/tests/library-generators.test.ts"
+        "command": "bun test ./scripts/tests/library-generators.test.ts ./scripts/tests/app-generator.test.ts"
+      }
+    },
+    "test-component": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file test ./scripts/tests/app-generator-live.test.ts"
       }
     }
   }

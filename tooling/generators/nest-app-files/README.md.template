@@ -1,0 +1,87 @@
+# **name**
+
+Independent Nest 12/Bun application. The `hybrid` preset supplies operational HTTP
+and GraphQL adapters, a recovering RabbitMQ consumer, composition and an explicit
+message-handler port. Add business behavior under `application/` and `domain/`
+only when needed. No User/Wallet implementation, CRUD or example assertions are copied.
+The private package exports no application implementation.
+
+## Run
+
+From the workspace root, supply your own broker and an available HTTP port:
+
+```sh
+__PREFIX___HTTP_PORT=3010 __PREFIX___RABBITMQ_URL=amqp://localhost:5672 \
+  bun run nx run __name__:serve
+```
+
+Use `__name__:watch` or `__name__:debug` for Bun watch/inspector mode. No dotenv
+file is loaded. The only required variables are `__PREFIX___HTTP_PORT` and
+`__PREFIX___RABBITMQ_URL`; `__PREFIX___RABBITMQ_QUEUE` defaults to
+`__name__.commands.v1`. Configure broker heartbeat in the URL when needed.
+Use a unique broker/queue per environment. The app does not prepare or delete
+infrastructure and needs no sibling service or database.
+
+HTTP starts while RabbitMQ is unavailable. `/health/live`, `/health/ready`,
+`/health/ready/http`, `/health/ready/consumer`, `/health/ready/publisher` and
+`/health/backlog` use the shared operational contract. Publisher and backlog are
+not applicable until implemented. POST `{ "query": "{ httpReady }" }` to `/graphql`
+for HTTP readiness. Broker retries use bounded exponential delays.
+
+## Extend
+
+Register message handlers in `composition/app.module.ts`. Each AMQP message uses
+a JSON `{ "pattern": "your.versioned.pattern", "data": ... }` envelope and nonempty
+AMQP `messageId` and `correlationId` properties. The adapter passes those identities
+explicitly to the handler. Resolve `undefined` after committing effects. Return
+`{ accepted: false, reason: 'invalid-your-payload' }` for permanent validation
+rejections before effects; use a stable, non-sensitive reason code. Throw for
+transient failures that should be retried.
+
+Invalid envelopes and rejected payloads are retained byte-for-byte in
+`<queue>.failed`, with publisher confirmation before ACK. Available identities,
+content metadata and headers are preserved independently; `x-failure-reason`
+records `invalid-json`, `invalid-envelope`, `missing-identity`, `unknown-pattern`
+or the handler's rejection reason. Original expiration is omitted so inspection
+evidence survives. The retention log includes the same reason and identities.
+
+The 10-second handling deadline ends the AMQP session without acknowledging
+uncertain work. It cannot cancel application effects: the transport waits for
+the actual operation to settle before reconnecting or completing `stop()`.
+A stuck handler keeps this instance unavailable until it settles or the process
+is restarted. Other instances can receive redelivery after connection loss;
+commit idempotency claims and effects atomically in the owning database before
+resolving. This scaffold does not implement a business publisher or an outbox.
+
+Use explicit `@Inject(Token)`, factory `inject` lists, GraphQL type functions and
+explicit validation when adding adapters; Bun does not emit design metadata.
+SIGINT/SIGTERM refuses new work, cancels deliveries, drains accepted work and closes
+AMQP before Nest. The shared shutdown deadline is 15 seconds; timeout exits nonzero.
+
+## Check and distribute
+
+```sh
+bun run nx run __name__:lint
+bun run nx run __name__:typecheck
+bun run lint:boundaries
+bun run nx run __name__:test
+bun run nx run __name__:test-component
+bun run nx run __name__:distribution
+```
+
+Unit tests use `tests/unit/` without preload or infrastructure. Live tests use
+`tests/component/` in an uncached target; their fixtures must own their resources
+and cleanup. Neither directory contains generated tests, so each test command
+reports no tests and exits nonzero until meaningful tests are added.
+
+Copy `dist/__name__/` outside the workspace and run `bun run start` there with
+the same environment. The artifact includes Bun TypeScript sources and its installed
+runtime dependencies; no workspace or install is needed. Build for the deployment
+OS/architecture using the pinned Bun version.
+
+No database configuration or migration commands are generated. When adding persistence,
+register only this application in `database/applications.ts`, add its own environment
+prefix, runtime role and owned migrations, and use `DATABASE_APP=__name__` for workspace
+migration commands. Add the migration tooling to `distribution.json`; the shared
+packager includes scoped migration commands only for registered database applications.
+Follow `docs/adding-an-application.md` in the workspace for the database/environment checklist.

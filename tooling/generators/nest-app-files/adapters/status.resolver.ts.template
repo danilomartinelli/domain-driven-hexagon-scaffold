@@ -1,0 +1,14 @@
+import { Inject } from '@nestjs/common';
+import { Query, Resolver } from '@nestjs/graphql';
+import { ServiceHealth } from '@starter/nest-support/operations';
+
+@Resolver()
+export class StatusResolver {
+  constructor(@Inject(ServiceHealth) private readonly health: ServiceHealth) {}
+
+  // Bun does not emit design metadata: always declare GraphQL output types.
+  @Query(() => Boolean)
+  async httpReady(): Promise<boolean> {
+    return (await this.health.snapshot()).http.status === 'ready';
+  }
+}

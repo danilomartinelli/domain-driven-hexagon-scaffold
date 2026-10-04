@@ -58,6 +58,9 @@ test('parallel Nx component runs migrate independently under a shared parent', a
       'affected',
       '--target=test-component',
       '--files=scripts/with-test-database.ts',
+      // Only application runners participate in the migration barrier. Tooling
+      // components create their own scratch workspaces from the Git checkout.
+      '--exclude=*,!tag:type:app',
       '--parallel=2',
     ]);
     expect(result.code, result.stdout + result.stderr).toBe(0);

@@ -254,7 +254,14 @@ owned migrations run outside the workspace. Component suites provision only
 their service database and broker; cross-database credential checks run in the
 distributed suite. Distribution execution and packaging remain uncached.
 
-Remaining work continues in the operational and generator tickets (#29 to #35).
+The [three local generators](../library-generators.md) now supply private core,
+Nest adapter/composition libraries (#33) and independent hybrid apps (#34).
+The app preset owns configuration and transport wiring without inventing persistence
+or business use cases. Scratch CLI checks, isolated artifact execution and an owned
+broker probe cover dry runs, collisions, metadata, recovery and bounded shutdown.
+Adding persistence still requires the explicit database/environment checklist.
+
+The remaining integrated developer-workflow slice is tracked in #35.
 
 ## References
 

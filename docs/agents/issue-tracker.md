@@ -114,8 +114,10 @@ the head and latest run attempt again. Polling defaults to 15 seconds and has a
 30-minute observation deadline; `--interval-ms` and `--timeout-ms` override them.
 
 Keep the watcher attached to one execution session and consume only the new
-output returned when waiting on that session. Use bounded waits that leave room
-for user updates. Each `[ci:progress]` line is a stage change; the terminal line
+output returned when waiting on that session. Use one bounded session wait per
+observation, up to 45 seconds, without a separate sleep call. Keep required
+periodic user updates brief when the stage is unchanged; add detail for stage
+changes, failures or decisions. Each `[ci:progress]` line is a stage change; the terminal line
 and exit status identify completion, with durable evidence in the reported JSON
 file. Read that evidence once after completion. This keeps observation in the
 watcher instead of repeatedly reading its accumulated output.

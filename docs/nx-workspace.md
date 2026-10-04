@@ -8,8 +8,8 @@ pending events in its own database and publishes them in the background. The
 [Wallet application](wallet.md) consumes those events with durable deduplication.
 Normal start commands run both processes. Each service also has an
 [independent distribution](distribution.md). The local plugin supplies
-[private library generators](library-generators.md); application generation
-remains tracked in [ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md).
+[application and private library generators](library-generators.md), following
+[ADR 0002](adr/0002-adopt-nx-with-nest-and-bun.md).
 The [User/Wallet language](../GLOSSARY.md) and ADR 0001 supersession note remain
 part of that design.
 
@@ -26,7 +26,7 @@ part of that design.
 | `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite yet                                                                                            |
 | `example`               | `src/packages/example`               | Existing deep-module search-term example and its real unit test; optional starter template                                                                                                                                                            |
 | `config`                | `tooling/config`                     | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                                                                                               |
-| `generators`            | `tooling/generators`                 | Local `ts-lib`/`nest-lib` plugin; uncached CLI validation in owned scratch workspaces                                                                                                                                                                 |
+| `generators`            | `tooling/generators`                 | Local `nest-app`/`ts-lib`/`nest-lib` plugin; uncached CLI and distribution validation in owned scratch workspaces, plus a separate live broker component probe                                                                                        |
 | `database`              | `database`                           | Registry and migration/seed tooling for the two owned databases; exercised by live checks, no standalone unit suite                                                                                                                                   |
 | `infrastructure`        | `docker`                             | Compose definitions and start commands; formatting applies, no TypeScript/unit target                                                                                                                                                                 |
 | `test-runner`           | `scripts`                            | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                                                                                                     |
@@ -192,7 +192,7 @@ bun run check:full
 | `test:debug`                                                             | `user:test-debug`; run another project's `test-debug` target for its suite |
 | `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                              |
 | `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                    |
-| `test:component`                                                         | Every `test-component` target (`user` and `wallet`)                        |
+| `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)          |
 | `test:tooling`                                                           | `test-runner:test-live`                                                    |
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                     |
 | `seed:up`                                                                | `database:seed`                                                            |
@@ -217,6 +217,11 @@ Arguments continue through the command chain, for example
 `bun run migration:create add-user-index`. Direct Bun commands for focused
 experiments remain possible; use the package commands for the quality gates.
 Unit discovery has no E2E preload. Bare `bun test` runs only `src/packages/core/tests`.
+`bun run nx run test-runner:test-nx-runner` executes the parallel application
+migration regression through Nx. Run it when changing project dependencies,
+targets or workspace fixtures; CI runs it independently of the full local
+runner lifecycle suite.
+
 `bun run nx run test-runner:test-broker` runs the pinned-image healthcheck and
 container-ownership regressions without provisioning application databases.
 This uncached subset runs in CI and is also included in `test:tooling`.

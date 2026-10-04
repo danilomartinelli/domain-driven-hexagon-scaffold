@@ -66,6 +66,14 @@
         "command": "bun --bun eslint scripts --max-warnings 0 --fix",
         "cwd": "."
       }
+    },
+    "test-nx-runner": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests/nx-runner.test.ts",
+        "cwd": "."
+      }
     }
   },
   "implicitDependencies": ["database", "infrastructure"]

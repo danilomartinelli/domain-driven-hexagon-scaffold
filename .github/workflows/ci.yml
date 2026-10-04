@@ -33,6 +33,8 @@ jobs:
       # Fast gate: formatting, docs references, lint, types, boundaries and unit tests.
       - name: Check
         run: bun run check
+      - name: Parallel Nx application runners
+        run: bun run nx run test-runner:test-nx-runner
       - name: Select preservation regression
         id: preservation
         env:

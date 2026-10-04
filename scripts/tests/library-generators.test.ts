@@ -1,5 +1,12 @@
 import { expect, test } from 'bun:test';
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { createWorkspace, type Workspace } from './workspace-fixture';
 
@@ -191,11 +198,15 @@ test('generated libraries are consumable and checked through Nx, Bun and archite
 
     // Exercise source-level framework imports and Nx's project dependency check.
     const original = await readFile(core, 'utf8');
+    // Scripted edits can share a filesystem timestamp. Every graph must reflect
+    // the current bytes even after warming the previous graph and task caches.
+    const mutationTime = new Date('2026-01-01T00:00:00Z');
     for (const forbidden of [
       "export { Injectable } from '@nestjs/common';\n",
       "export { LabelAdapter } from '@starter/label-adapter';\n",
     ]) {
       await writeFile(core, original + forbidden);
+      await utimes(core, mutationTime, mutationTime);
       const rejected = await workspace.run(['bun', 'run', 'lint:boundaries']);
       expect(rejected.code, rejected.stdout + rejected.stderr).not.toBe(0);
       expect(rejected.stdout + rejected.stderr).toContain(

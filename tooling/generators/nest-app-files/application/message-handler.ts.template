@@ -1,0 +1,20 @@
+/** Supply identity explicitly; application behavior never reads ambient request context. */
+export interface MessageMetadata {
+  eventId: string;
+  correlationId: string;
+}
+
+/** A permanent validation rejection, before effects, with a stable non-sensitive reason code. */
+export interface MessageRejection {
+  accepted: false;
+  reason: string;
+}
+
+/** Resolve undefined after effects commit; reject invalid input explicitly; throw for retryable failures. */
+export interface MessageHandler {
+  pattern: string;
+  handle(
+    data: unknown,
+    metadata: MessageMetadata,
+  ): Promise<MessageRejection | undefined>;
+}
