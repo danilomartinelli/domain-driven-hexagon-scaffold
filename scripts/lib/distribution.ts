@@ -13,7 +13,7 @@ import {
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { selectApplication } from '../../database/applications';
+import { applications } from '../../database/applications';
 import {
   containsPath,
   installedPackage,
@@ -58,26 +58,33 @@ function copySource(from: string, to: string): void {
 
 /** Produce a ready-to-run, platform-specific artifact; no install or workspace links at delivery. */
 export function distribute(name: string, output?: string): string {
-  const app = selectApplication(name);
-  const appSource = join(root, 'src/apps', app.name);
-  const migrations = relative(appSource, fileURLToPath(app.migrations));
-  if (!containsPath(appSource, fileURLToPath(app.migrations)))
+  if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name))
+    throw new Error('Invalid application name');
+  const appSource = join(root, 'src/apps', name);
+  z.object({
+    name: z.literal(name),
+    projectType: z.literal('application'),
+  }).parse(JSON.parse(readFileSync(join(appSource, 'project.json'), 'utf8')));
+  const app = applications.find((entry) => entry.name === name);
+  if (!app && existsSync(join(appSource, 'database')))
+    throw new Error(
+      'Register the application database before distributing its content',
+    );
+  const migrations = app
+    ? relative(appSource, fileURLToPath(app.migrations))
+    : undefined;
+  if (app && !containsPath(appSource, fileURLToPath(app.migrations)))
     throw new Error('Migrations must belong to the selected application');
   const pinnedBun = readFileSync(join(root, '.bun-version'), 'utf8').trim();
   if (Bun.version !== pinnedBun)
     throw new Error(`Distribution requires Bun ${pinnedBun}`);
-  const destination = output ? resolve(output) : join(root, 'dist', app.name);
+  const destination = output ? resolve(output) : join(root, 'dist', name);
   if (output && existsSync(destination))
     throw new Error('Output directory must not exist');
   const dependencies = z
     .array(z.string())
     .parse(
-      JSON.parse(
-        readFileSync(
-          join(root, 'src/apps', app.name, 'distribution.json'),
-          'utf8',
-        ),
-      ),
+      JSON.parse(readFileSync(join(appSource, 'distribution.json'), 'utf8')),
     );
   const sourceManifest = readManifest(root);
   const direct: Record<string, string> = {};
@@ -85,7 +92,7 @@ export function distribute(name: string, output?: string): string {
   const inventory: { name: string; version: string; path: string }[] = [];
   mkdirSync(dirname(destination), { recursive: true });
   const temporary = mkdtempSync(
-    join(dirname(destination), `.${app.name}-distribution-`),
+    join(dirname(destination), `.${name}-distribution-`),
   );
   try {
     function copyPackage(
@@ -156,25 +163,32 @@ export function distribute(name: string, output?: string): string {
       direct[dependency] = readManifest(installed).version;
     }
     copySource(appSource, join(temporary, 'app'));
-    mkdirSync(join(temporary, 'database'));
-    for (const file of ['migrate.mjs', 'distribution.ts'])
-      cpSync(join(root, 'database', file), join(temporary, 'database', file));
-    for (const file of ['applications', 'target'])
-      writeFileSync(
-        join(temporary, 'database', `${file}.ts`),
-        "export { selectApplication, databaseTarget } from './distribution';\n",
-      );
+    if (app) {
+      mkdirSync(join(temporary, 'database'));
+      for (const file of ['migrate.mjs', 'distribution.ts'])
+        cpSync(join(root, 'database', file), join(temporary, 'database', file));
+      for (const file of ['applications', 'target'])
+        writeFileSync(
+          join(temporary, 'database', `${file}.ts`),
+          "export { selectApplication, databaseTarget } from './distribution';\n",
+        );
+    }
     writeJson(join(temporary, 'package.json'), {
-      name: `starter-${app.name}-distribution`,
+      name: `starter-${name}-distribution`,
       version: sourceManifest.version,
       private: true,
-      service: app.name,
+      service: name,
       engines: { bun: pinnedBun },
       scripts: {
         start: 'bun --no-env-file app/main.ts',
-        'migration:up': 'bun --no-env-file database/migrate.mjs up',
-        'migration:down': 'bun --no-env-file database/migrate.mjs down',
-        'migration:status': 'bun --no-env-file database/migrate.mjs status',
+        ...(app
+          ? {
+              'migration:up': 'bun --no-env-file database/migrate.mjs up',
+              'migration:down': 'bun --no-env-file database/migrate.mjs down',
+              'migration:status':
+                'bun --no-env-file database/migrate.mjs status',
+            }
+          : {}),
       },
       dependencies: direct,
       bundledDependencies: Object.keys(direct),
@@ -186,14 +200,23 @@ export function distribute(name: string, output?: string): string {
     writeFileSync(join(temporary, 'bunfig.toml'), 'env = false\n');
     cpSync(join(root, '.bun-version'), join(temporary, '.bun-version'));
     cpSync(join(root, 'bun.lock'), join(temporary, 'workspace.bun.lock'));
-    cpSync(join(root, 'docs/distribution.md'), join(temporary, 'README.md'));
+    cpSync(
+      existsSync(join(appSource, 'README.md'))
+        ? join(appSource, 'README.md')
+        : join(root, 'docs/distribution.md'),
+      join(temporary, 'README.md'),
+    );
     writeJson(join(temporary, 'distribution.json'), {
-      service: app.name,
-      database: {
-        prefix: app.prefix,
-        runtimeRole: app.runtimeRole,
-        migrations: join('app', migrations),
-      },
+      service: name,
+      ...(app && migrations !== undefined
+        ? {
+            database: {
+              prefix: app.prefix,
+              runtimeRole: app.runtimeRole,
+              migrations: join('app', migrations),
+            },
+          }
+        : {}),
       bun: pinnedBun,
       platform: process.platform,
       arch: process.arch,

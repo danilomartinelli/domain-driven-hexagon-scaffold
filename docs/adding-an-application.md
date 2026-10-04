@@ -1,9 +1,13 @@
 # Adding an application
 
-Until the `nest-app` generator ([#34](https://github.com/danilomartinelli/vibecoding-starter-js/issues/34))
-exists, a new application under `src/apps/<name>` needs every edit below.
-`src/apps/wallet` is the worked example. The work is done when each item is
-done or marked not applicable, with the reason, in the pull request.
+Start with the [local `nest-app` generator](library-generators.md#hybrid-application):
+`bun run nx generate @starter/generators:nest-app <name>`. It supplies the private
+project, adapter/composition structure, independent configuration, tests and
+distribution targets without persistence or business behavior. Follow the checklist
+below as those capabilities are added. Database/environment registration and root
+convenience commands are deliberate additions, not generation side effects.
+`src/apps/wallet` is the worked persistence example. Mark each item done or not
+applicable, with the reason, in the pull request.
 
 These mechanics need no edit: `type-fixtures` excludes `src/apps`, the
 architecture rules match every `src/apps/*`, and `run-many` reaches the new

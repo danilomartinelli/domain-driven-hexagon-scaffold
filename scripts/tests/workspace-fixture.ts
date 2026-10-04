@@ -77,8 +77,15 @@ export async function createWorkspace(): Promise<Workspace> {
     }
     return {
       root,
-      run: (args): Promise<CommandResult> =>
-        runCommand(args, {
+      run: async (args): Promise<CommandResult> => {
+        // Nx 23.2.1 reuses native file hashes by mtime (whole seconds on Unix).
+        // These fixtures mutate files between commands, sometimes within one
+        // tick. Rehash their bytes while retaining graph and task caches, so
+        // cache-invalidation assertions cannot silently read stale source.
+        await rm(join(root, '.nx/workspace-data/nx_files.nxt'), {
+          force: true,
+        });
+        return runCommand(args, {
           cwd: root,
           timeout: 30_000,
           env: {
@@ -91,7 +98,8 @@ export async function createWorkspace(): Promise<Workspace> {
             NX_WORKSPACE_DATA_DIRECTORY: join(root, '.nx/workspace-data'),
             NX_TUI: 'false',
           },
-        }),
+        });
+      },
       cleanup: (): Promise<void> => rm(root, { recursive: true, force: true }),
     };
   } catch (error) {

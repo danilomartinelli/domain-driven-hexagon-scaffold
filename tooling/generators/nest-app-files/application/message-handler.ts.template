@@ -1,0 +1,11 @@
+/** Supply identity explicitly; application behavior never reads ambient request context. */
+export interface MessageMetadata {
+  eventId: string;
+  correlationId: string;
+}
+
+/** Resolve only after owned effects commit. Handlers must tolerate redelivery. */
+export interface MessageHandler {
+  pattern: string;
+  handle(data: unknown, metadata: MessageMetadata): Promise<void>;
+}

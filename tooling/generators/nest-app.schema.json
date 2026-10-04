@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "$default": { "$source": "argv", "index": 0 },
+      "description": "Unique application name under src/apps."
+    },
+    "preset": {
+      "type": "string",
+      "enum": ["hybrid"],
+      "default": "hybrid",
+      "description": "HTTP/GraphQL and independently recovering RabbitMQ, without a database."
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

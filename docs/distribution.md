@@ -5,6 +5,13 @@ or `bun run nx run wallet:distribution`. Copy the entire resulting `dist/user`
 or `dist/wallet` directory to a machine with the same OS/architecture and Bun
 1.4.2. No sibling source or workspace is required.
 
+[Generated hybrid apps](library-generators.md#hybrid-application) use the same
+`<name>:distribution` target. A database-free app receives only `start`; registered
+database applications additionally receive the scoped migration tooling described
+below. Packaging rejects unregistered `database/` content instead of silently
+omitting its migration configuration. Generated app artifacts include their own
+README with environment and transport instructions.
+
 Each artifact contains `app/` TypeScript and owned SQL migrations, private
 libraries and installed transitive runtime/migration dependencies in
 `node_modules/`, standalone decorator configuration, and `distribution.json`

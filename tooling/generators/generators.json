@@ -1,5 +1,10 @@
 {
   "generators": {
+    "nest-app": {
+      "factory": "./nest-app.mjs",
+      "schema": "./nest-app.schema.json",
+      "description": "Generate an independent hybrid Nest/Bun application."
+    },
     "ts-lib": {
       "factory": "./ts-lib.mjs",
       "schema": "./ts-lib.schema.json",

@@ -1,0 +1,12 @@
+import 'reflect-metadata';
+import { ConsoleLogger } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { installShutdown } from '@starter/nest-support/operations';
+import { AppModule } from './composition/app.module';
+import { configuration } from './configs/environment';
+
+const app = await NestFactory.create(AppModule, {
+  logger: new ConsoleLogger({ json: true, flattenParams: true }),
+});
+installShutdown(app, () => app.get(AppModule).beforeApplicationShutdown());
+await app.listen(configuration().port, '0.0.0.0');
