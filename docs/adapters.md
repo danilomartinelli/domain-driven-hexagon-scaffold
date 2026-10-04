@@ -1,9 +1,10 @@
 # Adapter compatibility and example limits
 
-Issue #6 upgrades the application to Nest 12 on **Bun 1.4.2**. Run the same
+Issue #6 upgraded the application to Nest 12 on **Bun 1.4.2**. Run the same
 individual install, database, start, and test commands in [the runtime guide](runtime.md).
-All adapters remain registered in `AppModule` / `UserModule`; no separate CLI
-entry point or microservice transport has been added.
+User's adapters are registered in its `AppModule` / `UserModule`. User and Wallet
+consume RabbitMQ through repository-owned adapters; no separate CLI entry point
+has been added.
 
 ## Dependency selection
 
@@ -105,17 +106,16 @@ into plain User use cases, and `FindUsersQuery` into the plain
 delegating, including when called without HTTP context.
 
 The use cases own `UserWriteTransaction` and explicitly request persistence
-and fact recording inside its atomic scope. The Slonik adapter binds User and
-Wallet repositories to the same local connection and awaits temporary Wallet
-coordination and in-process dispatch. Repositories only persist; they never
-publish facts. Exceptions reject the transaction callback without any ambient
+and fact recording inside its atomic scope. The Slonik adapter binds the User
+repository and the pending `user_outbox` envelope to one local connection; no
+connection crosses into Wallet. Repositories only persist; they never publish
+facts. Exceptions reject the transaction callback without any ambient
 connection cleanup. The database provider still awaits pool creation and shutdown.
 
-Dispatch includes generated publication identity plus explicit operation time,
-correlation and causation as a separate listener argument. It remains before
-commit, so arbitrary listener side effects cannot be rolled back. This temporary
-bridge must be replaced by an outbox and independent Wallet consumption at the
-asynchronous cutover. See the [write-path explanation](runtime.md#persistence-and-transaction-review).
+The envelope carries a stable event identity plus explicit operation time,
+correlation and causation. The background publisher routes it only after commit,
+and Wallet creates its Wallet in its own transaction before acknowledging. See the
+[write-path explanation](runtime.md#persistence-and-transaction-review).
 
 Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
 CLI bootstrap remains outside that migration scope. See [developer checks](developer-checks.md)

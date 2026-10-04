@@ -5,13 +5,14 @@ import { withCleanup } from './cleanup';
 export async function until(
   check: () => Promise<boolean>,
   timeout = 20_000,
+  description = 'Generated application probe',
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await check()) return;
     await Bun.sleep(100);
   }
-  throw new Error('Generated application probe timed out');
+  throw new Error(`${description} timed out`);
 }
 
 export interface RunningApp {

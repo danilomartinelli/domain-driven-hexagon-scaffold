@@ -13,7 +13,9 @@ and [developer checks](../docs/developer-checks.md) for the validation contract.
   before connecting. Development intentionally permits shell overrides.
 - Preserve command, interruption and cleanup statuses. Attempt owned cleanup
   after failed or interrupted runs; cleanup failure must fail an otherwise
-  successful run. Keep logs and results under `.context/test-runs/`.
+  successful run. Keep logs and results under `.context/test-runs/`. The
+  development workflow (`dev`) cleans up only a failed infrastructure startup;
+  ready infrastructure outlives its migrations and applications until `dev:down`.
 - Keep provisioning, live tests and environment execution uncached in Nx
   (`cache: false`). Test run IDs cannot be reused; development runs can be
   prepared again using their existing manifest.

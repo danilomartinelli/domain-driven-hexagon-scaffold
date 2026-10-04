@@ -8,9 +8,15 @@ async function main() {
       ? z.array(z.string()).parse(JSON.parse(process.env.DDH_ENVIRONMENT_ARGS))
       : process.argv.slice(inNx ? 3 : 2);
   const [action, ...args] = invocation;
-  if (action !== 'prepare' && action !== 'down' && action !== 'exec')
+  if (
+    action !== 'prepare' &&
+    action !== 'down' &&
+    action !== 'exec' &&
+    action !== 'dev'
+  )
     throw new Error(
-      'Usage: environment-cli.ts prepare|down|exec --environment=test|development --run=<id> [-- command]',
+      'Usage: environment-cli.ts prepare|down|exec --environment=test|development --run=<id> [-- command]\n' +
+        '       environment-cli.ts dev --run=<id>',
     );
   if (!inNx) {
     const child = Bun.spawn(
@@ -46,7 +52,7 @@ async function main() {
       throw new Error(`Unknown option: ${option}`);
   const environment =
     options.find((option) => option.startsWith('--environment='))?.slice(14) ??
-    'test';
+    (action === 'dev' ? 'development' : 'test');
   if (environment !== 'test' && environment !== 'development')
     throw new Error('Environment must be test or development.');
   const run =

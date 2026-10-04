@@ -8,7 +8,7 @@ current checkout, run the scripts below from the repository root.
 
 ## Setup
 
-Install the Bun version in `.bun-version` and ripgrep on `PATH` before creating
+Install the Bun version in `.bun-version`, ripgrep and `make` on `PATH` before creating
 a workspace. Setup runs the [developer tool checks](developer-checks.md#setup)
 and `bun install --frozen-lockfile`, including Husky installation. It supports
 local and cloud workspaces and does not require Docker. Setup failures retain
@@ -47,9 +47,10 @@ bash scripts/conductor/run.sh
 ```
 
 The local-only script requires `CONDUCTOR_IS_LOCAL=1` and `CONDUCTOR_PORT`.
-It prepares the named development run `conductor`, applies pending migrations
-for both applications, then starts User on `CONDUCTOR_PORT` and Wallet on
-`CONDUCTOR_PORT + 1` (each has Swagger at `/docs`). The environment variables
+It runs the [development workflow](database.md#development) behind `make dev`
+(`bun run dev --run=conductor`): it prepares the named development run
+`conductor`, applies pending migrations for both applications, then starts User
+on `CONDUCTOR_PORT` and Wallet on `CONDUCTOR_PORT + 1` (each has Swagger at `/docs`). The environment variables
 are `USER_HTTP_PORT` and `WALLET_HTTP_PORT`; ordinary preparation allocates them. Database/broker identities and ports are isolated by the existing
 [workspace environment runner](database.md#isolation-and-configuration), so
 different workspaces can run concurrently. Keep database/broker shell overrides
@@ -63,7 +64,9 @@ Seeds remain explicit because they are not idempotent. To add the example user
 and wallet once, while the development environment is running:
 
 ```sh
-bun run env:exec --environment=development --run=conductor -- bun run seed:up
+for app in user wallet; do
+  DATABASE_APP="$app" bun run env:exec --environment=development --run=conductor -- bun run seed:up
+done
 ```
 
 The **unit** Run entry executes `bun run test:watch` locally or in cloud
@@ -72,8 +75,8 @@ development command or depend on `CONDUCTOR_PORT`.
 
 ## Stop and archive
 
-On exit or interruption, the development script attempts to stop its owned
-containers and network. It preserves application failure/interruption status
+Unlike `make dev`, the development script attempts to stop its owned containers
+and network on exit or interruption (`bun run dev:down --run=conductor`). It preserves application failure/interruption status
 and fails if otherwise successful execution cannot clean up. Archive repeats
 the same scoped cleanup locally, including after a forcibly killed process:
 

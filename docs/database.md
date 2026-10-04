@@ -11,29 +11,48 @@ Conductor users can use the [workspace setup and Run commands](conductor.md)
 for an isolated development environment and an allocated application port.
 
 ```sh
-bun run env:prepare --environment=development --run=default
+make dev   # bun run dev: prepare, migrate every application, watch User and Wallet
+make down  # bun run dev:down: stop containers and their network; keep named volumes
+```
+
+`bun run dev` runs the uncached `infrastructure:dev` target for development's
+`default` run (`--run=<id>` selects another). It prepares PostgreSQL, RabbitMQ
+and Kong and waits for their healthchecks, applies pending migrations for every
+registered application, then runs `start:dev` with the manifest's settings. The
+infrastructure keeps running after the applications or migrations exit;
+`make down` stops it. A failed infrastructure startup removes only that run's
+containers and network. `make dev` never seeds: seeds are not idempotent, so
+insert the examples once while the environment is running:
+
+```sh
 for app in user wallet; do
-  DATABASE_APP="$app" bun run env:exec --environment=development --run=default -- bun run migration:up
   DATABASE_APP="$app" bun run env:exec --environment=development --run=default -- bun run seed:up
 done
-bun run env:exec --environment=development --run=default -- bun run start:dev
-# Stop containers and their network; keep all named volumes.
+```
+
+For targeted work, `env:prepare` provisions without migrating, `env:exec` runs
+one command with the manifest's settings, and `env:down` stops a selected run:
+
+```sh
+bun run env:prepare --environment=development --run=default
+DATABASE_APP=wallet bun run env:exec --environment=development --run=default -- bun run migration:status
+bun run env:exec --environment=development --run=default -- bun run start:user:dev
 bun run env:down --environment=development --run=default
 ```
 
 Preparing the same development environment again reuses its manifest, ports,
-credentials and volumes. Migrations and seeds are explicit, separate operations.
-Migration and seed commands default to `user`; use `DATABASE_APP=wallet` for
-Wallet. `start:dev` runs both independent processes. The [Wallet guide](wallet.md#run-it-locally)
-and [User guide](user.md#run-it-locally) describe running one service.
-`docker:env` is an alias for preparing
+credentials and volumes. Migration and seed commands default to `user`; use
+`DATABASE_APP=wallet` for Wallet. `start:dev` runs both independent processes.
+The [Wallet guide](wallet.md#run-it-locally) and [User guide](user.md#run-it-locally)
+describe running one service. `docker:env` is an alias for preparing
 development's `default` run.
 
 ## Disposable tests
 
 The complete workflow chooses a fresh run, prepares infrastructure, invokes the
 selected applications' database migration and seed commands, runs the suite,
-and attempts owned-resource shutdown even after failure or interruption:
+and attempts owned-resource shutdown even after failure or interruption.
+`make test` runs `bun run test:e2e`:
 
 ```sh
 bun run test:e2e
@@ -69,7 +88,6 @@ Use a new test run name after shutdown; test names cannot be reused. `docker:tes
 prepares the test run named `default`. It does not migrate or seed. Direct
 `test:e2e:prepared`, `migration:*:tests` and `seed:up:tests` require the selected
 owned environment, normally supplied through `env:exec`.
-The final Makefile aliases belong to the full workflow slice of issue #15.
 
 ### Fault injection
 
@@ -259,6 +277,5 @@ System tests stop both processes, purge their queues and clear both databases
 before restarting each scenario. Component fixtures own their separate resources.
 Migration history remains intact.
 
-See [developer checks](developer-checks.md) for the current gate and
-[ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status)
-for the remaining service split.
+See [developer checks](developer-checks.md) for the current gate and the
+[migration evidence map](migration-evidence.md) for the delivered service split.

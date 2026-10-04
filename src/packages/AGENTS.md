@@ -1,7 +1,9 @@
 # Deep modules
 
 Private Bun workspace packages and nested Nx projects live here. `core/` owns
-framework-free technical primitives; `nest-support/` owns framework helpers.
+framework-free technical primitives; `nest-support/` owns framework helpers,
+`rabbitmq/` failure-queue transport and `integration-contracts/` versioned
+event envelopes.
 Business code belongs to its application: `src/apps/user` or `src/apps/wallet`.
 `example/` is a starter template to copy or delete. See [the Nx guide](../../docs/nx-workspace.md).
 

@@ -361,3 +361,62 @@ test('cached typechecking is invalidated by dependency source, shared config and
     await workspace.cleanup();
   }
 }, 180_000);
+
+test('cached lint and unit tests are invalidated by shared ESLint configuration and project tests', async () => {
+  const workspace = await createWorkspace();
+  const run = (target: 'lint' | 'test'): ReturnType<typeof workspace.run> =>
+    workspace.run([
+      process.execPath,
+      'run',
+      'nx',
+      'run',
+      `core:${target}`,
+      '--output-style=static',
+    ]);
+  try {
+    for (const target of ['lint', 'test'] as const) {
+      const initial = await run(target);
+      expect(initial.code, initial.stdout + initial.stderr).toBe(0);
+      const repeated = await run(target);
+      expect(repeated.code, repeated.stdout + repeated.stderr).toBe(0);
+      expect(repeated.stdout).toContain('Nx read the output from the cache');
+    }
+
+    const config = Bun.file(join(workspace.root, 'tooling/config/eslint.mjs'));
+    const originalConfig = await config.text();
+    const invalidConfig = originalConfig.replace(
+      "{ selector: 'LabeledStatement',",
+      "{ selector: 'Program', message: 'Shared lint rule changed' },\n  { selector: 'LabeledStatement',",
+    );
+    expect(invalidConfig).not.toBe(originalConfig);
+    await Bun.write(config, invalidConfig);
+    const configFailure = await run('lint');
+    expect(configFailure.code).not.toBe(0);
+    expect(configFailure.stdout + configFailure.stderr).toContain(
+      'Shared lint rule changed',
+    );
+    await Bun.write(config, originalConfig);
+
+    const probe = join(
+      workspace.root,
+      'src/packages/core/tests/cache-probe.test.ts',
+    );
+    await Bun.write(
+      probe,
+      "import { expect, test } from 'bun:test';\n\ntest('cache probe sees the new test', () => {\n  expect('changed').toBe('cached');\n});\n",
+    );
+    const testFailure = await run('test');
+    expect(testFailure.code).not.toBe(0);
+    expect(testFailure.stdout + testFailure.stderr).toContain(
+      'cache probe sees the new test',
+    );
+    await rm(probe);
+
+    for (const target of ['lint', 'test'] as const) {
+      const restored = await run(target);
+      expect(restored.code, restored.stdout + restored.stderr).toBe(0);
+    }
+  } finally {
+    await workspace.cleanup();
+  }
+}, 120_000);

@@ -22,15 +22,19 @@ Execute as [verificações de desenvolvimento](docs/developer-checks.md) individ
 lint, formatação e arquitetura.
 Os comandos de banco de dados também rodam diretamente no Bun. Consulte o [guia de banco de dados](docs/database.md)
 para PostgreSQL local, migrações SQL e seeds.
-Execute a aplicação com `bun run start:dev` e os casos Gherkin existentes com
-`bun run test:e2e`. `bun test` executa a suíte do núcleo sem dependência de infraestrutura. Consulte o
+Com o Docker em execução, `make dev` prepara a infraestrutura local, migra os dois
+bancos de dados e executa as aplicações User e Wallet em modo watch; `make down`
+para a infraestrutura e preserva seus dados. `make test` executa os casos Gherkin
+existentes e as regressões do sistema em infraestrutura isolada, e `make check`
+executa o gate local completo. `bun run test:unit` executa as suítes sem dependência de infraestrutura. Consulte o
 [guia de runtime](docs/runtime.md) para configuração, checagem de tipos e os sete casos Gherkin
 originais, além das regressões de rollback com banco de dados real.
 O [inventário de dependências](docs/dependencies.md) registra as versões compatíveis e as
 correções de segurança. Execute `bun audit` separadamente para verificar novamente toda a árvore de dependências.
-A [baseline Nx/Bun](docs/nx-workspace.md) agora orquestra a aplicação transitória,
-os pacotes técnicos privados e as regressões. O trabalho de migração entregue e
-restante é acompanhado no [status de implementação do ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+O [workspace Nx](docs/nx-workspace.md) orquestra as aplicações independentes User e Wallet,
+os pacotes técnicos privados e as regressões. A migração entregue está registrada no
+[status de implementação do ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status)
+e no seu [mapa de evidências](docs/migration-evidence.md).
 
 Os padrões e princípios apresentados aqui são **agnósticos de framework/linguagem**. Portanto, as tecnologias acima podem ser facilmente substituídas por qualquer alternativa. Não importa a linguagem ou o framework utilizado: qualquer aplicação pode se beneficiar dos princípios descritos abaixo.
 
@@ -448,12 +452,12 @@ Exemplos:
 
 - [user-created.domain-event.ts](src/apps/user/domain/events/user-created.domain-event.ts) - objeto simples que guarda os dados relacionados ao evento publicado.
 - [create-user.ts](src/apps/user/application/create-user.ts) e [delete-user.ts](src/apps/user/application/delete-user.ts) - casos de uso simples solicitam um escopo atômico e registram explicitamente os fatos resultantes por meio de portas pertencentes à camada de aplicação.
-- [user-write-transaction.ts](src/apps/user/database/user-write-transaction.ts) - o adaptador Slonik é dono da conexão e coordena temporariamente a criação da Wallet e o dispatch no mesmo processo. Substitua essa ponte por um outbox na transição para o modelo assíncrono.
-- [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - despacha fatos com identidade e metadados explícitos da operação; agregados e repositórios não publicam eventos.
+- [user-write-transaction.ts](src/apps/user/database/user-write-transaction.ts) - o adaptador Slonik confirma o perfil e o evento pendente durável na mesma transação. O [publisher](src/apps/user/messaging/rabbit-outbox-publisher.ts) o entrega à Wallet pelo RabbitMQ após o commit.
+- [publish-domain-events.ts](src/packages/nest-support/lib/application/publish-domain-events.ts) - helper técnico que despacha fatos em processo com identidade e metadados explícitos da operação; as aplicações User e Wallet publicam pelo outbox, e agregados e repositórios não publicam eventos.
 - [sql-repository.base.ts](src/packages/nest-support/lib/db/sql-repository.base.ts) - insert/delete do repositório apenas persistem, usando a conexão fornecida pelo adaptador de transação.
 - [create-user.service.ts](src/apps/user/commands/create-user/create-user.service.ts) - o adaptador de entrada do Nest CQRS mapeia o command e os metadados para o caso de uso simples.
 
-Veja o [caminho de escrita atual e a transição restante](docs/runtime.md#persistence-and-transaction-review).
+Veja o [caminho de escrita atual](docs/runtime.md#persistence-and-transaction-review).
 
 Para entender melhor os eventos de domínio e sua implementação, leia:
 
@@ -895,8 +899,8 @@ Contém `Controllers` e DTOs de `Request`/`Response` (também pode conter `Views
 Pode-se usar um controller por tipo de gatilho para ter uma separação mais clara. Por exemplo:
 
 - [create-user.http.controller.ts](src/apps/user/commands/create-user/create-user.http.controller.ts) para requisições HTTP ([NestJS Controllers](https://docs.nestjs.com/controllers)),
-- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) para a definição de um comando de CLI usando [Commander](https://github.com/tj/commander.js), com injeção de dependência do Nest. CLI startup remains unfinished; veja [compatibilidade e limites dos adaptadores](docs/adapters.md).
-- [rabbit-user-command-consumer.ts](src/apps/user/messaging/rabbit-user-command-consumer.ts) for external messages; see the [executable RabbitMQ contract](docs/user-commands.md).
+- [create-user.cli.controller.ts](src/apps/user/commands/create-user/create-user.cli.controller.ts) para a definição de um comando de CLI usando [Commander](https://github.com/tj/commander.js), com injeção de dependência do Nest. A inicialização da CLI continua inacabada; veja [compatibilidade e limites dos adaptadores](docs/adapters.md).
+- [rabbit-user-command-consumer.ts](src/apps/user/messaging/rabbit-user-command-consumer.ts) para commands RabbitMQ validados, com metadados explícitos e recuperação independente; veja o [contrato executável](docs/user-commands.md).
 - etc.
 
 ### Resolvers
@@ -1232,20 +1236,21 @@ Leia mais:
 
 Para garantir que todos no time sigam as práticas arquiteturais definidas, use ferramentas e bibliotecas capazes de analisar e validar as dependências entre arquivos e camadas.
 
-Por exemplo:
+Este workspace valida a posse dos projetos Nx e a direção das camadas com:
 
-```typescript
-  // Dependency cruiser example
-  {
-    name: 'no-domain-deps',
-    comment: 'Domain layer cannot depend on api or database layers',
-    severity: 'error',
-    from: { path: ['domain', 'entity', 'aggregate', 'value-object'] },
-    to: { path: ['api', 'controller', 'dtos', 'database', 'repository'] },
-  },
+```sh
+bun run lint:boundaries
 ```
 
-O trecho de código acima impede que sua camada de domínio dependa da camada de API ou da camada de banco de dados. Configuração de exemplo: [.dependency-cruiser.mjs](.dependency-cruiser.mjs)
+A [verificação do grafo Nx](scripts/check-project-boundaries.ts) rejeita
+dependências entre aplicações, violações de posse das bibliotecas compartilhadas e
+ciclos entre projetos, incluindo arestas implícitas. O [dependency-cruiser](.dependency-cruiser.mjs)
+verifica imports e exports do código, incluindo imports somente de tipo e aliases.
+Domínio, casos de uso e entradas de commands não podem importar adaptadores de
+framework, transporte ou banco de dados nem contexto ambiente, mesmo por meio de
+um barrel compartilhado. Código de produção não pode importar helpers de teste.
+O [guia do workspace](docs/nx-workspace.md#executable-boundaries) descreve o grafo
+permitido e as regressões executáveis de imports inválidos.
 
 Você também pode gerar grafos como este:
 

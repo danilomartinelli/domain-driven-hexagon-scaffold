@@ -5,8 +5,8 @@ build services with Domain-Driven Design and hexagonal architecture, maintained
 by humans and AI coding agents working from the same rules.
 
 It started as a fork of [Domain-Driven Hexagon](https://github.com/Sairyss/domain-driven-hexagon),
-whose guide remains the [README](README.md), and is being modernized onto Bun
-and Nx ([ADR 0001](docs/adr/0001-modernize-with-bun.md),
+whose guide remains the [README](README.md), and now runs independent User and
+Wallet services on Bun and Nx ([ADR 0001](docs/adr/0001-modernize-with-bun.md),
 [ADR 0002](docs/adr/0002-adopt-nx-with-nest-and-bun.md)).
 
 ## Guiding principles
@@ -33,9 +33,7 @@ live in the [Nx guide](docs/nx-workspace.md); validation lives in
 
 Next:
 
-- Repository-owned Nx generators (`nest-app`, `ts-lib`, `nest-lib`) that
-  preserve the architectural boundaries.
-- Complete startup and executable examples for the CLI and messaging adapters.
+- Complete startup and an executable example for the User CLI adapter.
 
 Contribution rules:
 

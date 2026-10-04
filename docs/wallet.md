@@ -12,9 +12,10 @@ For delivery outside the workspace, see [independent distributions](distribution
 
 ## Run it locally
 
-Run from the repository root with Docker available. Preparing a development
-run starts every registered database; migrations and seeds stay explicit and
-select Wallet with `DATABASE_APP=wallet`:
+Run from the repository root with Docker available. `make dev` migrates and
+starts both services. To run Wallet alone, prepare the development run, which
+starts every registered database; migrations and seeds stay explicit and select
+Wallet with `DATABASE_APP=wallet`:
 
 ```sh
 bun run env:prepare --environment=development --run=default
@@ -61,7 +62,7 @@ file; `env:exec` supplies them from the selected environment manifest.
 ## Database ownership
 
 Wallet owns a new database with its own migration history and seed; no data
-is transferred from the transitional database and no volume is deleted.
+is transferred from the earlier shared database and no volume is deleted.
 [Its baseline](../src/apps/wallet/database/migrations/1790801127437_wallet-baseline.sql)
 creates `wallets` (one Wallet per User identity, balance never negative) and
 initially grants the runtime role `SELECT` only. The
@@ -196,9 +197,8 @@ and kills a test consumer on either side of commit to observe actual broker
 redelivery. Concurrent consumers preserve balances, invalid events remain in the
 failure queue, and an owned TCP gate proves startup and recovery while messaging
 is unavailable. The suite also verifies the runtime role's
-privileges and that neither Wallet credential can connect to the other
-configured application databases. For repeated runs against a prepared
-environment:
+privileges; the distributed suite verifies that neither Wallet credential can
+connect to User's database. For repeated runs against a prepared environment:
 
 ```sh
 bun run env:prepare --environment=test --run=wallet-1

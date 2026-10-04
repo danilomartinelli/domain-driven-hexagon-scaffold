@@ -12,11 +12,12 @@ pending integration events in its own database. The independent Wallet applicati
 [src/apps/AGENTS.md](./src/apps/AGENTS.md) before working there.
 
 - `src/packages/core/` contains framework-free technical primitives;
-  `src/packages/nest-support/` contains Nest adapters. Keep business entities
-  and use cases in the application.
+  `src/packages/nest-support/` contains Nest adapters, `src/packages/rabbitmq/`
+  failure-queue transport and `src/packages/integration-contracts/` versioned
+  event envelopes. Keep business entities and use cases in the application.
 - `database/` owns migration/seed tooling; application directories own their SQL;
   `scripts/` owns environment runners and repository checks; `tooling/config/`
-  owns shared quality settings.
+  owns shared quality settings and `tooling/generators/` the local Nx generators.
 
 Packages are deep modules: read [src/packages/AGENTS.md](./src/packages/AGENTS.md)
 before adding or importing one. External callers and package tests use explicit
@@ -27,15 +28,17 @@ ownership and targets.
 ## Setup and local development
 
 Run commands from the repository root. Use the Bun version in `.bun-version`,
-install ripgrep (`rg`), and run `bun install --frozen-lockfile`. Complete the
+install ripgrep (`rg`) and `make`, and run `bun install --frozen-lockfile`. Complete the
 tool checks in [developer setup](docs/developer-checks.md#setup) before running
 tests, formatting or Nx tasks. Use `bun run nx` for Nx commands; the wrapper
 disables automatic dotenv loading and the daemon.
 
-For local development, follow [the database workflow](docs/database.md#development)
-to prepare Docker services, migrate, seed and run the application through
-`env:exec`. Preparation alone does not migrate or seed. The same guide covers
-owned-resource shutdown and prepared test environments.
+For local development, run `make dev` (`bun run dev`): it prepares this
+workspace's Docker services, applies migrations and watches both applications.
+`make down` stops those services and keeps their volumes. Seeds stay explicit;
+see [the database workflow](docs/database.md#development) for seeding, single
+services through `env:exec` and prepared test environments. `make test` runs the
+isolated system E2E suite.
 
 ## Agent skills
 
@@ -68,11 +71,11 @@ Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`, created lazily 
 Use `bun run test:unit` for infrastructure-free application and package tests;
 bare `bun test` only discovers `src/packages/core/tests`.
 
-Before declaring code changes ready, run `bun run check:full` with Docker
-running. For documentation-only changes, format the affected files, run
-`bun run check:docs` and verify changed commands. See
-[developer checks](docs/developer-checks.md) for focused suites and the scope
-of each gate.
+Before declaring code changes ready, run the full gate, `bun run check:full`
+(`make check`), with Docker running. For documentation-only changes, format the
+affected files, run `bun run check:docs` and verify changed commands. Targeted
+checks remain the development loop; see [developer checks](docs/developer-checks.md)
+for focused suites and the scope of each gate.
 
 ### Review before commit
 

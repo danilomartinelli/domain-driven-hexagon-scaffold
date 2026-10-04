@@ -2,21 +2,23 @@
 
 ## Setup
 
-Use the Bun version pinned in `.bun-version` and install ripgrep (`rg`) on
-`PATH` (on macOS: `brew install ripgrep`). The bounded search helper and its
-pre-commit tests require ripgrep. Installation runs the `prepare`
+Use the Bun version pinned in `.bun-version` and install ripgrep (`rg`) and
+`make` on `PATH` (on macOS: `brew install ripgrep`; the Xcode command line tools
+supply `make`). The bounded search helper and its pre-commit tests require
+ripgrep; the workflow guardrails dry-run the Makefile. Installation runs the `prepare`
 script to install Husky for this checkout. Confirm the installed tools before
 the first test, formatter or Nx task:
 
 ```sh
 bun --version # must match .bun-version
 rg --version
+make --version
 bun install --frozen-lockfile
 bun --bun ./node_modules/.bin/nx --version
 bun --bun ./node_modules/.bin/prettier --version
 ```
 
-Setup is complete when installation and all four version commands succeed;
+Setup is complete when installation and all five version commands succeed;
 repeat it after dependency or lockfile changes.
 
 ## Gates
@@ -41,10 +43,12 @@ while checking development and sibling environment preservation. Dispatches and
 first pushes without a baseline run it conservatively. The broader runner
 lifecycle suite remains in local `check:full` and includes these focused targets.
 
-Before declaring code changes ready, run `bun run check:full`. Its current scope
-is the suites below; future suites are added
-with their migration slices. Documentation-only changes require formatting of
-the affected files, `bun run check:docs`, and verification of changed commands.
+Before declaring code changes ready, run `bun run check:full` (`make check`)
+with Docker running. Its scope is the suites below. Documentation-only changes
+require formatting of the affected files, `bun run check:docs`, and verification
+of changed commands. The focused commands below remain available during development.
+The [migration evidence map](migration-evidence.md) links each delivered
+requirement to the suites that exercise it.
 
 | Check             | Command                     | Scope                                                                                                                                                                                                               |
 | ----------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -58,7 +62,7 @@ the affected files, `bun run check:docs`, and verification of changed commands.
 | Live behavior     | `bun run test:e2e`          | Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up                                                                          |
 | Components        | `bun run test:component`    | Application targets provision isolated runs, migrate/seed only their app and check APIs/database ownership. The generator target owns a broker and scratch app to verify generated transport recovery and shutdown. |
 | Distributions     | `bun run test:distribution` | Packages each service, runs it from an external directory, migrates only its owned database and verifies independent HTTP/GraphQL and messaging                                                                     |
-| Runner lifecycle  | `bun run test:tooling`      | Real Docker: named environments, development/sibling preservation, target guards, failure status, signals and cleanup                                                                                               |
+| Runner lifecycle  | `bun run test:tooling`      | Real Docker: named environments, the `make dev`/`make down` workflow, development/sibling preservation, target guards, failure status, signals and cleanup                                                          |
 | Documentation     | `bun run check:docs`        | All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents                                                                                       |
 | Dependencies      | `bun run audit:changed`     | Complete locked tree; no advisory ignores                                                                                                                                                                           |
 
@@ -187,8 +191,9 @@ own `test-debug` target. Live targets always execute.
 `check:code`, `check` or `check:full`. It exercises the supported Nx CLI in a
 unique temporary workspace, checks real project edges and warms typecheck's
 cache before introducing invalid dependency source, shared TypeScript settings
-and decorator-fixture types. Each mutation must fail, and restored source must
-pass. Installed external tools are shared; workspace package links and Nx cache
+and decorator-fixture types. It likewise warms lint and unit-test caches before
+changing the shared ESLint configuration and adding a failing project test.
+Each mutation must fail, and restored source must pass. Installed external tools are shared; workspace package links and Nx cache
 paths point into the temporary copy. The checkout and its cache remain untouched.
 
 Subprocesses have a deadline and a default output limit of 64,000 characters per
@@ -198,6 +203,13 @@ group; other commands fail explicitly on output overflow rather than treating
 truncated output as a successful result. Test fixtures remove their temporary
 directories in `finally`. The guardrail suite also tests the audit CLI with real Git and Bun
 against a local HTTP registry fixture, with no external registry or Docker.
+Its workflow checks run `make -n` to confirm each Makefile alias delegates to
+one package script, follow `check` and `check:full` to every required suite,
+and read Nx's resolved targets to enforce the
+[cache contract](nx-workspace.md#cache-contract) and non-empty suites: native
+suites for applications, shared cores and contracts, plus each component, system,
+distribution and runner lifecycle suite that `run-many` would otherwise skip
+silently if its target disappeared. Editor tasks must name existing scripts.
 The existing real-Docker runner suite remains `test:tooling`. Its focused broker
 and gateway subsets are available as `bun run nx run test-runner:test-broker`
 and `bun run nx run test-runner:test-gateway`; both run in CI.
@@ -381,5 +393,6 @@ unit suite. `test:debug` runs only User unit tests; use
 `bun run nx run <project>:test-debug` for another suite. Bare `bun test` retains its
 `src/packages/core/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline.
 
-Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status).
+Migration progress is tracked in [ADR 0002's implementation status](adr/0002-adopt-nx-with-nest-and-bun.md#implementation-status)
+and its acceptance evidence in the [migration evidence map](migration-evidence.md).
 See the [dependency inventory](dependencies.md) for version decisions and security overrides.
