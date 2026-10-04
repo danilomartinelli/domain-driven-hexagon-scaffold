@@ -8,6 +8,11 @@ import type {
   UserOutbox,
 } from '../application/outbox.port';
 
+/** Optional AMQP short strings cannot carry every valid v1 JSON identity. */
+function amqpIdentity(value: string): string | undefined {
+  return Buffer.byteLength(value, 'utf8') <= 255 ? value : undefined;
+}
+
 async function within<T>(
   operation: Promise<T>,
   signal: AbortSignal,
@@ -170,8 +175,10 @@ export class RabbitOutboxPublisher {
           persistent: true,
           mandatory: true,
           contentType: 'application/json',
-          messageId: event.eventId,
-          correlationId: event.correlationId,
+          // The immutable envelope remains authoritative, including retained v1
+          // Unicode identities that exceed the optional property's byte budget.
+          messageId: amqpIdentity(event.eventId),
+          correlationId: amqpIdentity(event.correlationId),
           type: 'user.created',
         },
         (error: unknown) => {

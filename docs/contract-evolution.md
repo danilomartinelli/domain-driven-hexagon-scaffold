@@ -42,6 +42,21 @@ case. No test imports another application's implementation.
 
 ## Retained messages and independent transitions
 
+The v1 JSON identity contract remains compatible with retained Unicode values
+up to 255 UTF-16 code units. AMQP's optional `messageId` and `correlationId`
+properties have a separate 255-byte UTF-8 limit. User mirrors only identities
+that fit into those properties and preserves every identity in the immutable
+envelope. Wallet and its replay validator read that envelope, so oversized
+retained identities need neither rewriting nor a new version. Existing User
+outbox rows resume publication after upgrading the publisher. Inspect the body
+with `--payload` when a failure-queue record has no AMQP identity property;
+replay preserves its original bytes, properties and receipt semantics.
+
+The [User publication component test](../src/apps/user/tests/component/publication.test.ts)
+exercises real retained envelopes on both sides of the AMQP byte boundary, while
+the [system regression](../tests/integration/user-wallet.test.ts) verifies that
+accepted multibyte REST metadata does not block its Wallet or later registrations.
+
 The [live scenario](../tests/integration/contract-compatibility.test.ts) provisions
 real PostgreSQL databases, RabbitMQ and Kong. Test preloads substitute only the
 User wire mapper or Wallet decoder in separate application processes; the real

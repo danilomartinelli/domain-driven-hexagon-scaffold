@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "nx": "NX_LOAD_DOT_ENV_FILES=false NX_DAEMON=false NX_PROCESS_KILL_GRACE_PERIOD=90000 bun ./node_modules/.bin/nx",
+    "nx": "NX_LOAD_DOT_ENV_FILES=false NX_DAEMON=false NX_PROCESS_KILL_GRACE_PERIOD=90000 bun --preload ./scripts/nx-preload.ts ./node_modules/.bin/nx",
     "format": "bun run nx run workspace:format",
     "format:check": "bun run nx run workspace:format-check",
     "start": "bun run nx run-many --projects=user,wallet --target=serve --parallel=2 --output-style=stream",

@@ -15,6 +15,7 @@
       "{workspaceRoot}/eslint.config.mjs",
       "{workspaceRoot}/prettier.config.mjs",
       "{workspaceRoot}/.dependency-cruiser.mjs",
+      "{workspaceRoot}/scripts/nx-preload.ts",
       "{workspaceRoot}/tooling/config/**/*",
       {
         "runtime": "bun --version"

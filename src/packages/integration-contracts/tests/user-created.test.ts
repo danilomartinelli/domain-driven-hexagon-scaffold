@@ -28,6 +28,19 @@ test('the independent v1 baseline remains consumable with additive optional fiel
   ).toBe(true);
 });
 
+test('retained v1 Unicode identities remain valid beyond the optional AMQP property byte limit', () => {
+  const retained = {
+    ...baseline,
+    eventId: 'é'.repeat(128),
+    correlationId: '🌍'.repeat(127),
+  };
+  const result: unknown = decodeUserCreatedEvent(JSON.stringify(retained));
+  expect(result).toEqual({
+    accepted: true,
+    event: retained,
+  });
+});
+
 test.each([
   '{',
   'null',
