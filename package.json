@@ -1,10 +1,10 @@
 {
-  "name": "domain-driven-hexagon",
+  "name": "domain-driven-hexagon-scaffold",
   "version": "2.0.0",
   "description": "",
-  "author": "",
+  "author": "Danilo Martinelli",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "nx": "NX_LOAD_DOT_ENV_FILES=false NX_DAEMON=false NX_PROCESS_KILL_GRACE_PERIOD=90000 bun --preload ./scripts/nx-preload.ts ./node_modules/.bin/nx",
     "format": "bun run nx run workspace:format",
@@ -47,7 +47,7 @@
     "migration:status:tests": "bun run nx run database:migration-status --configuration=test",
     "seed:up": "bun run nx run database:seed",
     "seed:up:tests": "bun run nx run database:seed --configuration=test",
-    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/boundaries.test.ts ./scripts/tests/characterize.test.ts ./scripts/tests/test-counts.test.ts ./scripts/tests/failure-excerpt.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts ./scripts/tests/database-target.test.ts ./scripts/tests/cleanup.test.ts ./scripts/tests/fixture-lint.test.ts ./scripts/tests/regression-suite.test.ts ./scripts/tests/owned-container.test.ts ./scripts/tests/docs.test.ts ./scripts/tests/search.test.ts ./scripts/tests/agent-automation.test.ts ./scripts/tests/dependency-graph.test.ts ./scripts/tests/explore.test.ts ./scripts/tests/preservation.test.ts ./scripts/tests/ci-watch.test.ts ./scripts/tests/distribution.test.ts ./scripts/tests/distribution-paths.test.ts ./scripts/tests/workflow.test.ts",
+    "check:workspace": "bun test ./scripts/tests/command.test.ts ./scripts/tests/workspace.test.ts ./scripts/tests/boundaries.test.ts ./scripts/tests/characterize.test.ts ./scripts/tests/test-counts.test.ts ./scripts/tests/failure-excerpt.test.ts ./scripts/tests/dependency-audit.test.ts ./scripts/tests/environment-guard.test.ts ./scripts/tests/database-target.test.ts ./scripts/tests/cleanup.test.ts ./scripts/tests/fixture-lint.test.ts ./scripts/tests/regression-suite.test.ts ./scripts/tests/owned-container.test.ts ./scripts/tests/docs.test.ts ./scripts/tests/search.test.ts ./scripts/tests/agent-automation.test.ts ./scripts/tests/dependency-graph.test.ts ./scripts/tests/explore.test.ts ./scripts/tests/preservation.test.ts ./scripts/tests/ci-watch.test.ts ./scripts/tests/distribution.test.ts ./scripts/tests/distribution-paths.test.ts ./scripts/tests/workflow.test.ts ./scripts/tests/rename-project.test.ts",
     "audit:changed": "bun scripts/audit-changed.ts",
     "characterize": "bun scripts/characterize.ts",
     "env:prepare": "bun --no-env-file scripts/environment-cli.ts prepare",
@@ -65,7 +65,8 @@
     "start:user:debug": "bun run nx run user:debug",
     "test:user:component": "bun run nx run user:test-component",
     "ci:watch": "bun scripts/ci-watch.ts",
-    "test:distribution": "bun run nx run-many --target=test-distribution --parallel=2 --output-style=static"
+    "test:distribution": "bun run nx run-many --target=test-distribution --parallel=2 --output-style=static",
+    "rename": "bun --no-env-file scripts/rename-project.ts"
   },
   "dependencies": {
     "@nestjs/apollo": "14.0.3",
@@ -145,5 +146,10 @@
   ],
   "nx": {
     "includedScripts": []
+  },
+  "repository": "https://github.com/danilomartinelli/vibecoding-starter-js",
+  "homepage": "https://github.com/danilomartinelli/vibecoding-starter-js#readme",
+  "bugs": {
+    "url": "https://github.com/danilomartinelli/vibecoding-starter-js/issues"
   }
 }

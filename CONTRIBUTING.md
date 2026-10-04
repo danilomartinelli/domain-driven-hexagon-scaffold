@@ -1,5 +1,7 @@
 # Contributing
 
+Maintainer: [Danilo Martinelli](https://github.com/danilomartinelli).
+
 Thanks for your interest in contributing! This guide covers the workflow and
 the checks every change must pass.
 

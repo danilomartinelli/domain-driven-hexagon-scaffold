@@ -17,6 +17,12 @@ regression for changes outside documentation. It executes the complete prepared
 E2E suite while verifying development and sibling resources. The remaining
 runner lifecycle cases stay in local `check:full`.
 
+Amended on 2026-10-04: [ADR 0003](0003-application-capabilities-and-oci-delivery.md)
+revises the mandatory adapter set and host-based development topology for the next
+scaffold delivery and adds OCI packaging. These new decisions are accepted but not
+implemented; the migration requirements and implementation record below describe
+the completed baseline.
+
 The repository will adopt Nx with `user` and `wallet` as separate Nest
 applications. Wallet's current size does not determine its intended application
 boundary. Preserve Nest 12 and Bun as the application runtime, package manager

@@ -1,6 +1,6 @@
-# vibecoding-starter-js Vision
+# Domain-Driven Hexagon Scaffold Vision
 
-vibecoding-starter-js is an educational TypeScript starter that shows how to
+Domain-Driven Hexagon Scaffold is an educational TypeScript starter that shows how to
 build services with Domain-Driven Design and hexagonal architecture, maintained
 by humans and AI coding agents working from the same rules.
 
@@ -31,9 +31,11 @@ live in the [Nx guide](docs/nx-workspace.md); validation lives in
 
 ## Direction
 
-Next:
-
-- Complete startup and an executable example for the User CLI adapter.
+The [adoption guide](docs/adoption.md) describes the delivered project identity,
+MIT metadata and bounded rename command. The
+[accepted scaffold delivery design](docs/scaffold-design.md) records the next
+direction; [ADR 0003](docs/adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
+distinguishes this delivery from the remaining application-capability and OCI work.
 
 Contribution rules:
 

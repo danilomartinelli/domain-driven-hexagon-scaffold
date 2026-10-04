@@ -1,5 +1,7 @@
 # Code of Conduct
 
+Maintainer: [Danilo Martinelli](https://github.com/danilomartinelli).
+
 We as contributors and maintainers pledge to make participation in our
 project and community a harassment-free experience for everyone.
 

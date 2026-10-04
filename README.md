@@ -1,11 +1,14 @@
-# Domain-Driven Hexagon
+# Domain-Driven Hexagon Scaffold
 
 < English | [Português (Brasil)](README.pt-BR.md) >
 
 [![CI](https://github.com/danilomartinelli/vibecoding-starter-js/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/danilomartinelli/vibecoding-starter-js/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Check out my other repositories**:
+Adopt this scaffold with the [project rename guide](docs/adoption.md).
+Original guide and examples: [Sairyss/domain-driven-hexagon](https://github.com/Sairyss/domain-driven-hexagon), MIT; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+**Upstream resources by [Sairyss](https://github.com/Sairyss)**:
 
 - [Backend best practices](https://github.com/Sairyss/backend-best-practices) - Best practices, tools and guidelines for backend development.
 - [System Design Patterns](https://github.com/Sairyss/system-design-patterns) - list of topics and resources related to distributed systems, system design, microservices, scalability and performance, etc.
@@ -45,7 +48,7 @@ Patterns and principles presented here are **framework/language agnostic**. Ther
 
 ---
 
-- [Domain-Driven Hexagon](#domain-driven-hexagon)
+- [Domain-Driven Hexagon Scaffold](#domain-driven-hexagon-scaffold)
 - [Architecture](#architecture)
   - [Pros](#pros)
   - [Cons](#cons)
