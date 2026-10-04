@@ -360,3 +360,45 @@ test('organization adopter assigns current ownership to a GitHub team', async ()
     await workspace.cleanup();
   }
 }, 30_000);
+
+test('adopter metadata outside the managed identity fields is preserved', async () => {
+  const workspace = await checkout();
+  try {
+    const path = join(workspace.root, 'scaffold.identity.json');
+    const current: unknown = JSON.parse(await readFile(path, 'utf8'));
+    if (typeof current !== 'object' || current === null)
+      throw new Error('Invalid fixture identity');
+    await Bun.write(
+      path,
+      JSON.stringify(
+        { ...current, historicalRepository: 'example/original' },
+        null,
+        2,
+      ) + '\n',
+    );
+    const preview = await workspace.run([
+      process.execPath,
+      'run',
+      'rename',
+      '--',
+      ...identity,
+    ]);
+    expect(preview.code, preview.stderr).toBe(0);
+    expect(preview.stdout).not.toContain('historicalRepository');
+    const apply = await workspace.run([
+      process.execPath,
+      'run',
+      'rename',
+      '--',
+      ...identity,
+      '--apply',
+    ]);
+    expect(apply.code, apply.stderr).toBe(0);
+    expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({
+      displayName: 'Acme Service',
+      historicalRepository: 'example/original',
+    });
+  } finally {
+    await workspace.cleanup();
+  }
+}, 30_000);

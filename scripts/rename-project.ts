@@ -124,7 +124,7 @@ async function planRename(root: string, next: Identity): Promise<FileChange[]> {
   ];
   await edit(
     'scaffold.identity.json',
-    (Object.keys(previous) as (keyof Identity)[]).map((key) =>
+    (Object.keys(next) as (keyof Identity)[]).map((key) =>
       field(key, previous[key], next[key]),
     ),
   );
