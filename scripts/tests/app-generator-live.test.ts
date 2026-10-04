@@ -13,7 +13,10 @@ import { withCleanup } from './cleanup';
 import { composeProbeConfiguration } from './compose-fixture';
 import { removeOwnedContainer } from './owned-container';
 
-test('generated hybrid app starts without a broker, recovers deliveries and drains on shutdown', async () => {
+type Scenario =
+  'baseline' | 'timeout-overlap' | 'timeout-drain' | 'rejection' | 'retention';
+
+async function checkScenario(scenario: Scenario): Promise<void> {
   const workspace = await appWorkspace();
   const container = {
     name: `starter-generator-${randomUUID()}`,
@@ -31,11 +34,17 @@ test('generated hybrid app starts without a broker, recovers deliveries and drai
       `
       import type { MessageHandler, MessageMetadata } from './message-handler';
       export const received: { data: unknown; metadata: MessageMetadata }[] = [];
+      export const activity = { active: 0, maximum: 0 };
       let rejectOnce = true;
       let timeoutOnce = true;
       export const probe: MessageHandler = {
         pattern: 'probe.v1',
         async handle(data, metadata) {
+          activity.active++;
+          activity.maximum = Math.max(activity.maximum, activity.active);
+          try {
+          if (data === 'invalid') return { accepted: false, reason: 'invalid-probe' } as const;
+          if (data === 'drain-timeout') await new Promise<void>((resolve) => { setTimeout(resolve, 20_000); });
           if (data === 'retry' && rejectOnce) {
             rejectOnce = false;
             throw new Error('probe-private-error');
@@ -47,6 +56,7 @@ test('generated hybrid app starts without a broker, recovers deliveries and drai
           }
           await new Promise<void>((resolve) => { setTimeout(resolve, 500); });
           received.push({ data, metadata });
+          } finally { activity.active--; }
         },
       };
     `,
@@ -54,11 +64,15 @@ test('generated hybrid app starts without a broker, recovers deliveries and drai
     await writeFile(
       join(app, 'adapters/probe.controller.ts'),
       `
-      import { Controller, Get } from '@nestjs/common';
-      import { received } from '../application/probe';
+      import { Controller, Get, Inject, Post } from '@nestjs/common';
+      import { RabbitTransport } from './rabbitmq.transport';
+      import { received, activity } from '../application/probe';
       @Controller('probe')
       export class ProbeController {
+        constructor(@Inject(RabbitTransport) private readonly transport: RabbitTransport) {}
+        @Post('stop') async stop(): Promise<typeof activity> { await this.transport.stop(); return { ...activity }; }
         @Get() read(): typeof received { return received; }
+        @Get('activity') activity(): typeof activity { return activity; }
       }
     `,
     );
@@ -76,15 +90,18 @@ test('generated hybrid app starts without a broker, recovers deliveries and drai
         ) +
         "\nimport { probe } from '../application/probe';\nimport { ProbeController } from '../adapters/probe.controller';\n",
     );
-    await run(workspace, [
-      'bun',
-      'run',
-      'nx',
-      'run-many',
-      '--projects=telemetry',
-      '--targets=lint,typecheck',
-    ]);
-    await run(workspace, ['bun', 'run', 'lint:boundaries']);
+    // Every scenario emits the same probe source; check its static contracts once.
+    if (scenario === 'baseline') {
+      await run(workspace, [
+        'bun',
+        'run',
+        'nx',
+        'run-many',
+        '--projects=telemetry',
+        '--targets=lint,typecheck',
+      ]);
+      await run(workspace, ['bun', 'run', 'lint:boundaries']);
+    }
     const image = z
       .object({
         services: z.object({ rabbitmq: z.object({ image: z.string() }) }),
@@ -160,6 +177,143 @@ test('generated hybrid app starts without a broker, recovers deliveries and drai
               );
               await channel.waitForConfirms();
             };
+            if (scenario === 'timeout-overlap') {
+              await publish('timeout');
+              await until(
+                async () =>
+                  (
+                    (await fetch(`${url}/probe`).then((r) =>
+                      r.json(),
+                    )) as unknown[]
+                  ).length === 1,
+              );
+              expect(
+                await fetch(`${url}/probe/activity`).then((r) => r.json()),
+              ).toMatchObject({ maximum: 1 });
+              return;
+            }
+            if (scenario === 'timeout-drain') {
+              await publish('drain-timeout');
+              await until(() =>
+                Promise.resolve(logs().includes('consumer.failed')),
+              );
+              expect(
+                await fetch(`${url}/probe/stop`, { method: 'POST' }).then((r) =>
+                  r.json(),
+                ),
+              ).toMatchObject({ active: 0 });
+              await stop();
+              const lines = logs().split('\n');
+              const settled = lines.findIndex(
+                (line) =>
+                  line.includes('consumer.completed') &&
+                  line.includes('event-drain-timeout'),
+              );
+              const shutdown = lines.findIndex((line) =>
+                line.includes('shutdown.completed'),
+              );
+              expect(settled).toBeGreaterThanOrEqual(0);
+              expect(settled).toBeLessThan(shutdown);
+              return;
+            }
+            if (scenario === 'rejection') {
+              await publish('invalid');
+              await publish('valid');
+              await until(
+                async () =>
+                  (
+                    (await fetch(`${url}/probe`).then((r) =>
+                      r.json(),
+                    )) as unknown[]
+                  ).length === 1,
+              );
+              expect(
+                (await channel.checkQueue(`${queue}.failed`)).messageCount,
+              ).toBe(1);
+              const failed = await channel.get(`${queue}.failed`, {
+                noAck: true,
+              });
+              expect(failed && failed.content.toString()).toBe(
+                JSON.stringify({ pattern: 'probe.v1', data: 'invalid' }),
+              );
+              expect(failed && failed.properties.headers).toMatchObject({
+                'x-failure-reason': 'invalid-probe',
+              });
+              expect(logs()).not.toContain('consumer.failed');
+              expect((await fetch(`${url}/health/ready/consumer`)).ok).toBe(
+                true,
+              );
+              return;
+            }
+            if (scenario === 'retention') {
+              for (const sample of [
+                {
+                  body: 'invalid-json',
+                  identity: { messageId: 'partial-event' },
+                  reason: 'invalid-json',
+                },
+                {
+                  body: JSON.stringify({ pattern: 'probe.v1', data: 0 }),
+                  identity: { correlationId: 'partial-correlation' },
+                  reason: 'missing-identity',
+                },
+                {
+                  body: '{}',
+                  identity: {
+                    messageId: 'envelope-event',
+                    correlationId: 'envelope-correlation',
+                  },
+                  reason: 'invalid-envelope',
+                },
+                {
+                  body: JSON.stringify({ pattern: 'unknown.v1', data: null }),
+                  identity: {
+                    messageId: 'unknown-event',
+                    correlationId: 'unknown-correlation',
+                  },
+                  reason: 'unknown-pattern',
+                },
+              ]) {
+                channel.sendToQueue(queue, Buffer.from(sample.body), {
+                  persistent: true,
+                  ...sample.identity,
+                  expiration: '60000',
+                  contentType: 'application/json',
+                  contentEncoding: 'utf-8',
+                  type: 'probe',
+                  headers: {
+                    source: 'producer-private',
+                    'x-failure-reason': 'untrusted',
+                  },
+                });
+                await channel.waitForConfirms();
+                await until(
+                  async () =>
+                    (await channel.checkQueue(`${queue}.failed`))
+                      .messageCount === 1,
+                );
+                const failed = await channel.get(`${queue}.failed`, {
+                  noAck: true,
+                });
+                expect(failed && failed.properties).toMatchObject({
+                  ...sample.identity,
+                  contentType: 'application/json',
+                  contentEncoding: 'utf-8',
+                  type: 'probe',
+                  headers: {
+                    source: 'producer-private',
+                    'x-failure-reason': sample.reason,
+                  },
+                });
+                expect(failed && failed.properties.expiration).toBeUndefined();
+                expect(failed && failed.content.toString()).toBe(sample.body);
+                await until(() =>
+                  Promise.resolve(logs().includes(sample.reason)),
+                );
+              }
+              expect(logs()).not.toContain('producer-private');
+              return;
+            }
             await publish('first');
             await until(
               async () =>
@@ -265,4 +419,20 @@ test('generated hybrid app starts without a broker, recovers deliveries and drai
       }, [() => connection.close()]);
     }, [() => gate.close()]);
   }, [() => removeOwnedContainer(container), () => workspace.cleanup()]);
-}, 180_000);
+}
+
+test(
+  'generated hybrid app starts without a broker, recovers deliveries and drains on shutdown',
+  () => checkScenario('baseline'),
+  180_000,
+);
+test.each([
+  ['waits before redelivering a timed-out handler', 'timeout-overlap'],
+  ['keeps timed-out work in the transport drain', 'timeout-drain'],
+  ['retains permanent rejections while consuming valid messages', 'rejection'],
+  ['preserves partial identity and retention reasons', 'retention'],
+] as const)(
+  'generated hybrid transport %s',
+  (_description, scenario) => checkScenario(scenario),
+  180_000,
+);

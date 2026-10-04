@@ -33,10 +33,25 @@ for HTTP readiness. Broker retries use bounded exponential delays.
 Register message handlers in `composition/app.module.ts`. Each AMQP message uses
 a JSON `{ "pattern": "your.versioned.pattern", "data": ... }` envelope and nonempty
 AMQP `messageId` and `correlationId` properties. The adapter passes those identities
-explicitly to the handler. Resolve only after committing effects and implement
-idempotency before introducing mutations. Failed handlers remain unacknowledged;
-unknown/invalid envelopes are retained in `<queue>.failed` with publisher confirmation
-before ACK. This scaffold does not implement a business publisher or an outbox.
+explicitly to the handler. Resolve `undefined` after committing effects. Return
+`{ accepted: false, reason: 'invalid-your-payload' }` for permanent validation
+rejections before effects; use a stable, non-sensitive reason code. Throw for
+transient failures that should be retried.
+
+Invalid envelopes and rejected payloads are retained byte-for-byte in
+`<queue>.failed`, with publisher confirmation before ACK. Available identities,
+content metadata and headers are preserved independently; `x-failure-reason`
+records `invalid-json`, `invalid-envelope`, `missing-identity`, `unknown-pattern`
+or the handler's rejection reason. Original expiration is omitted so inspection
+evidence survives. The retention log includes the same reason and identities.
+
+The 10-second handling deadline ends the AMQP session without acknowledging
+uncertain work. It cannot cancel application effects: the transport waits for
+the actual operation to settle before reconnecting or completing `stop()`.
+A stuck handler keeps this instance unavailable until it settles or the process
+is restarted. Other instances can receive redelivery after connection loss;
+commit idempotency claims and effects atomically in the owning database before
+resolving. This scaffold does not implement a business publisher or an outbox.
 
 Use explicit `@Inject(Token)`, factory `inject` lists, GraphQL type functions and
 explicit validation when adding adapters; Bun does not emit design metadata.

@@ -96,6 +96,12 @@ staged review. Direct Bun invocations are useful for the inner loop but do not
 exercise the task environment inherited from Nx. Use
 [nx-run-tasks](../.agents/skills/nx-run-tasks/SKILL.md) to select the target.
 
+Changes to Nx targets, project dependencies or shared workspace fixtures also
+require `bun run nx run test-runner:test-nx-runner` before staged review. This
+uncached regression executes affected application components under a shared Nx
+parent and verifies that their migrations can run independently. CI runs the
+same target before environment-preservation and distributed suites.
+
 Infrastructure and runner changes also affect the applications' component
 fixtures. Before staged review, select and run the affected `test-component`
 targets through Nx. Supply the actual changed paths, including staged and new

@@ -131,7 +131,8 @@ export class RabbitTransport {
               return;
             }
             if (signal.aborted || session.signal.aborted) return;
-            const processing = within(this.process(channel, message), 10_000)
+            const operation = this.process(channel, message);
+            const acknowledgement = within(operation, 10_000)
               .then(() => {
                 if (!session.signal.aborted) {
                   channel.ack(message);
@@ -149,11 +150,16 @@ export class RabbitTransport {
                   },
                 );
                 end();
-              })
-              .finally(() => {
-                inFlight.delete(processing);
               });
-            inFlight.add(processing);
+            // A deadline cannot cancel application effects. Keep the real operation
+            // in the drain set and finish it before this instance can reconnect.
+            const draining = Promise.allSettled([
+              operation,
+              acknowledgement,
+            ]).then(() => {
+              inFlight.delete(draining);
+            });
+            inFlight.add(draining);
           },
           { noAck: false },
         ),
@@ -181,34 +187,69 @@ export class RabbitTransport {
     try {
       body = JSON.parse(message.content.toString()) as unknown;
     } catch {
-      body = undefined;
-    }
-    const parsed = envelope.safeParse(body);
-    const metadata = identity.safeParse(message.properties);
-    const handler = parsed.success
-      ? this.handlers.find((entry) => entry.pattern === parsed.data.pattern)
-      : undefined;
-    if (parsed.success && metadata.success && handler) {
-      const { messageId: eventId, correlationId } = metadata.data;
-      await handler.handle(parsed.data.data, { eventId, correlationId });
-      this.logger.log('Message handler completed.', {
-        service: '__name__',
-        operation: 'consumer.completed',
-        eventId,
-        correlationId,
-      });
+      await this.retain(channel, message, 'invalid-json');
       return;
     }
-    // Retain unsupported input byte-for-byte before ACK; no generated business handler.
+    const parsed = envelope.safeParse(body);
+    if (!parsed.success) {
+      await this.retain(channel, message, 'invalid-envelope');
+      return;
+    }
+    const metadata = identity.safeParse(message.properties);
+    if (!metadata.success) {
+      await this.retain(channel, message, 'missing-identity');
+      return;
+    }
+    const handler = this.handlers.find(
+      (entry) => entry.pattern === parsed.data.pattern,
+    );
+    if (!handler) {
+      await this.retain(channel, message, 'unknown-pattern');
+      return;
+    }
+    const { messageId: eventId, correlationId } = metadata.data;
+    const rejection = await handler.handle(parsed.data.data, {
+      eventId,
+      correlationId,
+    });
+    if (rejection?.accepted === false) {
+      await this.retain(channel, message, rejection.reason);
+      return;
+    }
+    this.logger.log('Message handler completed.', {
+      service: '__name__',
+      operation: 'consumer.completed',
+      eventId,
+      correlationId,
+    });
+  }
+
+  private async retain(
+    channel: ConfirmChannel,
+    message: ConsumeMessage,
+    reason: string,
+  ): Promise<void> {
+    // Preserve bytes and available metadata. Expiration must not delete inspection evidence.
+    const properties = message.properties;
+    const text = (value: unknown) => {
+      const parsed = z.string().min(1).safeParse(value);
+      return parsed.success ? parsed.data : undefined;
+    };
     channel.sendToQueue(`${this.config.queue}.failed`, message.content, {
       persistent: true,
       mandatory: true,
-      ...(metadata.success ? metadata.data : {}),
+      messageId: text(properties.messageId),
+      correlationId: text(properties.correlationId),
+      contentType: text(properties.contentType),
+      contentEncoding: text(properties.contentEncoding),
+      type: text(properties.type),
+      headers: { ...properties.headers, 'x-failure-reason': reason },
     });
     await within(channel.waitForConfirms());
     this.logger.warn('Invalid or unsupported message retained.', {
       service: '__name__',
       operation: 'consumer.retained',
+      reason,
       ...logIdentity(message),
     });
   }

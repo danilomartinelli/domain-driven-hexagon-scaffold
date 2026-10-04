@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep timed-out generated message handlers tracked through drain, retain permanent payload rejections and preserve failure metadata.
+- Expose parallel Nx runner validation as an uncached focused target and run it in CI.
+
 ### Added
 
 - Local Nx `nest-app` hybrid generator with independent HTTP/GraphQL and RabbitMQ

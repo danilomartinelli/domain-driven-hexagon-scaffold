@@ -192,7 +192,7 @@ bun run check:full
 | `test:debug`                                                             | `user:test-debug`; run another project's `test-debug` target for its suite |
 | `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                              |
 | `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                    |
-| `test:component`                                                         | Every `test-component` target (`user` and `wallet`)                        |
+| `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)          |
 | `test:tooling`                                                           | `test-runner:test-live`                                                    |
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                     |
 | `seed:up`                                                                | `database:seed`                                                            |
@@ -217,6 +217,11 @@ Arguments continue through the command chain, for example
 `bun run migration:create add-user-index`. Direct Bun commands for focused
 experiments remain possible; use the package commands for the quality gates.
 Unit discovery has no E2E preload. Bare `bun test` runs only `src/packages/core/tests`.
+`bun run nx run test-runner:test-nx-runner` executes the parallel application
+migration regression through Nx. Run it when changing project dependencies,
+targets or workspace fixtures; CI runs it independently of the full local
+runner lifecycle suite.
+
 `bun run nx run test-runner:test-broker` runs the pinned-image healthcheck and
 container-ownership regressions without provisioning application databases.
 This uncached subset runs in CI and is also included in `test:tooling`.

@@ -129,7 +129,12 @@ The private manifest has `exports: {}` and the project has `scope:telemetry` and
 `type:app` tags. No application becomes a shared library. HTTP health endpoints
 and GraphQL `{ httpReady }` work with the broker down; RabbitMQ reconnects with
 bounded exponential delay. Invalid or unsupported envelopes are confirmed into
-`<queue>.failed` before acknowledgement. Register real handlers in composition;
+`<queue>.failed` before acknowledgement, preserving available identity, content
+metadata, headers and an `x-failure-reason`. Handlers return a permanent
+`{ accepted: false, reason }` rejection or throw for a transient retry. Timed-out
+operations remain tracked until they settle, before this instance reconnects or
+finishes draining. Use atomic idempotency for redelivery across instances.
+Register real handlers in composition;
 the generator supplies no business rules, CRUD, complete use cases or tests.
 Message identity is passed explicitly and GraphQL/DI metadata is declared for Bun.
 
