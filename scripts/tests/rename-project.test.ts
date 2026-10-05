@@ -236,6 +236,15 @@ test('invalid arguments and drifted ownership fail before any identity edits', a
       identity.map((arg) =>
         arg.startsWith('--owner=') ? '--owner=bad/owner/extra' : arg,
       ),
+      ...[
+        'https://github.com:bad',
+        'https://github.com:99999',
+        'https://user@',
+      ].map((contact) =>
+        identity.map((arg) =>
+          arg.startsWith('--contact=') ? `--contact=${contact}` : arg,
+        ),
+      ),
     ]) {
       const result = await workspace.run([
         process.execPath,
@@ -402,3 +411,38 @@ test('adopter metadata outside the managed identity fields is preserved', async 
     await workspace.cleanup();
   }
 }, 30_000);
+
+test.each([
+  'https://example.com:8443/contact?team=core#help',
+  'mailto:team@example.com',
+])(
+  'valid contact %s remains usable through preview and application',
+  async (contact) => {
+    const workspace = await checkout();
+    try {
+      const args = identity.map((arg) =>
+        arg.startsWith('--contact=') ? `--contact=${contact}` : arg,
+      );
+      for (const flags of [[], ['--apply']]) {
+        const result = await workspace.run([
+          process.execPath,
+          'run',
+          'rename',
+          '--',
+          ...args,
+          ...flags,
+        ]);
+        expect(result.code, result.stderr).toBe(0);
+      }
+      const manifest = JSON.parse(
+        await readFile(join(workspace.root, 'scaffold.identity.json'), 'utf8'),
+      ) as unknown;
+      expect(manifest).toMatchObject({ contact });
+      expect(
+        await readFile(join(workspace.root, 'CONTRIBUTING.md'), 'utf8'),
+      ).toContain(`](${contact})`);
+    } finally {
+      await workspace.cleanup();
+    }
+  },
+);

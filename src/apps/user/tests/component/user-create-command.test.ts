@@ -154,6 +154,21 @@ test('outbox failure rolls back User and leaves the command unacknowledged for r
 
 test('consumer reconnects after unavailable startup and disconnect while HTTP and GraphQL remain usable', async () => {
   await withCommands(async (channel, replies) => {
+    const expectCreatedReply = async (phase: string): Promise<void> => {
+      const reply = await receive(channel, replies);
+      const body = reply.content.toString();
+      const diagnostic = JSON.stringify({
+        phase,
+        correlationId: reply.properties.correlationId as unknown,
+        messageId: reply.properties.messageId as unknown,
+        redelivered: reply.fields.redelivered,
+        response: body,
+      });
+      expect(
+        JSON.parse(body) as unknown,
+        `Command reply: ${diagnostic}\nUser output:\n${userOutput()}`,
+      ).toHaveProperty('result.id');
+    };
     await stopUser();
     const gate = await brokerGate({
       hostname: String(brokerOptions.hostname),
@@ -176,11 +191,7 @@ test('consumer reconnects after unavailable startup and disconnect while HTTP an
       await until(() => userOutput().includes('User commands reconnect in'));
       expect(await channel.get(replies, { noAck: true })).toBe(false);
       gate.allow();
-      expect(
-        JSON.parse(
-          (await receive(channel, replies)).content.toString(),
-        ) as unknown,
-      ).toHaveProperty('result.id');
+      await expectCreatedReply('startup recovery');
       gate.block();
       await getHttpServer().get('/v1/users').expect(200);
       await send(channel, replies, {
@@ -188,11 +199,7 @@ test('consumer reconnects after unavailable startup and disconnect while HTTP an
         data: { ...baseline.data, email: 'reconnected@example.com' },
       });
       gate.allow();
-      expect(
-        JSON.parse(
-          (await receive(channel, replies)).content.toString(),
-        ) as unknown,
-      ).toHaveProperty('result.id');
+      await expectCreatedReply('disconnect recovery');
       expect(
         (await ownerDatabase().query('SELECT * FROM users')).rowCount,
       ).toBe(2);

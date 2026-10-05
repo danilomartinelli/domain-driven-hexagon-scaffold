@@ -69,6 +69,7 @@ test('generated libraries are consumable and checked through Nx, Bun and archite
       ).toMatchObject({
         name: `@starter/${name}`,
         private: true,
+        license: 'MIT',
         exports: { '.': './index.ts' },
       });
       const noTests = await workspace.run([

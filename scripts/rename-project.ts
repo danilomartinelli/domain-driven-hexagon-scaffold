@@ -33,6 +33,15 @@ Default: preview exact edits as JSON without writing. --apply writes those edits
 Run at the checkout root. See docs/adoption.md for the bounded file list.
 No branches, directories, Git remotes or hosted repositories are renamed.`;
 
+function validContactUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function validateIdentity(value: unknown): Identity {
   if (typeof value !== 'object' || value === null)
     throw new Error('Identity must be an object.');
@@ -51,6 +60,9 @@ function validateIdentity(value: unknown): Identity {
       typeof field !== 'string' ||
       field.trim() !== field ||
       !pattern.test(field) ||
+      (key === 'contact' &&
+        /^https:/i.test(field) &&
+        !validContactUrl(field)) ||
       field.length > 214
     )
       throw new Error(
