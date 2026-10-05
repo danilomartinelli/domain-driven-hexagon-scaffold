@@ -84,6 +84,6 @@ accept `user.create` without Wallet. Wallet looks up absence, consumes a fixed
 
 The checks also reject a sibling migration selector and runtime migration
 credentials, inspect committed database state, and clean owned resources. Both
-component suites independently provision only their database and RabbitMQ;
+component suites independently provision the capabilities declared by their selected app;
 cross-database permission checks belong to distributed E2E. `check:full` and CI
 include distribution verification; no live verification result is cached.

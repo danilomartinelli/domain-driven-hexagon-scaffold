@@ -287,6 +287,6 @@ test('run-many over live targets prints every task output outside a TTY', async 
     // Nx's non-interactive default collapses successful tasks to one line.
     expect(command, name).toMatch(/--output-style=(static|stream)\b/);
   }
-  for (const name of ['start:dev', 'test:component', 'test:distribution'])
+  for (const name of ['test:component', 'test:distribution'])
     expect(checked).toContain(name);
 }, 60_000);

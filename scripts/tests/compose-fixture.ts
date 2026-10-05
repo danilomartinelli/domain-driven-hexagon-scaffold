@@ -11,6 +11,7 @@ export function composeProbeConfiguration(
     project: 'compose-probe',
     owner: randomUUID(),
     status: 'starting',
+    applicationPorts: { user: 3000, wallet: 3001 },
     databases: [
       {
         app: 'wallet',

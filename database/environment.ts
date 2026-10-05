@@ -3,7 +3,11 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { applications } from './applications';
+import {
+  applicationDeclarationSchema,
+  environmentPrefix,
+} from '@starter/capabilities/declaration';
+import { selectedApplications } from './topology';
 
 export const workspaceRoot = realpathSync(
   fileURLToPath(new URL('../', import.meta.url)),
@@ -30,27 +34,38 @@ const manifestSchema = z.object({
   project: z.string(),
   owner: z.uuid(),
   status: z.enum(['starting', 'ready', 'stopped']),
-  databases: z.array(targetSchema).min(1),
-  // A bounded service run provisions only these registered applications, without Kong.
-  apps: z.array(z.string()).min(1).optional(),
-  broker: z.object({
-    port,
-    managementPort: port,
-    username: z.string(),
-    password: z.string(),
-    vhost: z.string(),
-  }),
-  gateway: z.object({
-    name: z.string(),
-    host: z.string(),
-    proxyPort: port,
-    adminPort: port,
-    userPort: port,
-    walletPort: port,
-  }),
+  // Resource inventory survives declaration removal and capability disablement.
+  databases: z.array(targetSchema),
+  apps: z.array(z.string()).optional(),
+  topology: z.array(applicationDeclarationSchema).optional(),
+  applicationPorts: z.record(z.string(), port).default({}),
+  broker: z
+    .object({
+      port,
+      managementPort: port,
+      username: z.string(),
+      password: z.string(),
+      vhost: z.string(),
+    })
+    .optional(),
+  gateway: z
+    .object({
+      name: z.string(),
+      host: z.string(),
+      proxyPort: port,
+      adminPort: port,
+      // Read compatibility for manifests created before declaration-derived ports.
+      userPort: port.optional(),
+      walletPort: port.optional(),
+    })
+    .optional(),
 });
 export type EnvironmentManifest = z.infer<typeof manifestSchema>;
 export type EnvironmentKind = EnvironmentManifest['environment'];
+
+function legacyDatabase(db: EnvironmentManifest['databases'][number]): boolean {
+  return db.app === 'legacy' && db.prefix === 'DB' && !db.runtime;
+}
 
 export function environmentLocation(
   environment: EnvironmentKind,
@@ -79,9 +94,9 @@ export function readEnvironment(
 }
 
 /**
- * Every listed database must belong to a registered application and this run.
- * `complete: false` accepts a development manifest that predates a newly
- * registered application, so preparation can add it and shutdown still works.
+ * Resource identities remain scoped to the run even after a declaration is removed.
+ * `complete: false` permits an outdated topology for reconciliation, inspection
+ * and shutdown. Execution requires the currently selected declarations.
  */
 export function readEnvironmentFile(
   path: string,
@@ -99,18 +114,16 @@ export function readEnvironmentFile(
   for (const target of manifest.databases) {
     // Retired development resources remain owned and stoppable; never provision
     // them for new runs or expose them as migration targets.
-    const application =
-      applications.find((app) => app.name === target.app) ??
-      (manifest.environment === 'development' && target.app === 'legacy'
-        ? { name: 'legacy', prefix: 'DB', runtimeRole: undefined }
-        : undefined);
+    const legacy =
+      manifest.environment === 'development' && legacyDatabase(target);
+    const prefix = legacy ? 'DB' : `${environmentPrefix(target.app)}_DB`;
     if (
-      !application ||
       listed.has(target.app) ||
-      target.prefix !== application.prefix ||
+      target.prefix !== prefix ||
       target.database !==
-        `${manifest.project.replaceAll('-', '_')}_${application.name}` ||
-      target.runtime?.username !== application.runtimeRole
+        `${manifest.project.replaceAll('-', '_')}_${target.app}` ||
+      target.runtime?.username !==
+        (legacy ? undefined : `${target.app.replaceAll('-', '_')}_runtime`)
     ) {
       throw new Error(
         'Database is not scoped to the selected application and run.',
@@ -118,34 +131,56 @@ export function readEnvironmentFile(
     }
     listed.add(target.app);
   }
-  const required = manifest.apps ?? applications.map((app) => app.name);
   if (
-    manifest.apps &&
-    (new Set(required).size !== required.length ||
-      required.some((name) => !applications.some((app) => app.name === name)) ||
-      [...listed].some((name) => !required.includes(name)))
+    complete &&
+    (JSON.stringify(manifest.topology) !==
+      JSON.stringify(
+        selectedApplications(manifest.apps, { retainMissing: true }),
+      ) ||
+      manifest.topology?.some(
+        (app) =>
+          (app.persistence && !listed.has(app.name)) ||
+          !Object.hasOwn(manifest.applicationPorts, app.name),
+      ))
   )
-    throw new Error('Invalid scoped application selection.');
-  if (complete && required.some((name) => !listed.has(name)))
     throw new Error(
       manifest.environment === 'development'
-        ? 'Environment application registry changed; prepare it again to add the new application databases.'
+        ? 'Environment application declarations changed; prepare it again to reconcile the selected topology.'
         : 'Environment application registry changed; prepare a new run.',
     );
   if (
-    manifest.broker.vhost !== manifest.project ||
-    manifest.gateway.name !== `${manifest.project}-gateway`
+    (manifest.broker && manifest.broker.vhost !== manifest.project) ||
+    (manifest.gateway &&
+      manifest.gateway.name !== `${manifest.project}-gateway`)
   ) {
     throw new Error('Broker or gateway belongs to another run.');
   }
   return manifest;
 }
 
+export function activeDatabases(
+  manifest: EnvironmentManifest,
+): EnvironmentManifest['databases'] {
+  return manifest.databases.filter(
+    (db) =>
+      (manifest.environment === 'development' && legacyDatabase(db)) ||
+      manifest.topology?.some((app) => app.name === db.app && app.persistence),
+  );
+}
+
+export function needsMessaging(manifest: EnvironmentManifest): boolean {
+  return manifest.topology?.some((app) => app.messaging) ?? true;
+}
+
+export function needsGateway(manifest: EnvironmentManifest): boolean {
+  return manifest.topology?.some((app) => app.exposure) ?? !manifest.apps;
+}
+
 function databaseVariables(
   manifest: EnvironmentManifest,
 ): Record<string, string> {
   const variables: Record<string, string> = {};
-  for (const db of manifest.databases) {
+  for (const db of activeDatabases(manifest)) {
     const connectAs = db.runtime ?? db;
     Object.assign(variables, {
       [`${db.prefix}_HOST`]: db.host,
@@ -166,7 +201,15 @@ function databaseVariables(
 function brokerVariables(
   manifest: EnvironmentManifest,
 ): Record<string, string> {
+  if (!needsMessaging(manifest) || !manifest.broker) return {};
+  const broker = manifest.broker;
+  const url = `amqp://${encodeURIComponent(broker.username)}:${encodeURIComponent(broker.password)}@127.0.0.1:${String(broker.port)}/${encodeURIComponent(broker.vhost)}`;
   return {
+    ...Object.fromEntries(
+      (manifest.topology ?? [])
+        .filter((app) => app.messaging)
+        .map((app) => [`${environmentPrefix(app.name)}_RABBITMQ_URL`, url]),
+    ),
     RABBITMQ_HOST: '127.0.0.1',
     RABBITMQ_PORT: String(manifest.broker.port),
     RABBITMQ_USERNAME: manifest.broker.username,
@@ -179,13 +222,12 @@ function brokerVariables(
 function gatewayVariables(
   manifest: EnvironmentManifest,
 ): Record<string, string> {
+  if (!needsGateway(manifest) || !manifest.gateway) return {};
   return {
     GATEWAY_NAME: manifest.gateway.name,
     GATEWAY_HOST: manifest.gateway.host,
     GATEWAY_PROXY_PORT: String(manifest.gateway.proxyPort),
     GATEWAY_ADMIN_PORT: String(manifest.gateway.adminPort),
-    USER_HTTP_PORT: String(manifest.gateway.userPort),
-    WALLET_HTTP_PORT: String(manifest.gateway.walletPort),
   };
 }
 
@@ -198,6 +240,12 @@ export function environmentVariables(
     ...databaseVariables(manifest),
     ...brokerVariables(manifest),
     ...gatewayVariables(manifest),
+    ...Object.fromEntries(
+      (manifest.topology ?? []).map((app) => [
+        `${environmentPrefix(app.name)}_HTTP_PORT`,
+        String(manifest.applicationPorts[app.name]),
+      ]),
+    ),
   };
   const env = {
     ...defaults,
@@ -256,6 +304,32 @@ export function assertTestEnvironment(
     throw new Error('Use the scoped RABBITMQ_* fields, not RABBITMQ_URL.');
   for (const [key, value] of Object.entries(gatewayVariables(manifest))) {
     if (env[key] !== value)
+      throw new Error(
+        `Refusing gateway target: ${key} differs from the owned run.`,
+      );
+  }
+  const broker = brokerVariables(manifest);
+  const gateway = gatewayVariables(manifest);
+  const registered = new Set([
+    ...Object.keys(databases),
+    ...Object.keys(broker),
+    ...Object.keys(gateway),
+    ...(manifest.topology ?? []).map(
+      (app) => `${environmentPrefix(app.name)}_HTTP_PORT`,
+    ),
+  ]);
+  for (const key of Object.keys(env)) {
+    if (
+      (key.startsWith('RABBITMQ_') || /_RABBITMQ_URL$/.test(key)) &&
+      !registered.has(key)
+    )
+      throw new Error(`Refusing unregistered broker target: ${key}.`);
+    if (key.startsWith('GATEWAY_') && !registered.has(key))
+      throw new Error(`Refusing unregistered gateway target: ${key}.`);
+  }
+  for (const app of manifest.topology ?? []) {
+    const key = `${environmentPrefix(app.name)}_HTTP_PORT`;
+    if (env[key] !== String(manifest.applicationPorts[app.name]))
       throw new Error(
         `Refusing gateway target: ${key} differs from the owned run.`,
       );

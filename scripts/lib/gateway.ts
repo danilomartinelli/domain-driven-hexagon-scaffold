@@ -1,16 +1,25 @@
-import { readFileSync } from 'node:fs';
 import type { EnvironmentManifest } from '../../database/environment';
 
-/** Render JSON values, not shell expressions, into the versioned route template. */
-export function gatewayConfiguration(
-  gateway: EnvironmentManifest['gateway'],
-): string {
-  const template = readFileSync(
-    new URL('../../docker/kong.json', import.meta.url),
-    'utf8',
-  );
-  return template
-    .replaceAll('"${GATEWAY_HOST}"', () => JSON.stringify(gateway.host))
-    .replaceAll('"${USER_HTTP_PORT}"', String(gateway.userPort))
-    .replaceAll('"${WALLET_HTTP_PORT}"', String(gateway.walletPort));
+/** Only application-owned, explicitly declared business routes join the gateway. */
+export function gatewayConfiguration(manifest: EnvironmentManifest): string {
+  const services = (manifest.topology ?? [])
+    .filter((app) => app.exposure)
+    .flatMap((app) =>
+      (app.routes ?? []).map((route) => ({
+        name: `${app.name}--${route.name}`,
+        host: manifest.gateway?.host,
+        port: manifest.applicationPorts[app.name],
+        protocol: 'http',
+        ...(route.upstreamPath ? { path: route.upstreamPath } : {}),
+        routes: [
+          {
+            name: `${app.name}--${route.name}`,
+            paths: route.paths,
+            strip_path: route.stripPath,
+            ...(route.methods ? { methods: route.methods } : {}),
+          },
+        ],
+      })),
+    );
+  return JSON.stringify({ _format_version: '3.0', services });
 }

@@ -56,8 +56,14 @@ async function preserveDiagnostics(root: string): Promise<void> {
 }
 
 /** Copy checked source/configuration; only external installed tools are shared. */
-export async function createWorkspace(): Promise<Workspace> {
-  const root = await mkdtemp(join(tmpdir(), 'ddh-workspace-'));
+export async function createWorkspace({
+  retain = false,
+}: { retain?: boolean } = {}): Promise<Workspace> {
+  const directory = retain
+    ? join(sourceRoot, '.context/retained-workspaces')
+    : tmpdir();
+  if (retain) await mkdir(directory, { recursive: true, mode: 0o700 });
+  const root = await mkdtemp(join(directory, 'ddh-workspace-'));
   try {
     const files = await runCommand(
       ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
@@ -144,7 +150,13 @@ export async function createWorkspace(): Promise<Workspace> {
             cause: error,
           });
         }
-        await rm(root, { recursive: true, force: true });
+        if (retain) {
+          // Development volumes outlive shutdown. Keep their inventory and
+          // runnable workspace at the same path that defines their identity.
+          console.log(`Retained development workspace: ${root}`);
+        } else {
+          await rm(root, { recursive: true, force: true });
+        }
       },
     };
   } catch (error) {

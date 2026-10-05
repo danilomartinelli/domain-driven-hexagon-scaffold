@@ -9,9 +9,9 @@
     "nx": "NX_LOAD_DOT_ENV_FILES=false NX_DAEMON=false NX_PROCESS_KILL_GRACE_PERIOD=90000 bun --preload ./scripts/nx-preload.ts ./node_modules/.bin/nx",
     "format": "bun run nx run workspace:format",
     "format:check": "bun run nx run workspace:format-check",
-    "start": "bun run nx run-many --projects=user,wallet --target=serve --parallel=2 --output-style=stream",
-    "start:dev": "bun run nx run-many --projects=user,wallet --target=watch --parallel=2 --output-style=stream",
-    "start:debug": "bun run nx run-many --projects=user,wallet --target=debug --parallel=2 --output-style=stream",
+    "start": "bun --no-env-file scripts/start-applications.ts serve",
+    "start:dev": "bun --no-env-file scripts/start-applications.ts watch",
+    "start:debug": "bun --no-env-file scripts/start-applications.ts debug",
     "start:prod": "NODE_ENV=production bun run start",
     "start:wallet": "bun run nx run wallet:serve",
     "start:wallet:dev": "bun run nx run wallet:watch",
@@ -66,7 +66,8 @@
     "test:user:component": "bun run nx run user:test-component",
     "ci:watch": "bun scripts/ci-watch.ts",
     "test:distribution": "bun run nx run-many --target=test-distribution --parallel=2 --output-style=static",
-    "rename": "bun --no-env-file scripts/rename-project.ts"
+    "rename": "bun --no-env-file scripts/rename-project.ts",
+    "env:inspect": "bun --no-env-file scripts/environment-cli.ts inspect"
   },
   "dependencies": {
     "@nestjs/apollo": "14.0.3",

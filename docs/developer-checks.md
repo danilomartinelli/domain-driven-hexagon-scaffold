@@ -34,7 +34,9 @@ requests and pushes to `master`. All belong to the `check` job required by the
 to force the healthcheck-before-startup ordering and verifies fixture cleanup
 ownership. The distributed end-to-end suite verifies the service integration and
 all seven Gherkin cases through Kong, including separate GraphQL schemas and
-pending Wallet/deletion behavior. CI also runs
+pending Wallet/deletion behavior. CI also runs `bun run nx run test-runner:test-selection` for declaration-selected
+topologies, generated application startup and retained database/message state.
+CI also runs
 `bun run nx run test-runner:test-gateway` for loaded upstream configuration,
 foreign-target rejection, occupied proxy/Admin ports and failed Kong setup cleanup.
 CI also selects `test-runner:test-preservation` when the compared commits change

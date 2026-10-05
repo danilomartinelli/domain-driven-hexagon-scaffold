@@ -44,10 +44,10 @@ test('direct test cleanup and database tools reject an unowned target before con
 
 test('the test-database wrapper parses application selections before provisioning anything', async () => {
   for (const [args, message] of [
-    [['--app=unknown', '--', 'true'], 'Unknown database application: unknown'],
+    [['--app=unknown', '--', 'true'], 'Unknown application: unknown'],
     [
       ['--app=user', '--app=unknown', '--', 'true'],
-      'Unknown database application: unknown',
+      'Unknown application: unknown',
     ],
     [['--app=wallet'], 'A command after -- is required.'],
   ] as const) {

@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Changed
 
+- Selected environments derive services, startup, ports, credentials, explicit Kong
+  routes and applicable migrations from application declarations. Development
+  reconciliation retains database and broker state across addition, disablement,
+  removal and reactivation; `env:inspect` reports retained resources.
+
 - Applications declare independent PostgreSQL persistence, RabbitMQ messaging and
   Kong exposure in `application.json`. The `nest-app` generator emits any of the
   eight combinations (defaults keep messaging and exposure), and readiness probes report disabled

@@ -50,6 +50,14 @@
         "command": "bun --no-env-file scripts/environment-cli.ts --nx prepare --environment=test",
         "cwd": "."
       }
+    },
+    "inspect": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --no-env-file scripts/environment-cli.ts --nx inspect",
+        "cwd": "."
+      }
     }
   }
 }

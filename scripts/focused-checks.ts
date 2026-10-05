@@ -9,7 +9,7 @@ const nxRunnerInputs =
   /(^|\/)(project|package)\.json$|^nx\.json$|^bun\.lock$|^scripts\/tests\/workspace-fixture\.ts$/;
 /** Provisioning and cleanup code whose failures component suites cannot show. */
 const lifecycleInputs =
-  /^scripts\/lib\/(environments|compose|gateway|session)\.ts$|^scripts\/(environment-cli|with-test-database)\.ts$|^database\/environment\.ts$|^docker\//;
+  /^scripts\/lib\/(environments|compose|gateway|session)\.ts$|^scripts\/(environment-cli|with-test-database|reconcile-databases|start-applications)\.ts$|^database\/(environment|topology)\.ts$|^docker\//;
 const lintable = /\.(ts|mjs)$/;
 
 /** Projects affected by the files that define the given target. */

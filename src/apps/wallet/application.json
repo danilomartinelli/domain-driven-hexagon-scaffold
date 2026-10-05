@@ -2,5 +2,19 @@
   "name": "wallet",
   "persistence": true,
   "messaging": true,
-  "exposure": true
+  "exposure": true,
+  "routes": [
+    {
+      "name": "rest",
+      "paths": ["~/v1/wallets/by-user/[^/]+$"],
+      "methods": ["GET"],
+      "stripPath": false
+    },
+    {
+      "name": "graphql",
+      "paths": ["~/wallet/graphql/?$"],
+      "stripPath": true,
+      "upstreamPath": "/graphql"
+    }
+  ]
 }

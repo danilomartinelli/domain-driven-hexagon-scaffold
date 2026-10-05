@@ -60,7 +60,12 @@ Wallet declare all three capabilities and keep their contracts. A live matrix
 generates, checks and executes every combination against real PostgreSQL and
 RabbitMQ, with absent and never-contacted dependencies for disabled capabilities.
 
-Pending: deriving selected environments, ports and Kong routes from declarations
-with retained-state reconciliation (#61), OCI images and private containerized
-development (#62), the Compose reference operations (#63) and GHCR publication
+Selected development and test environments derive startup, infrastructure, ports,
+configuration and explicit Kong routes from declarations (#61). Development
+reconciliation preserves credentials, owned volumes and queued work across
+addition, disablement, removal and reactivation; retained resources stay
+inspectable and stoppable. The public generator/environment matrix and retained
+User-to-Wallet delivery regression exercise these operations with real services.
+
+Pending: OCI images and private containerized development (#62), the Compose reference operations (#63) and GHCR publication
 (#64). No registry publication or deployment is established by this ADR.

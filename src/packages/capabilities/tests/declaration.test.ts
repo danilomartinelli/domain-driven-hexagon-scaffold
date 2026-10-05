@@ -110,7 +110,7 @@ test.each([
         persistence: false,
         messaging: false,
         exposure: false,
-        routes: [],
+        undeclared: [],
       },
     },
     'Invalid application declaration',

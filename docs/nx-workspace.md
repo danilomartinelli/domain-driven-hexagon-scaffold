@@ -222,7 +222,7 @@ bun run check:full
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | `lint`, `typecheck`, `lint:fix`                                          | All applicable project `lint` / `typecheck` / `lint-fix` targets              |
 | `test`, `test:unit`                                                      | Every project's `test` target                                                 |
-| `start`, `start:dev`, `start:debug`, `start:prod`                        | `user` and `wallet`: `serve`, `watch`, `debug`; production sets `NODE_ENV`    |
+| `start`, `start:dev`, `start:debug`, `start:prod`                        | Selected declarations: `serve`, `watch`, `debug`; production sets `NODE_ENV`  |
 | `start:user`, `start:user:dev`, `start:user:debug`                       | `user:serve`, `watch`, `debug`                                                |
 | `test:user:component`                                                    | `user:test-component`                                                         |
 | `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                              |
@@ -235,7 +235,7 @@ bun run check:full
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                        |
 | `seed:up`                                                                | `database:seed`                                                               |
 | `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                   |
-| `env:prepare`, `env:exec`, `env:down`                                    | `infrastructure:prepare`, `exec`, `down`                                      |
+| `env:prepare`, `env:exec`, `env:down`, `env:inspect`                     | `infrastructure:prepare`, `exec`, `down`, `inspect`                           |
 | `dev`, `dev:down`                                                        | `infrastructure:dev`, `down` for a development run (`default` unless `--run`) |
 | `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                 |
 | `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                              |

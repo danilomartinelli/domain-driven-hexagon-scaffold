@@ -324,7 +324,7 @@ test('the development workflow migrates and serves both applications until inter
               throw new Error('The development workflow exited early');
             const manifest = ready();
             if (!manifest) return false;
-            const gateway = `http://127.0.0.1:${String(manifest.gateway.proxyPort)}`;
+            const gateway = `http://127.0.0.1:${String(manifest.gateway?.proxyPort)}`;
             const [users, wallet] = await Promise.all([
               probe(`${gateway}/v1/users`),
               probe(`${gateway}/v1/wallets/by-user/${randomUUID()}`),
@@ -351,8 +351,11 @@ test('the development workflow migrates and serves both applications until inter
         await until(
           async () => {
             const live = await Promise.all(
-              [manifest.gateway.userPort, manifest.gateway.walletPort].map(
-                (port) => probe(`http://127.0.0.1:${String(port)}/health/live`),
+              [
+                manifest.applicationPorts.user,
+                manifest.applicationPorts.wallet,
+              ].map((port) =>
+                probe(`http://127.0.0.1:${String(port)}/health/live`),
               ),
             );
             return live.every((response) => response === undefined);
@@ -446,16 +449,16 @@ test('prepared regression runs reject foreign targets and preserve development a
         readEnvironment('test', `first-${id}`),
         readEnvironment('test', `sibling-${id}`),
       ];
-      expect(new Set(manifests.map((entry) => entry.gateway.name)).size).toBe(
+      expect(new Set(manifests.map((entry) => entry.gateway?.name)).size).toBe(
         3,
       );
       expect(
         new Set(
           manifests.flatMap((entry) => [
-            entry.gateway.proxyPort,
-            entry.gateway.adminPort,
-            entry.gateway.userPort,
-            entry.gateway.walletPort,
+            entry.gateway?.proxyPort,
+            entry.gateway?.adminPort,
+            entry.applicationPorts.user,
+            entry.applicationPorts.wallet,
           ]),
         ).size,
       ).toBe(12);

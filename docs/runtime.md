@@ -9,10 +9,10 @@ bun install --frozen-lockfile
 make dev # or: bun run dev
 ```
 
-`make dev` prepares the development infrastructure, migrates both databases and
-watches both applications; see the [database workflow](database.md#development).
+`make dev` prepares the selected infrastructure, migrates persistent selections and
+watches the selected applications; see the [database workflow](database.md#development).
 Inside a prepared environment (`env:exec`),
-`start` runs the independent User and Wallet processes; `start:dev` watches both,
+`start` runs the selected independent application processes; `start:dev` watches them,
 `start:debug` opens their Bun inspectors, and `start:prod` sets `NODE_ENV=production`.
 The debug targets bind separate loopback endpoints: User uses `127.0.0.1:6499`
 and Wallet uses `127.0.0.1:6500`, including when started individually. Connect to
