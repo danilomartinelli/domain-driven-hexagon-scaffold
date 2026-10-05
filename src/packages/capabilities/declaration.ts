@@ -1,4 +1,5 @@
 export {
+  applicationDeclarationSchema,
   discoverApplications,
   environmentPrefix,
   exposedAdapters,

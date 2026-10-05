@@ -87,7 +87,7 @@ bun run test:user:component
 bun run test:component
 ```
 
-The component suite provisions only User PostgreSQL and RabbitMQ, migrates/seeds User and
+The component suite provisions User PostgreSQL, RabbitMQ and its declared Kong routes, migrates/seeds User and
 starts `src/apps/user/main.ts` as an external Bun process with only its runtime
 database settings. It executes the seven original Gherkin cases from
 `tests/user` using independent step bindings, the characterized REST/GraphQL

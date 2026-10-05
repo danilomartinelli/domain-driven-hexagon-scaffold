@@ -88,7 +88,7 @@ test.each(['user', 'wallet'] as const)(
         'matching broker settings',
       );
       expect(foreign.stdout + foreign.stderr).not.toContain(
-        manifest.broker.password,
+        manifest.broker?.password,
       );
       const missing = await runCommand(
         [

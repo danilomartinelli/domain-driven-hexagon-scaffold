@@ -4,14 +4,16 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   rm,
   symlink,
 } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { z } from 'zod';
 import { runCommand, type CommandResult } from '../lib/command';
+import { withCleanup } from './cleanup';
 
 const sourceRoot = realpathSync(join(import.meta.dir, '../..'));
 
@@ -31,6 +33,60 @@ export interface Workspace {
   cleanup: () => Promise<void>;
 }
 
+function ignoreMissing(error: unknown): undefined {
+  if (error instanceof Error && 'code' in error && error.code === 'ENOENT')
+    return undefined;
+  throw error;
+}
+
+/** Only inventory determines durability; selection and shutdown status do not. */
+async function hasDurableInventory(root: string): Promise<boolean> {
+  const inventory = z.object({
+    environment: z.enum(['test', 'development']),
+    databases: z.array(z.unknown()),
+    broker: z.object({}).optional(),
+  });
+  try {
+    const runs = join(root, '.context/test-runs');
+    const entries = await readdir(runs, { withFileTypes: true }).catch(
+      ignoreMissing,
+    );
+    let durable = false;
+    for (const entry of entries ?? []) {
+      if (!entry.isDirectory()) continue;
+      const path = join(runs, entry.name, 'environment.json');
+      const info = await lstat(path).catch(ignoreMissing);
+      if (!info) continue;
+      if (!info.isFile())
+        throw new Error('Resource inventory is not a regular file');
+      const manifest = inventory.parse(
+        JSON.parse(await readFile(path, 'utf8')),
+      );
+      if (
+        manifest.environment === 'development' &&
+        (manifest.databases.length > 0 || manifest.broker !== undefined)
+      )
+        durable = true;
+    }
+    const nested = join(root, '.context/retained-workspaces');
+    const workspaces = await readdir(nested, { withFileTypes: true }).catch(
+      ignoreMissing,
+    );
+    for (const entry of workspaces ?? []) {
+      if (
+        entry.isDirectory() &&
+        (await hasDurableInventory(join(nested, entry.name)))
+      )
+        durable = true;
+    }
+    return durable;
+  } catch (error) {
+    throw new Error(`Cannot inspect resource inventory; retained ${root}`, {
+      cause: error,
+    });
+  }
+}
+
 async function preserveDiagnostics(root: string): Promise<void> {
   const runs = join(root, '.context/test-runs');
   if (!existsSync(runs)) return;
@@ -38,15 +94,7 @@ async function preserveDiagnostics(root: string): Promise<void> {
     if (!entry.isDirectory()) continue;
     for (const file of ['run.log', 'result.json']) {
       const source = join(runs, entry.name, file);
-      const info = await lstat(source).catch((error: unknown) => {
-        if (
-          error instanceof Error &&
-          'code' in error &&
-          error.code === 'ENOENT'
-        )
-          return undefined;
-        throw error;
-      });
+      const info = await lstat(source).catch(ignoreMissing);
       if (!info?.isFile()) continue;
       const destination = join(sourceRoot, '.context/test-runs', entry.name);
       await mkdir(destination, { recursive: true, mode: 0o700 });
@@ -56,8 +104,13 @@ async function preserveDiagnostics(root: string): Promise<void> {
 }
 
 /** Copy checked source/configuration; only external installed tools are shared. */
-export async function createWorkspace(): Promise<Workspace> {
-  const root = await mkdtemp(join(tmpdir(), 'ddh-workspace-'));
+export async function createWorkspace({
+  retain = false,
+}: { retain?: boolean } = {}): Promise<Workspace> {
+  // Resource identity includes this path, so retention cannot relocate it later.
+  const directory = join(sourceRoot, '.context/retained-workspaces');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const root = await mkdtemp(join(directory, 'ddh-workspace-'));
   try {
     const files = await runCommand(
       ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
@@ -137,14 +190,27 @@ export async function createWorkspace(): Promise<Workspace> {
         });
       },
       cleanup: async (): Promise<void> => {
-        try {
-          await preserveDiagnostics(root);
-        } catch (error) {
-          throw new Error(`Diagnostic export failed; retained ${root}`, {
-            cause: error,
-          });
+        const durable = await withCleanup(
+          () => hasDurableInventory(root),
+          [
+            async () => {
+              try {
+                await preserveDiagnostics(root);
+              } catch (error) {
+                throw new Error(`Diagnostic export failed; retained ${root}`, {
+                  cause: error,
+                });
+              }
+            },
+          ],
+        );
+        if (retain || durable) {
+          // Development volumes outlive shutdown. Keep their inventory and
+          // runnable workspace at the same path that defines their identity.
+          console.log(`Retained workspace: ${root}`);
+        } else {
+          await rm(root, { recursive: true, force: true });
         }
-        await rm(root, { recursive: true, force: true });
       },
     };
   } catch (error) {

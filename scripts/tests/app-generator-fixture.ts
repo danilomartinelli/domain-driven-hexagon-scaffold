@@ -26,8 +26,10 @@ export function generate(name: string, ...options: string[]): string[] {
   ];
 }
 
-export async function appWorkspace(): Promise<Workspace> {
-  const workspace = await createWorkspace();
+export async function appWorkspace(
+  options?: Parameters<typeof createWorkspace>[0],
+): Promise<Workspace> {
+  const workspace = await createWorkspace(options);
   try {
     await rm(join(workspace.root, 'node_modules'), {
       recursive: true,

@@ -12,11 +12,13 @@ async function main() {
     action !== 'prepare' &&
     action !== 'down' &&
     action !== 'exec' &&
+    action !== 'inspect' &&
     action !== 'dev'
   )
     throw new Error(
-      'Usage: environment-cli.ts prepare|down|exec --environment=test|development --run=<id> [-- command]\n' +
-        '       environment-cli.ts dev --run=<id>',
+      'Usage: environment-cli.ts prepare|down|exec|inspect --environment=test|development --run=<id> [-- command]\n' +
+        '       environment-cli.ts dev --run=<id>\n' +
+        'Repeat --app=<name> with prepare or dev to select applications.',
     );
   if (!inNx) {
     const child = Bun.spawn(
@@ -48,7 +50,7 @@ async function main() {
   const options = separator === -1 ? args : args.slice(0, separator);
   const command = separator === -1 ? [] : args.slice(separator + 1);
   for (const option of options)
-    if (!/^--(environment|run)=/.test(option))
+    if (!/^--(environment|run|app)=/.test(option))
       throw new Error(`Unknown option: ${option}`);
   const environment =
     options.find((option) => option.startsWith('--environment='))?.slice(14) ??
@@ -58,7 +60,16 @@ async function main() {
   const run =
     options.find((option) => option.startsWith('--run='))?.slice(6) ??
     'default';
-  return operateEnvironment(action, environment, run, command);
+  const apps = options
+    .filter((option) => option.startsWith('--app='))
+    .map((option) => option.slice(6));
+  return operateEnvironment(
+    action,
+    environment,
+    run,
+    command,
+    apps.length ? apps : undefined,
+  );
 }
 
 try {

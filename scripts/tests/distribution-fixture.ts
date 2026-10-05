@@ -63,6 +63,7 @@ export async function withDistribution(
   );
   expect(containers.code).toBe(0);
   expect(containers.stdout.trim().split('\n').sort()).toEqual([
+    'gateway',
     `postgres-${app}`,
     'rabbitmq',
   ]);

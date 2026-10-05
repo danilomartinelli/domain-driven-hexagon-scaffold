@@ -14,6 +14,127 @@ import { runCommand } from '../lib/command';
 import { tableNames as documentedTableNames } from '../lib/document-tables';
 import { readProjectGraph } from '../lib/nx-graph';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
+import { withCleanup } from './cleanup';
+
+test.each([
+  { name: 'database', databases: [{ app: 'retired' }], broker: undefined },
+  { name: 'broker', databases: [], broker: { vhost: 'retained' } },
+])(
+  'workspace cleanup automatically retains inactive development $name inventory after failed shutdown',
+  async ({ databases, broker }) => {
+    const workspace = await createWorkspace();
+    const directory = join(workspace.root, '.context/test-runs/retained');
+    const path = join(directory, 'environment.json');
+    const inventory = JSON.stringify({
+      environment: 'development',
+      status: 'stopped',
+      topology: [],
+      databases,
+      broker,
+    });
+    try {
+      await mkdir(directory, { recursive: true });
+      await writeFile(path, inventory);
+      const [outcome] = await Promise.allSettled([
+        withCleanup(() => {
+          throw new Error('shutdown failed');
+        }, [workspace.cleanup]),
+      ]);
+      expect(outcome.status).toBe('rejected');
+      if (outcome.status === 'rejected')
+        expect(outcome.reason).toEqual(new Error('shutdown failed'));
+      expect(await Bun.file(path).exists()).toBe(true);
+      expect(await Bun.file(path).text()).toBe(inventory);
+      expect(
+        workspace.root.startsWith(
+          join(process.cwd(), '.context/retained-workspaces/'),
+        ),
+      ).toBe(true);
+    } finally {
+      // This fixture writes inventory only; it never provisions Docker resources.
+      await rm(workspace.root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(['malformed JSON', 'directory', 'broken symlink'])(
+  'workspace cleanup retains unreadable inventories (%s) and reports the failure',
+  async (kind) => {
+    const workspace = await createWorkspace();
+    const run = `incomplete-${crypto.randomUUID()}`;
+    const directory = join(workspace.root, '.context/test-runs', run);
+    const exported = join(process.cwd(), '.context/test-runs', run);
+    const path = join(directory, 'environment.json');
+    try {
+      await mkdir(directory, { recursive: true });
+      if (kind === 'directory') await mkdir(path);
+      else if (kind === 'broken symlink')
+        await symlink('missing-inventory.json', path);
+      else await writeFile(path, '{incomplete');
+      await writeFile(join(directory, 'run.log'), 'shutdown evidence');
+      const [outcome] = await Promise.allSettled([workspace.cleanup()]);
+      expect(outcome.status).toBe('rejected');
+      if (outcome.status === 'rejected')
+        expect(
+          z.object({ message: z.string() }).parse(outcome.reason).message,
+        ).toContain('inventory');
+      expect(
+        await Bun.file(join(workspace.root, 'package.json')).exists(),
+      ).toBe(true);
+      expect(await Bun.file(join(exported, 'run.log')).text()).toBe(
+        'shutdown evidence',
+      );
+    } finally {
+      await rm(workspace.root, { recursive: true, force: true });
+      await rm(exported, { recursive: true, force: true });
+    }
+  },
+);
+
+test('workspace cleanup preserves inventory retained by a nested workspace', async () => {
+  const workspace = await createWorkspace();
+  const directory = join(
+    workspace.root,
+    '.context/retained-workspaces/nested/.context/test-runs/development',
+  );
+  const path = join(directory, 'environment.json');
+  try {
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      path,
+      JSON.stringify({ environment: 'development', databases: [], broker: {} }),
+    );
+    await workspace.cleanup();
+    expect(await Bun.file(path).exists()).toBe(true);
+  } finally {
+    // Synthetic inventory owns no Docker resources.
+    await rm(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  { environment: 'development', databases: [] },
+  { environment: 'test', databases: [{ app: 'user' }], broker: {} },
+])(
+  'workspace cleanup removes disposable $environment inventory',
+  async (inventory) => {
+    const workspace = await createWorkspace();
+    try {
+      const directory = join(workspace.root, '.context/test-runs/disposable');
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        join(directory, 'environment.json'),
+        JSON.stringify(inventory),
+      );
+      await workspace.cleanup();
+      expect(
+        await Bun.file(join(workspace.root, 'package.json')).exists(),
+      ).toBe(false);
+    } finally {
+      await rm(workspace.root, { recursive: true, force: true });
+    }
+  },
+);
 
 test.each([false, true])(
   'nested diagnostics survive cleanup (blocked export: %s)',
@@ -42,7 +163,7 @@ test.each([false, true])(
         await mkdir(directory, { recursive: true });
         await writeFile(join(directory, 'run.log'), failed.stderr.trim());
         await writeFile(join(directory, 'result.json'), JSON.stringify({ exitCode: failed.code }));
-        await writeFile(join(directory, 'environment.json'), 'synthetic-private-config');
+        await writeFile(join(directory, 'environment.json'), JSON.stringify({ environment: 'test', databases: [] }));
         await writeFile(join(directory, 'compose.json'), 'synthetic-private-config');
         assert.equal(failed.code, 17);
         if (${String(blockedExport)}) {
@@ -277,10 +398,15 @@ test('large Git file inventories preserve all workspace source files', async () 
     }
     for (const path of [
       'scripts/tests/workspace-fixture.ts',
+      'scripts/tests/cleanup.ts',
       'scripts/lib/command.ts',
     ]) {
       await copyFile(join(import.meta.dir, '../..', path), join(source, path));
     }
+    await symlink(
+      join(import.meta.dir, '../../node_modules/zod'),
+      join(source, 'node_modules/zod'),
+    );
     for (const directory of ['src', '.agents']) {
       await Promise.all(
         names.map((name) => writeFile(join(source, directory, name), name)),

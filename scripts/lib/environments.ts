@@ -9,7 +9,6 @@ import {
 import { createServer } from 'node:net';
 import { join, relative } from 'node:path';
 import {
-  applications,
   selectApplication,
   type DatabaseApplication,
 } from '../../database/applications';
@@ -20,6 +19,13 @@ import {
   workspaceRoot,
   type EnvironmentKind,
   type EnvironmentManifest,
+} from '../../database/environment';
+import { environmentPrefix } from '@starter/capabilities/declaration';
+import { selectedApplications } from '../../database/topology';
+import {
+  activeDatabases,
+  needsGateway,
+  needsMessaging,
 } from '../../database/environment';
 import { composeConfiguration } from './compose';
 import { failureExcerpt } from './failure-excerpt';
@@ -83,67 +89,95 @@ async function scopedDatabase(
   };
 }
 
-/**
- * A development run keeps its existing databases, credentials and volumes;
- * applications registered after it was created get new databases.
- */
-async function addRegisteredDatabases(
+/** Allocate only missing resources; retained identities and ports never rotate. */
+async function reconcileManifest(
   manifest: EnvironmentManifest,
-): Promise<boolean> {
-  // Every numeric coordinate in these sections is an allocated port.
-  const nextPort = portAllocator(
-    [manifest.broker, manifest.gateway, ...manifest.databases].flatMap(
+  selection?: string[],
+  retainMissing = false,
+): Promise<void> {
+  const topology = selectedApplications(selection, { retainMissing });
+  const nextPort = portAllocator([
+    ...Object.values(manifest.applicationPorts),
+    ...[manifest.broker, manifest.gateway, ...manifest.databases].flatMap(
       (section) =>
-        Object.values(section).filter((value) => typeof value === 'number'),
+        Object.values(section ?? {}).filter(
+          (value) => typeof value === 'number',
+        ),
     ),
-  );
-  const missing = applications.filter(
-    (app) => !manifest.databases.some((db) => db.app === app.name),
-  );
-  for (const app of missing)
-    manifest.databases.push(
-      await scopedDatabase(app, manifest.project, nextPort),
-    );
-  return missing.length > 0;
+  ]);
+  // Upgrade the old gateway-owned coordinates without reallocating listeners.
+  for (const [name, port] of Object.entries(manifest.gateway ?? {})) {
+    if (
+      name !== 'proxyPort' &&
+      name !== 'adminPort' &&
+      name.endsWith('Port') &&
+      typeof port === 'number' &&
+      !Object.hasOwn(manifest.applicationPorts, name.slice(0, -4))
+    )
+      manifest.applicationPorts[name.slice(0, -4)] = port;
+  }
+  manifest.apps = selection;
+  manifest.topology = topology;
+  for (const app of topology) {
+    if (!Object.hasOwn(manifest.applicationPorts, app.name))
+      manifest.applicationPorts[app.name] = await nextPort(
+        `${environmentPrefix(app.name)}_HTTP_PORT`,
+      );
+    const existing = manifest.databases.find((db) => db.app === app.name);
+    if (
+      app.persistence &&
+      existing &&
+      existing.prefix !== selectApplication(app.name).prefix
+    )
+      throw new Error(
+        `Retained database identity conflicts with application: ${app.name}`,
+      );
+    if (app.persistence && !existing)
+      manifest.databases.push(
+        await scopedDatabase(
+          selectApplication(app.name),
+          manifest.project,
+          nextPort,
+        ),
+      );
+  }
+  if (needsMessaging(manifest) && !manifest.broker)
+    manifest.broker = {
+      port: await nextPort('RABBITMQ_PORT'),
+      managementPort: await nextPort('RABBITMQ_MANAGEMENT_PORT'),
+      username: 'starter',
+      password: randomUUID(),
+      vhost: manifest.project,
+    };
+  if (needsGateway(manifest) && !manifest.gateway)
+    manifest.gateway = {
+      name: `${manifest.project}-gateway`,
+      host: process.env.GATEWAY_HOST ?? 'host.docker.internal',
+      proxyPort: await nextPort('GATEWAY_PROXY_PORT'),
+      adminPort: await nextPort('GATEWAY_ADMIN_PORT'),
+    };
 }
 
 async function newManifest(
   environment: EnvironmentKind,
   run: string,
-  selected?: DatabaseApplication[],
+  selection?: string[],
 ): Promise<EnvironmentManifest> {
   const { project } = environmentLocation(environment, run);
-  const nextPort = portAllocator();
-  const databases: EnvironmentManifest['databases'] = [];
-  for (const app of selected ?? applications)
-    databases.push(await scopedDatabase(app, project, nextPort));
-  return {
+  const manifest: EnvironmentManifest = {
     environment,
     run,
     project,
     owner: randomUUID(),
     status: 'starting',
-    databases,
-    ...(selected ? { apps: selected.map((app) => app.name) } : {}),
-    broker: {
-      port: await nextPort('RABBITMQ_PORT'),
-      managementPort: await nextPort('RABBITMQ_MANAGEMENT_PORT'),
-      username: 'starter',
-      password: randomUUID(),
-      vhost: project,
-    },
-    gateway: {
-      name: `${project}-gateway`,
-      host: process.env.GATEWAY_HOST ?? 'host.docker.internal',
-      proxyPort: await nextPort('GATEWAY_PROXY_PORT'),
-      adminPort: await nextPort('GATEWAY_ADMIN_PORT'),
-      userPort: await nextPort('USER_HTTP_PORT'),
-      walletPort: await nextPort('WALLET_HTTP_PORT'),
-    },
+    databases: [],
+    applicationPorts: {},
   };
+  await reconcileManifest(manifest, selection);
+  return manifest;
 }
 
-/** `dev` serves both applications once every registered database is migrated. */
+/** `dev` starts the selected applications after their databases are migrated. */
 const developmentCommand = [
   process.execPath,
   '--no-env-file',
@@ -152,13 +186,12 @@ const developmentCommand = [
 ];
 
 /**
- * Explicit `apps` scopes provisioning, migrations and seeds; no sibling database or gateway.
- * Omit it for distributed suites and cross-database credential checks.
- * `dev` prepares development infrastructure, migrates every registered
- * application and serves both; once ready, its infrastructure outlives them.
+ * Selected declarations determine the service union, migrations and startup.
+ * Development keeps the complete resource inventory after declarations disappear.
+ * Once ready, development infrastructure outlives migrations and applications.
  */
 export async function operateEnvironment(
-  action: 'prepare' | 'down' | 'exec' | 'run' | 'dev',
+  action: 'prepare' | 'down' | 'exec' | 'run' | 'dev' | 'inspect',
   environment: EnvironmentKind,
   run: string,
   command: string[] = [],
@@ -167,18 +200,13 @@ export async function operateEnvironment(
 ): Promise<number> {
   const location = environmentLocation(environment, run);
   const creating = action === 'prepare' || action === 'run' || action === 'dev';
+  if (apps && !creating)
+    throw new Error('Select applications during preparation.');
   if ((action === 'exec' || action === 'run') && !command.length)
     throw new Error('A command after -- is required.');
   if (action === 'dev' && (environment !== 'development' || command.length))
     throw new Error('Usage: dev [--run=<id>] (development only, no command)');
   const commandToRun = action === 'dev' ? developmentCommand : command;
-  const selected = (apps ?? applications.map((app) => app.name)).map((name) =>
-    selectApplication(name),
-  );
-  if (apps && (!apps.length || new Set(apps).size !== apps.length))
-    throw new Error('Select distinct applications');
-  if (apps && environment !== 'test')
-    throw new Error('Scoped applications require a test environment');
   if (action === 'down' && !existsSync(location.manifestPath)) return 0;
   let manifest: EnvironmentManifest;
   const save = () => {
@@ -187,7 +215,7 @@ export async function operateEnvironment(
     });
   };
   if (creating && !existsSync(location.manifestPath)) {
-    manifest = await newManifest(environment, run, apps ? selected : undefined);
+    manifest = await newManifest(environment, run, apps);
     mkdirSync(location.directory, { recursive: true });
     // Exclusive creation prevents a concurrent prepare from taking over the run.
     writeFileSync(location.manifestPath, JSON.stringify(manifest, null, 2), {
@@ -197,11 +225,12 @@ export async function operateEnvironment(
   } else {
     const extending = creating && environment === 'development';
     manifest = readEnvironment(environment, run, {
-      complete: !extending && action !== 'down',
+      complete: !extending && action !== 'down' && action !== 'inspect',
     });
     if (creating && environment === 'test')
       throw new Error('Test run already exists. Select a new run ID.');
-    if (extending && (await addRegisteredDatabases(manifest))) save();
+    if (extending)
+      await reconcileManifest(manifest, apps ?? manifest.apps, !apps);
   }
   const composePath = join(location.directory, 'compose.json');
   // Use only known fields; inherited Compose options/.env cannot change ownership.
@@ -279,6 +308,11 @@ export async function operateEnvironment(
   async function shutdown(showLogs: boolean) {
     session.startCleanup();
     await verifyOwnership(true);
+    if (!manifest.databases.length && !manifest.broker && !manifest.gateway) {
+      manifest.status = 'stopped';
+      save();
+      return 0;
+    }
     await session.execute([...compose, 'logs', '--no-color'], {
       timeout: 15_000,
       echo: showLogs,
@@ -298,19 +332,99 @@ export async function operateEnvironment(
   async function workflow(): Promise<number> {
     await verifyOwnership(!creating || manifest.environment === 'development');
     ownership.verified = true;
+    if (action === 'inspect') {
+      const active = new Set(activeDatabases(manifest).map((db) => db.app));
+      session.log(
+        JSON.stringify({
+          project: manifest.project,
+          owner: manifest.owner,
+          status: manifest.status,
+          applications: manifest.topology ?? [],
+          applicationPorts: manifest.applicationPorts,
+          databases: manifest.databases.map((db) => ({
+            app: db.app,
+            service: `postgres-${db.app}`,
+            database: db.database,
+            port: db.port,
+            ...(manifest.environment === 'development'
+              ? { volume: `${manifest.project}_${db.app}-postgres` }
+              : { storage: 'tmpfs' }),
+            active: active.has(db.app),
+          })),
+          broker: manifest.broker
+            ? {
+                vhost: manifest.broker.vhost,
+                port: manifest.broker.port,
+                ...(manifest.environment === 'development'
+                  ? { volume: `${manifest.project}_rabbitmq` }
+                  : { storage: 'tmpfs' }),
+                active: needsMessaging(manifest),
+              }
+            : undefined,
+          gateway: manifest.gateway
+            ? { name: manifest.gateway.name, active: needsGateway(manifest) }
+            : undefined,
+        }),
+      );
+      return 0;
+    }
     writeFileSync(
       composePath,
       JSON.stringify(composeConfiguration(manifest), null, 2),
       { mode: 0o600 },
     );
     if (creating) {
-      const up = await session.execute(
-        [...compose, 'up', '--detach', '--wait', '--wait-timeout', '60'],
-        { timeout: 90_000 },
-      );
-      if (up.code !== 0) {
-        code = up.code;
-        return code;
+      manifest.status = 'starting';
+      save();
+      const active = [
+        ...activeDatabases(manifest).map((db) => `postgres-${db.app}`),
+        ...(needsMessaging(manifest) ? ['rabbitmq'] : []),
+        ...(needsGateway(manifest) ? ['gateway'] : []),
+      ];
+      const inactive = [
+        ...manifest.databases.map((db) => `postgres-${db.app}`),
+        ...(manifest.broker ? ['rabbitmq'] : []),
+        ...(manifest.gateway ? ['gateway'] : []),
+      ].filter((service) => !active.includes(service));
+      if (inactive.length) {
+        const stopped = await session.execute(
+          [...compose, 'stop', '--timeout', '10', ...inactive],
+          { timeout: 30_000 },
+        );
+        if (stopped.code !== 0) return (code = stopped.code);
+      }
+      // Kong reads its DB-less configuration at startup. Compose's inline config
+      // content may change without recreating the container; explicitly recreate
+      // this stateless service so removed routes disappear as well as new ones join.
+      const batches = [
+        active.filter((service) => service !== 'gateway'),
+        active.filter((service) => service === 'gateway'),
+      ];
+      for (const services of batches) {
+        if (!services.length) continue;
+        const up = await session.execute(
+          [
+            ...compose,
+            'up',
+            '--detach',
+            '--wait',
+            '--wait-timeout',
+            '60',
+            ...(services.includes('gateway') ? ['--force-recreate'] : []),
+            ...services,
+          ],
+          { timeout: 90_000 },
+        );
+        if (up.code !== 0) return (code = up.code);
+      }
+      if (activeDatabases(manifest).length) {
+        const reconciled = await session.execute([
+          process.execPath,
+          '--no-env-file',
+          'scripts/reconcile-databases.ts',
+          location.manifestPath,
+        ]);
+        if (reconciled.code !== 0) return (code = reconciled.code);
       }
       manifest.status = 'ready';
       save();
@@ -330,11 +444,13 @@ export async function operateEnvironment(
         : action === 'run' && setupDatabase
           ? ['migration:up:tests', 'seed:up:tests']
           : [];
-    for (const app of selected) {
+    for (const app of activeDatabases(manifest).filter(
+      (db) => db.prefix !== 'DB',
+    )) {
       for (const script of setup) {
         const result = await session.execute(
           [process.execPath, '--no-env-file', 'run', script],
-          { env: { ...env, DATABASE_APP: app.name } },
+          { env: { ...env, DATABASE_APP: app.app } },
         );
         if (result.code !== 0) {
           code = result.code;

@@ -21,6 +21,44 @@ export interface RunningApp {
   stop: (signal?: 'SIGTERM' | 'SIGINT') => Promise<void>;
 }
 
+/** Drain a detached startup command and force its process group down on timeout. */
+export async function stopStartup(
+  child: Pick<Bun.Subprocess, 'pid' | 'exitCode' | 'exited'>,
+  output: Promise<unknown>,
+): Promise<void> {
+  const signal = (value: 'SIGTERM' | 'SIGKILL') => {
+    try {
+      process.kill(-child.pid, value);
+    } catch (error) {
+      if (!(
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ESRCH'
+      ))
+        throw error;
+    }
+  };
+  if (child.exitCode === null) signal('SIGTERM');
+  let terminationError: unknown;
+  const timer = setTimeout(() => {
+    try {
+      signal('SIGKILL');
+    } catch (error) {
+      terminationError = error;
+    }
+  }, 20_000);
+  try {
+    await child.exited;
+    await output;
+    if (terminationError)
+      throw new Error('Startup process group termination failed', {
+        cause: terminationError,
+      });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Start a generated app with only the supplied settings and an owned HTTP port. */
 export async function withApp(
   {

@@ -11,14 +11,14 @@ Conductor users can use the [workspace setup and Run commands](conductor.md)
 for an isolated development environment and an allocated application port.
 
 ```sh
-make dev   # bun run dev: prepare, migrate every application, watch User and Wallet
+make dev   # bun run dev: prepare, migrate persistent selections, watch selected applications
 make down  # bun run dev:down: stop containers and their network; keep named volumes
 ```
 
 `bun run dev` runs the uncached `infrastructure:dev` target for development's
-`default` run (`--run=<id>` selects another). It prepares PostgreSQL, RabbitMQ
-and Kong and waits for their healthchecks, applies pending migrations for every
-persistent application, then runs `start:dev` with the manifest's settings. The
+`default` run (`--run=<id>` selects another). It derives infrastructure from the selected declarations, waits for service
+healthchecks, applies pending migrations for selected persistent applications,
+then runs `start:dev` with the manifest's settings. The
 infrastructure keeps running after the applications or migrations exit;
 `make down` stops it. A failed infrastructure startup removes only that run's
 containers and network. `make dev` never seeds: seeds are not idempotent, so
@@ -42,10 +42,93 @@ bun run env:down --environment=development --run=default
 
 Preparing the same development environment again reuses its manifest, ports,
 credentials and volumes. Migration and seed commands default to `user`; use
-`DATABASE_APP=wallet` for Wallet. `start:dev` runs both independent processes.
+`DATABASE_APP=wallet` for Wallet. `start`, `start:dev` and `start:debug` discover selected applications and run their
+`serve`, `watch` and `debug` targets respectively. Outside an environment they
+discover every declared application.
 The [Wallet guide](wallet.md#run-it-locally) and [User guide](user.md#run-it-locally)
 describe running one service. `docker:env` is an alias for preparing
 development's `default` run.
+
+## Selection and retained resources
+
+```sh
+bun run env:prepare --environment=development --run=selected --app=user
+bun run dev --run=selected
+bun run env:inspect --environment=development --run=selected
+bun run env:down --environment=development --run=selected
+```
+
+Repeat `--app=<name>` on preparation or `dev` to select multiple applications.
+A new run without a selection follows all declarations. An explicit selection is
+remembered on later prepares; supply the complete new selection to change it.
+A removed selected declaration becomes inactive, and restoring it reactivates it.
+For an unscoped run, new declarations join automatically. No central name or port
+list needs editing. Each selected application gets a stable `<NAME>_HTTP_PORT`,
+including applications with private operational HTTP only. Generated messaging
+applications also receive `<NAME>_RABBITMQ_URL`; existing applications retain the
+shared `RABBITMQ_*` interface.
+
+| Capability   | Active infrastructure and configuration                                 |
+| ------------ | ----------------------------------------------------------------------- |
+| Persistence  | One owning PostgreSQL instance and database credentials per application |
+| Messaging    | One shared RabbitMQ instance and scoped vhost                           |
+| Exposure     | One shared DB-less Kong; only explicitly declared routes are registered |
+| All disabled | Operational application ports; none of the infrastructure above         |
+
+Development databases and RabbitMQ use persistent named volumes. Disposable test
+runs retain their existing tmpfs contract and cannot be prepared again after
+shutdown. Combined selections provision exactly the union of their requirements.
+Disabled capabilities contribute no dependency credentials or migration commands.
+
+The manifest separates the last prepared `topology` from its retained database,
+broker, gateway and application-port inventory. Disabling a capability, excluding
+an application or removing its declaration stops inactive services but retains
+credentials, resource ownership, volumes and accepted queued work. No queue is
+purged during reconciliation. Active producers may continue publishing while a
+consumer is inactive; consumer count is not queue ownership or cancellation.
+Reactivation reuses the same inventory and resumes with the retained state.
+Preparation recreates the stateless gateway to load changed routes, including
+removals; this can briefly interrupt local gateway traffic.
+
+`env:inspect` checks ownership and reports active and retained resource identities
+without printing passwords. `env:down` discovers and stops retained resources even
+when their application declaration has disappeared. Preparation, inspection and
+shutdown refuse foreign resource owners. No command retires resources or deletes
+volumes. Direct manifest edits are unsupported; keep `.context/test-runs/` to retain
+resource identities. After editing declarations, prepare before `env:exec`.
+
+### Explicit public routes
+
+Each application owns its routes in `application.json`; generation registers none:
+
+```json
+{
+  "name": "reports",
+  "persistence": false,
+  "messaging": false,
+  "exposure": true,
+  "routes": [
+    {
+      "name": "rest",
+      "paths": ["~/v1/reports(?:/|$)"],
+      "methods": ["GET"],
+      "stripPath": false
+    },
+    {
+      "name": "graphql",
+      "paths": ["~/reports/graphql/?$"],
+      "stripPath": true,
+      "upstreamPath": "/graphql"
+    }
+  ]
+}
+```
+
+`paths` and optional `methods` select requests; `stripPath` and optional
+`upstreamPath` control forwarding. Route names must be distinct within an app.
+With exposure disabled, its route declarations contribute nothing to Kong.
+Operational probes, documentation and GraphQL are never registered implicitly.
+Application listeners run on the host.
 
 ## Disposable tests
 
@@ -62,9 +145,9 @@ bun run test:component
 
 `test:e2e` migrates/seeds both applications; `test:component` runs separate `user` and `wallet`
 suites through
-`scripts/with-test-database.ts --app=<name> -- <command>`. An explicit `--app` provisions only the selected application databases and RabbitMQ,
-without Kong or sibling databases. Without `--app`, the wrapper provisions,
-migrates and seeds every persistent application plus the gateway. Cross-database
+`scripts/with-test-database.ts --app=<name> -- <command>`. Repeat `--app=<name>` to select applications. Their declarations determine the
+union of databases, broker and gateway; migrations and seeds run only for selected
+persistent applications. Without `--app`, the wrapper selects every declaration. Cross-database
 credential rejection runs in the distributed suite.
 
 Distribution verification uses `--no-database-setup` so each isolated artifact
@@ -145,7 +228,14 @@ the diagnostic. Every run ends with one `Result:` line naming its statuses,
 counts and log. Disposable workspace fixtures copy only `run.log` and
 `result.json` back to the source checkout's `.context/test-runs/` before removal,
 including runs nested under Nx. An export failure retains the temporary workspace
-and fails cleanup. Failed CI jobs upload only `run.log` and `result.json` as the
+and fails the run. Workspace fixtures automatically keep their runnable workspace
+and private inventory under `.context/retained-workspaces/` whenever a manifest
+contains development databases or a broker, including inactive resources and
+failed shutdowns. No retention flag is required. Unreadable inventory also retains
+the workspace and fails cleanup; diagnostic export is still attempted. Copies
+without durable development inventory are removed after diagnostic export.
+Use `env:inspect` or `env:down` from the printed retained workspace path.
+Failed CI jobs upload only `run.log` and `result.json` as the
 `test-run-diagnostics-<attempt>` artifact, retained for seven days; generated
 manifests and Compose configuration are excluded.
 The manifest provides database and broker settings to `env:exec`; shell values
@@ -207,8 +297,9 @@ Print the exact URLs for the prepared run (use `--run=conductor` for Conductor):
 bun run env:exec --environment=development --run=default -- bun -e 'const base = "http://127.0.0.1:" + process.env.GATEWAY_PROXY_PORT; for (const path of ["/v1/users", "/v1/wallets/by-user/:userId", "/user/graphql", "/wallet/graphql"]) console.log(base + path);'
 ```
 
-The [versioned declarative route template](../docker/kong.json) is rendered with
-the manifest's container-to-host address and application ports. Kong runs in
+The [gateway renderer](../scripts/lib/gateway.ts) reads explicit `routes` from
+the selected applications' declarations and uses the manifest's container-to-host
+address and application ports. Kong runs in
 [DB-less mode](https://developer.konghq.com/gateway/db-less-mode/). REST paths,
 query strings and bodies are preserved; each GraphQL route maps to its owning
 application's `/graphql`. There is no combined `/graphql` endpoint or federation.
@@ -255,9 +346,9 @@ DATABASE_APP=user bun run env:exec --environment=test --run=regression-1 -- bun 
 An application with a runtime role separates migration authority from runtime
 access. Its database owner (`<prefix>_MIGRATION_USERNAME`/`_PASSWORD`) runs
 migrations and seeds; the application connects as the restricted role
-(`<prefix>_USERNAME`/`_PASSWORD`), which the environment creates when it
-initializes the cluster and the migrations grant only what the application
-needs. Wallet's `wallet_runtime` can read and insert `wallets` and
+(`<prefix>_USERNAME`/`_PASSWORD`), which preparation reconciles after database health, including on an existing
+cluster. Missing roles are created with the retained credentials; existing roles
+and passwords are not replaced. Migrations grant only what the application needs. Wallet's `wallet_runtime` can read and insert `wallets` and
 `wallet_consumed_events`, but cannot update balances, delete records or change
 the schema. User's `user_runtime` can read, insert and delete profiles and read/insert
 pending events, and update only their `published_at`; it cannot delete events,
@@ -266,13 +357,11 @@ database runs in its own PostgreSQL container, so neither Wallet credential can
 connect to another application's database; both component suites verify
 the final User/Wallet role restrictions.
 
-Registering an application changes existing manifests. The next `env:prepare`
-of a development run adds the new database, with new ports and credentials,
-and keeps the existing databases, credentials and volumes. Retired legacy
-development resources remain stoppable and preserved but are never created in
-new runs or available as migration/seed targets; `env:exec` asks for
-that preparation first, while `env:down` still works. Test runs cannot be
-prepared again, so use a new run.
+Registering an application changes the selected topology on the next preparation.
+Development reconciliation adds its resources without rotating existing credentials
+or changing retained ports. Test runs remain single-use; prepare a new run after
+changing declarations. Existing pre-capability development manifests are upgraded
+without reallocating their known listener ports or adopting legacy external volumes.
 
 SQL files retain `-- Up Migration` and `-- Down Migration` sections.
 `node-pg-migrate` owns each database's `public.pgmigrations`, transaction and

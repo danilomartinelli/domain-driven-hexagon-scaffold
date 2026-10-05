@@ -6,8 +6,8 @@ Start with the [local `nest-app` generator](library-generators.md#application-ca
 project, `application.json` declaration, adapter/composition structure for the
 enabled capabilities, independent configuration, test directories and
 distribution targets without business behavior. Follow the checklist below as
-behavior is added. Environment registration and root convenience commands are
-deliberate additions, not generation side effects. `src/apps/wallet` is the worked
+behavior is added. Environment selection, ports and shared startup commands discover the declaration
+automatically; business route registration remains explicit. `src/apps/wallet` is the worked
 persistence example. Mark each item done or not applicable, with the reason, in
 the pull request.
 
@@ -30,16 +30,12 @@ its tests and the distribution verification below exist.
       `implicitDependencies: ["test-runner"]`. Add a `tsconfig.json` extending the root.
 - [ ] The layout in [src/apps/AGENTS.md](../src/apps/AGENTS.md), with configuration
       read from the application's own environment variables.
-- [ ] `package.json`: `start:<name>`, `start:<name>:dev` and `start:<name>:debug`,
-      plus the project in `start`, `start:dev` and `start:debug` so `make dev`
-      serves it. `bun run dev` already migrates every persistent application.
-- [ ] A listener port, `<NAME>_HTTP_PORT`, in the manifest schema and variables in
-      `database/environment.ts` and in `newManifest` in `scripts/lib/environments.ts`,
-      unless the manifest already reserves it. Every application needs it,
-      whatever its capabilities: `make dev` supplies only the manifest's variables.
-- [ ] With messaging declared, `<NAME>_RABBITMQ_URL` (and an optional unique
-      `<NAME>_RABBITMQ_QUEUE`) in those same variables for a generated
-      application: the manifest supplies only the shared `RABBITMQ_*` fields.
+- [ ] With exposure enabled, declare only the business routes to register with
+      Kong in `application.json`; see [route registration](database.md#explicit-public-routes).
+      Unexposed applications contribute no routes. The environment supplies stable
+      `<NAME>_HTTP_PORT` and applicable database and `<NAME>_RABBITMQ_URL` settings;
+      do not add central application or port lists. Optional individual convenience
+      scripts can delegate to `bun run nx run <name>:serve`, `watch` or `debug`.
 
 ## Database
 

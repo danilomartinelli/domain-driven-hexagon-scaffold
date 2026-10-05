@@ -5,11 +5,40 @@ import { z } from 'zod';
 
 const applicationName = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
-const declarationSchema = z.strictObject({
+export const applicationDeclarationSchema = z.strictObject({
   name: z.string().regex(applicationName),
   persistence: z.boolean(),
   messaging: z.boolean(),
   exposure: z.boolean(),
+  routes: z
+    .array(
+      z.strictObject({
+        name: z.string().regex(applicationName),
+        paths: z.array(z.string().regex(/^(\/|~\/)/)).min(1),
+        methods: z
+          .array(
+            z.enum([
+              'GET',
+              'POST',
+              'PUT',
+              'PATCH',
+              'DELETE',
+              'OPTIONS',
+              'HEAD',
+            ]),
+          )
+          .min(1)
+          .optional(),
+        stripPath: z.boolean(),
+        upstreamPath: z.string().startsWith('/').optional(),
+      }),
+    )
+    .refine(
+      (routes) =>
+        new Set(routes.map((route) => route.name)).size === routes.length,
+      'Route names must be distinct',
+    )
+    .optional(),
 });
 
 /**
@@ -17,7 +46,7 @@ const declarationSchema = z.strictObject({
  * contribute no configuration, adapters, infrastructure or readiness dependency.
  */
 export type ApplicationDeclaration = Readonly<
-  z.infer<typeof declarationSchema>
+  z.infer<typeof applicationDeclarationSchema>
 >;
 
 /** Read and validate one `application.json` without trusting its shape. */
@@ -33,7 +62,7 @@ export function readApplicationDeclaration(
       cause: error,
     });
   }
-  const parsed = declarationSchema.safeParse(value);
+  const parsed = applicationDeclarationSchema.safeParse(value);
   if (!parsed.success)
     throw new Error(
       `Invalid application declaration: ${path}: ${z.prettifyError(parsed.error)}`,

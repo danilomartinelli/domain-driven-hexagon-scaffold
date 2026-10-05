@@ -203,8 +203,9 @@ Add SQL under `database/migrations/` as described in
 [application-owned database content](database.md#application-owned-database-content).
 Packaging rejects `database/` content when persistence is not declared. Prepared
 environments also provision, migrate and validate its database like any persistent
-application. Environment HTTP ports, root start commands, broker settings and Kong
-routes remain explicit; follow the [application checklist](adding-an-application.md).
+application. Environment HTTP ports, root startup selection and applicable broker
+settings derive from the declaration. Kong routes remain application-owned and
+explicit in `application.json`; follow the [application checklist](adding-an-application.md).
 
 The [app generator tests](../scripts/tests/app-generator.test.ts) exercise the CLI,
 dry-run/collision guarantees, project checks and a distribution after deleting its
