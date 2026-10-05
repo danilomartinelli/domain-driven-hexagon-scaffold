@@ -46,12 +46,17 @@ async function withService(app: string, use: () => Promise<void>) {
     await until(async () => {
       if (child.exitCode !== null) throw new Error((await logs).join('\n'));
       return fetch(
-        `http://127.0.0.1:${String(manifest.applicationPorts[app])}/health/live`,
+        `http://127.0.0.1:${String(manifest.gateway?.proxyPort)}/${app}/graphql`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ query: '{ __typename }' }),
+        },
       ).then(
         (r) => r.ok,
         () => false,
       );
-    }, 30000);
+    }, 120000);
     await use();
   }, [() => stopStartup(child, logs)]);
 }

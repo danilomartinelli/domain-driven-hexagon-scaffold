@@ -67,5 +67,16 @@ addition, disablement, removal and reactivation; retained resources stay
 inspectable and stoppable. The public generator/environment matrix and retained
 User-to-Wallet delivery regression exercise these operations with real services.
 
-Pending: OCI images and private containerized development (#62), the Compose reference operations (#63) and GHCR publication
+Independent OCI images and private application containers are implemented (#62).
+The target Linux environment installs the frozen dependency tree and packages the
+existing distribution. Application startup and owned migration commands use the
+same image with separate credentials. Development watches bound source with Bun
+as PID 1, exposes business routes only through loopback Kong, and opens a loopback
+inspector only when requested. Kong actively probes HTTP readiness; container
+healthchecks describe liveness and do not restart unhealthy containers. Docker
+allows 20 seconds for the existing 15-second application shutdown contract.
+Local image execution covers ARM64 natively and AMD64 through emulation; see
+[distribution verification](../distribution.md#linux-oci-images).
+
+Pending: the Compose reference operations (#63) and GHCR publication
 (#64). No registry publication or deployment is established by this ADR.

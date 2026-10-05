@@ -49,15 +49,17 @@ bash scripts/conductor/run.sh
 The local-only script requires `CONDUCTOR_IS_LOCAL=1` and `CONDUCTOR_PORT`.
 It runs the [development workflow](database.md#development) behind `make dev`
 (`bun run dev --run=conductor`): it prepares the named development run
-`conductor`, applies pending migrations for both applications, then starts User
-on `CONDUCTOR_PORT` and Wallet on `CONDUCTOR_PORT + 1` (each has Swagger at `/docs`). The environment variables
-are `USER_HTTP_PORT` and `WALLET_HTTP_PORT`; ordinary preparation allocates them. Database/broker identities and ports are isolated by the existing
+`conductor`, applies pending migrations for both applications, then watches User
+and Wallet in containers with unpublished business listeners. For a new run,
+`GATEWAY_PROXY_PORT=CONDUCTOR_PORT` selects the loopback Kong ingress. Retained
+runs keep their previously allocated ports; use the gateway URL printed below.
+Database/broker identities and operational ports are isolated by the existing
 [workspace environment runner](database.md#isolation-and-configuration), so
 different workspaces can run concurrently. Keep database/broker shell overrides
 unset to use the generated targets.
 
-Preparation also starts an owned Kong gateway with separately allocated proxy
-and Admin ports. See [gateway URLs](database.md#gateway-urls) to print its exact
+Preparation also starts the owned Kong gateway; its Admin port is a separate
+loopback operational endpoint. See [gateway URLs](database.md#gateway-urls) to print its exact
 URLs with `--run=conductor`; User and Wallet retain separate GraphQL schemas.
 
 Seeds remain explicit because they are not idempotent. To add the example user

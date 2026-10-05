@@ -30,6 +30,7 @@ import {
 import { composeConfiguration } from './compose';
 import { failureExcerpt } from './failure-excerpt';
 import { commandSession } from './session';
+import { verifyEnvironmentOwnership } from './ownership';
 import { bunTestCounts, describeCounts } from './test-counts';
 
 export async function availablePort(): Promise<number> {
@@ -209,6 +210,7 @@ export async function operateEnvironment(
   const commandToRun = action === 'dev' ? developmentCommand : command;
   if (action === 'down' && !existsSync(location.manifestPath)) return 0;
   let manifest: EnvironmentManifest;
+  let previousTopology: EnvironmentManifest['topology'];
   const save = () => {
     writeFileSync(location.manifestPath, JSON.stringify(manifest, null, 2), {
       mode: 0o600,
@@ -227,6 +229,7 @@ export async function operateEnvironment(
     manifest = readEnvironment(environment, run, {
       complete: !extending && action !== 'down' && action !== 'inspect',
     });
+    previousTopology = manifest.topology;
     if (creating && environment === 'test')
       throw new Error('Test run already exists. Select a new run ID.');
     if (extending)
@@ -267,48 +270,18 @@ export async function operateEnvironment(
       throw new Error(`Resource inspection failed (${String(result.code)}).`);
     return result.stdout.trim();
   };
-  async function verifyOwnership(allowExisting: boolean) {
-    for (const resource of ['container', 'network', 'volume'] as const) {
-      const ids = await requireSuccess(
-        resource === 'container'
-          ? [
-              'docker',
-              'ps',
-              '-aq',
-              '--filter',
-              `label=com.docker.compose.project=${manifest.project}`,
-            ]
-          : [
-              'docker',
-              resource,
-              'ls',
-              '-q',
-              '--filter',
-              `label=com.docker.compose.project=${manifest.project}`,
-            ],
-      );
-      if (!ids) continue;
-      if (!allowExisting)
-        throw new Error('Refusing to adopt existing resources for a new run.');
-      const ownership = await requireSuccess([
-        'docker',
-        resource,
-        'inspect',
-        '--format',
-        resource === 'container'
-          ? '{{index .Config.Labels "dev.starter.owner"}}'
-          : '{{index .Labels "dev.starter.owner"}}',
-        ...ids.split(/\s+/),
-      ]);
-      if (ownership.split(/\s+/).some((owner) => owner !== manifest.owner))
-        throw new Error('Refusing resource owned by another environment.');
-    }
-  }
+  const verifyOwnership = (allowExisting: boolean) =>
+    verifyEnvironmentOwnership(manifest, requireSuccess, allowExisting);
   /** Container logs always reach run.log; the terminal gets them on failure. */
   async function shutdown(showLogs: boolean) {
     session.startCleanup();
     await verifyOwnership(true);
-    if (!manifest.databases.length && !manifest.broker && !manifest.gateway) {
+    if (
+      !manifest.databases.length &&
+      !manifest.broker &&
+      !manifest.gateway &&
+      manifest.environment !== 'development'
+    ) {
       manifest.status = 'stopped';
       save();
       return 0;
@@ -318,7 +291,7 @@ export async function operateEnvironment(
       echo: showLogs,
     });
     const result = await session.execute(
-      [...compose, 'down', '--timeout', '10'],
+      [...compose, 'down', '--remove-orphans', '--timeout', '20'],
       { timeout: 30_000 },
     );
     if (result.code === 0) {
@@ -374,6 +347,33 @@ export async function operateEnvironment(
       { mode: 0o600 },
     );
     if (creating) {
+      if (manifest.environment === 'development') {
+        const changed = (previousTopology ?? []).filter(
+          (app) =>
+            JSON.stringify(app) !==
+            JSON.stringify(
+              manifest.topology?.find((entry) => entry.name === app.name),
+            ),
+        );
+        for (const app of changed) {
+          const ids = await requireSuccess([
+            'docker',
+            'ps',
+            '-q',
+            '--filter',
+            `label=com.docker.compose.project=${manifest.project}`,
+            '--filter',
+            `label=com.docker.compose.service=app-${app.name}`,
+          ]);
+          if (ids) {
+            const stopped = await session.execute(
+              ['docker', 'stop', '--time=20', ...ids.split(/\s+/)],
+              { timeout: 30_000 },
+            );
+            if (stopped.code !== 0) return (code = stopped.code);
+          }
+        }
+      }
       manifest.status = 'starting';
       save();
       const active = [
@@ -462,6 +462,7 @@ export async function operateEnvironment(
       failureOffset = statSync(logPath).size;
       const result = await session.execute(commandToRun, {
         env,
+        gracePeriod: environment === 'development' ? 25_000 : 5_000,
         timeout:
           action === 'dev' ||
           (action === 'exec' && environment === 'development')

@@ -34,7 +34,9 @@ requests and pushes to `master`. All belong to the `check` job required by the
 to force the healthcheck-before-startup ordering and verifies fixture cleanup
 ownership. The distributed end-to-end suite verifies the service integration and
 all seven Gherkin cases through Kong, including separate GraphQL schemas and
-pending Wallet/deletion behavior. CI also runs `bun run nx run test-runner:test-selection` for declaration-selected
+pending Wallet/deletion behavior. CI runs native AMD64 and ARM64 image jobs before the required `check` job, and
+`test-runner:test-private-development` verifies source watch and the local inspector.
+CI also runs `bun run nx run test-runner:test-selection` for declaration-selected
 topologies, generated application startup and retained database/message state.
 CI also runs
 `bun run nx run test-runner:test-gateway` for loaded upstream configuration,
@@ -59,7 +61,7 @@ The [migration evidence map](migration-evidence.md) links each delivered
 requirement to the suites that exercise it.
 
 - **Fast gate** (`bun run check`): Formatting, documentation references and `check:code`
-- **Full gate** (`bun run check:full`): Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E, service component suites and isolated distribution verification
+- **Full gate** (`bun run check:full`): Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E, service component suites isolated distribution verification and Linux image execution
 - **Types** (`bun run typecheck`): Application, tests, runner, database scripts and tool configs; includes decorator fixture
 - **Lint** (`bun run lint`): Same code/configuration scope; errors and warnings fail
 - **Formatting** (`bun run format:check`): Configured source, tooling, docs and root agent guidance
@@ -67,6 +69,7 @@ requirement to the suites that exercise it.
 - **Core and packages** (`bun run test:unit`): Every project's infrastructure-free `test` target: domain, use cases, commands, exceptions and colocated package tests
 - **Live behavior** (`bun run test:e2e`): Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up
 - **Components** (`bun run test:component`): Application targets provision isolated runs, migrate/seed only their app and check APIs/database ownership. The generator target owns PostgreSQL, RabbitMQ and scratch apps to verify all eight capability combinations, transport recovery and shutdown.
+- **Linux images** (`bun run test:images`): Builds and executes AMD64/ARM64 images using the existing distribution contracts, generated capability matrix and container shutdown tests; `--platform=linux/arm64` selects focused feedback.
 - **Distributions** (`bun run test:distribution`): Packages each service, runs it from an external directory, migrates only its owned database and verifies independent HTTP/GraphQL and messaging
 - **Runner lifecycle** (`bun run test:tooling`): Real Docker: named environments, the `make dev`/`make down` workflow, development/sibling preservation, target guards, failure status, signals and cleanup
 - **Documentation** (`bun run check:docs`): All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents

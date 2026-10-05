@@ -10,8 +10,9 @@ import {
   assertTestEnvironment,
   readEnvironmentFile,
 } from '../../database/environment';
-import { runCommand } from '../lib/command';
+import { runCommand, type CommandResult } from '../lib/command';
 import { withCleanup } from './cleanup';
+import { imageRuntime } from './image-runtime';
 
 const root = new URL('../../', import.meta.url).pathname;
 
@@ -28,8 +29,15 @@ export function distributionBroker(): Options.Connect {
 export interface DistributionFixture {
   owner: pg.Client;
   http: ReturnType<typeof request>;
+  graphqlPath: string;
+  migrate: (
+    action: string,
+    overrides?: Record<string, string>,
+  ) => Promise<CommandResult>;
   start: (overrides?: Record<string, string>) => Promise<void>;
-  stop: () => Promise<void>;
+  stop: (expectedExit?: number | number[]) => Promise<void>;
+  probe?: (path: string) => Promise<{ status: number; body: unknown }>;
+  databaseFault?: (action: 'pause' | 'unpause') => Promise<void>;
 }
 
 export async function until(check: () => Promise<boolean>): Promise<void> {
@@ -95,18 +103,20 @@ export async function withDistribution(
   let child: Subprocess<'ignore', 'pipe', 'pipe'> | undefined;
   let output = '';
   const logs: Promise<void>[] = [];
+  let image: Awaited<ReturnType<typeof imageRuntime>> | undefined;
   const collect = async (stream: ReadableStream<Uint8Array>) => {
     for await (const chunk of stream)
       output = (output + new TextDecoder().decode(chunk)).slice(-32_000);
   };
-  const stop = async () => {
+  const stop = async (expectedExit?: number | number[]) => {
+    if (image) return image.stop(expectedExit);
     const running = child;
     if (!running) return;
     child = undefined;
     running.kill('SIGTERM');
     const timer = setTimeout(() => {
       running.kill('SIGKILL');
-    }, 12_000);
+    }, 20_000);
     try {
       await running.exited;
       await Promise.all(logs);
@@ -116,22 +126,32 @@ export async function withDistribution(
   };
   const url = `http://127.0.0.1:${runtime[`${prefix}HTTP_PORT`]}`;
   const migrate = (command: string, overrides: Record<string, string> = {}) =>
-    runCommand(
-      [process.execPath, '--no-env-file', 'run', `migration:${command}`],
-      { cwd: artifact, env: { ...migration, ...overrides }, timeout: 60_000 },
-    );
+    image
+      ? image.migrate(command, overrides)
+      : runCommand(
+          [process.execPath, '--no-env-file', 'run', `migration:${command}`],
+          {
+            cwd: artifact,
+            env: { ...migration, ...overrides },
+            timeout: 60_000,
+          },
+        );
   await withCleanup(async () => {
-    const packaged = await runCommand(
-      [
-        process.execPath,
-        '--no-env-file',
-        'scripts/distribute.ts',
-        app,
-        `--output=${artifact}`,
-      ],
-      { cwd: root, timeout: 60_000 },
-    );
-    expect(packaged, packaged.stderr).toMatchObject({ code: 0 });
+    if (process.env.DDH_IMAGE_PLATFORM) {
+      image = await imageRuntime(app, manifest, runtime, migration, directory);
+    } else {
+      const packaged = await runCommand(
+        [
+          process.execPath,
+          '--no-env-file',
+          'scripts/distribute.ts',
+          app,
+          `--output=${artifact}`,
+        ],
+        { cwd: root, timeout: 60_000 },
+      );
+      expect(packaged, packaged.stderr).toMatchObject({ code: 0 });
+    }
     await owner.connect();
     expect(
       (
@@ -140,11 +160,23 @@ export async function withDistribution(
         )
       ).rows,
     ).toEqual([]);
+    if (image) {
+      await image.start();
+      await image.stop();
+      expect(
+        (
+          await owner.query(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
+          )
+        ).rows,
+      ).toEqual([]);
+    }
     const status = await migrate('status');
     expect(status, status.stderr).toMatchObject({ code: 0 });
     expect(status.stdout).toContain('pending');
     const migrated = await migrate('up');
     expect(migrated, migrated.stderr).toMatchObject({ code: 0 });
+    await image?.assertRuntimePrivileges();
     const denied = await migrate('up', {
       [`${prefix}DB_MIGRATION_USERNAME`]: `${app}_runtime`,
       [`${prefix}DB_MIGRATION_PASSWORD`]: runtime[`${prefix}DB_PASSWORD`],
@@ -160,9 +192,14 @@ export async function withDistribution(
     expect(refused.stderr).toContain(`This distribution owns only ${app}`);
     await use({
       owner,
-      http: request(url),
+      http: request(image?.url ?? url),
+      graphqlPath: image ? `/${app}/graphql` : '/graphql',
+      migrate,
+      probe: image?.probe,
+      databaseFault: image?.databaseFault,
       stop,
       start: async (overrides = {}) => {
+        if (image) return image.start(overrides);
         if (child) throw new Error('Distribution already running');
         output = '';
         child = Bun.spawn([process.execPath, '--no-env-file', 'run', 'start'], {
@@ -203,9 +240,14 @@ export async function withDistribution(
       withCleanup(
         () => withCleanup(stop, [() => owner.end()]),
         [
-          () => {
-            rmSync(directory, { recursive: true, force: true });
-          },
+          () =>
+            withCleanup(async () => {
+              await image?.cleanup();
+            }, [
+              () => {
+                rmSync(directory, { recursive: true, force: true });
+              },
+            ]),
         ],
       ),
   ]);

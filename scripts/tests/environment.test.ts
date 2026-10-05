@@ -123,7 +123,12 @@ const gatewayProbe = `
   if (services.length !== 4) throw new Error('Gateway services missing');
   for (const service of services) {
     const port = service.name.startsWith('user-') ? process.env.USER_HTTP_PORT : process.env.WALLET_HTTP_PORT;
-    if (service.host !== process.env.GATEWAY_HOST || service.port !== Number(port)) throw new Error('Gateway upstream differs from selected environment');
+    const host = process.env.NODE_ENV === 'development' ? 'app-' + service.name.split('--')[0] : process.env.GATEWAY_HOST;
+    if (service.host !== host || service.port !== Number(port)) throw new Error('Gateway upstream differs from selected environment');
+  }
+  if(process.env.NODE_ENV === 'development') {
+    const {data: upstreams} = await (await fetch(admin + '/upstreams')).json();
+    if(upstreams.length !== 2 || upstreams.some((upstream) => upstream.healthchecks.active.http_path !== '/health/ready/http')) throw new Error('Development must route using HTTP readiness');
   }
   const proxy = await fetch('http://127.0.0.1:' + process.env.GATEWAY_PROXY_PORT + '/unrouted', {signal: AbortSignal.timeout(2000)});
   if (proxy.status !== 404 || !(proxy.headers.get('server') || '').startsWith('kong/')) throw new Error('Owned gateway proxy unavailable');
@@ -346,6 +351,28 @@ test('the development workflow migrates and serves both applications until inter
         if (!manifest) throw new Error('The development manifest disappeared');
         const containers = (await projectResources(project, 'ps')).sort();
         expect(containers).not.toEqual([]);
+        for (const app of ['user', 'wallet']) {
+          expect(
+            await probe(
+              `http://127.0.0.1:${String(manifest.applicationPorts[app])}/v1/users`,
+            ),
+          ).toBeUndefined();
+          const inspected = await runCommand(
+            [
+              'docker',
+              'ps',
+              '--filter',
+              `label=com.docker.compose.project=${project}`,
+              '--filter',
+              `label=com.docker.compose.service=app-${app}`,
+              '--format',
+              '{{.Ports}}',
+            ],
+            { cwd: root },
+          );
+          expect(inspected.code, inspected.stderr).toBe(0);
+          expect(inspected.stdout.trim()).toBe('');
+        }
 
         expect(await interrupt()).not.toBe(0);
         await until(
@@ -375,9 +402,28 @@ test('the development workflow migrates and serves both applications until inter
         expect(await Bun.file(join(directory, 'run.log')).text()).toMatch(
           /^Result: exit \d+ \(command \d+, cleanup 0\)/m,
         );
-        expect((await projectResources(project, 'ps')).sort()).toEqual(
-          containers,
+        const retained = await projectResources(project, 'ps');
+        expect(retained).toHaveLength(containers.length - 2);
+        for (const id of retained) expect(containers).toContain(id);
+        const exited = await runCommand(
+          [
+            'docker',
+            'ps',
+            '-a',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+            '--filter',
+            'status=exited',
+            '--format',
+            '{{.Label "com.docker.compose.service"}}',
+          ],
+          { cwd: root },
         );
+        expect(exited.code, exited.stderr).toBe(0);
+        expect(exited.stdout.trim().split('\n').sort()).toEqual([
+          'app-user',
+          'app-wallet',
+        ]);
         const volumes = (await projectResources(project, 'volume')).sort();
         expect(volumes).not.toEqual([]);
 

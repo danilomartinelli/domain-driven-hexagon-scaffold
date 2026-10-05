@@ -71,7 +71,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun src/apps/wallet/main.ts",
+        "command": "bun --no-env-file scripts/serve-application.ts wallet serve",
         "cwd": "."
       }
     },
@@ -79,7 +79,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --watch src/apps/wallet/main.ts",
+        "command": "bun --no-env-file scripts/serve-application.ts wallet watch",
         "cwd": "."
       }
     },
@@ -87,7 +87,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --inspect=127.0.0.1:6500 --watch src/apps/wallet/main.ts",
+        "command": "bun --no-env-file scripts/serve-application.ts wallet debug",
         "cwd": "."
       }
     },

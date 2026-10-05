@@ -2,9 +2,9 @@
 
 Both applications handle `SIGTERM` and `SIGINT` with the same **15-second total
 deadline**, measured from the first signal. Repeated signals do not start another
-shutdown. Send the signal to the Bun application PID in its structured startup
-logs, not an Nx or watch-mode supervisor. Allow the process at least 15 seconds
-before a supervisor escalates to `SIGKILL`.
+shutdown. In an OCI container Bun is PID 1; `docker stop --time=20` sends it SIGTERM
+and gives its existing 15-second deadline time to finish. Development supervisors
+stop their owned app containers on interruption; infrastructure remains ready.
 
 ```text
 signal -> draining: refuse new business requests; cancel consumers; stop outbox claims
@@ -68,25 +68,23 @@ it does not undo the original profile or pending event.
 
 ## Commands
 
-With the development environment already prepared and migrated, run a service
-directly so its logged PID is the application process:
+With development prepared and migrated, run a service through its private
+container supervisor. Ctrl-C stops that application while retaining infrastructure:
 
 ```sh
-bun run env:exec --environment=development --run=default -- bun src/apps/user/main.ts
-# In another terminal, set APP_PID to that process's logged pid, then:
-kill -TERM "$APP_PID"
-# SIGINT uses the same drain path:
-kill -INT "$APP_PID"
+bun run env:exec --environment=development --run=default -- bun run start:user
 ```
 
-Restart with the same environment and database. No migration, seed, queue purge
-or outbox rewrite is necessary just to recover interrupted work:
+For an explicit Docker stop, select the prepared environment's Compose file:
 
 ```sh
-bun run env:exec --environment=development --run=default -- bun src/apps/user/main.ts
-# Run independently in another terminal, or restart Wallet alone:
-bun run env:exec --environment=development --run=default -- bun src/apps/wallet/main.ts
+project=$(bun --no-env-file -e 'import { readEnvironment } from "./database/environment"; console.log(readEnvironment("development", "default").project)')
+docker compose -p "$project" -f ".context/test-runs/$project/compose.json" stop --timeout 20 app-user
 ```
+
+Restart the same foreground command to recover pending work. No migration, seed,
+queue purge or outbox rewrite is required for a restart. Keep PostgreSQL and
+RabbitMQ running; stopping a disposable tmpfs container destroys its data.
 
 Use the [readiness/backlog probes and queue diagnostics](recovery.md) to observe
 pending work draining and REST/GraphQL Wallet lookup to confirm the business

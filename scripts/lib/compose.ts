@@ -1,5 +1,6 @@
 import type { EnvironmentManifest } from '../../database/environment';
 import { gatewayConfiguration } from './gateway';
+import { applicationContainer } from './application-containers';
 
 /**
  * Runs once, when the image initializes an empty cluster. The role gets no
@@ -116,6 +117,8 @@ export function composeConfiguration(
         KONG_ADMIN_LISTEN: '0.0.0.0:8001',
         KONG_ADMIN_GUI_LISTEN: 'off',
         KONG_NGINX_WORKER_PROCESSES: '1',
+        KONG_DNS_NOT_FOUND_TTL: '1',
+        KONG_DNS_ERROR_TTL: '1',
       },
       configs: [{ source: 'kong-routes', target: '/etc/kong/routes.json' }],
       healthcheck: {
@@ -125,6 +128,10 @@ export function composeConfiguration(
         retries: 30,
       },
     };
+  }
+  if (manifest.environment === 'development') {
+    for (const app of manifest.topology ?? [])
+      services[`app-${app.name}`] = applicationContainer(manifest, app.name);
   }
   return { services, networks: { default: { labels } }, volumes, configs };
 }

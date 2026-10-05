@@ -14,12 +14,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  images:
+    name: OCI (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install tools and dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ripgrep
+          bun install --frozen-lockfile
+      - name: Execute independent Linux images
+        run: bun run test:images --platform=${{ matrix.platform }}
+      - name: Preserve image diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-checks-${{ matrix.runner }}-${{ github.run_attempt }}
+          path: |
+            .context/image-checks/*.log
+            .context/test-runs/*/run.log
+            .context/test-runs/*/result.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
   check:
     name: check
+    needs: images
+    if: always()
     # Pinned so runner image upgrades are deliberate.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Require both image architectures
+        if: needs.images.result != 'success'
+        run: exit 1
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -50,6 +90,8 @@ jobs:
         run: bun run nx run test-runner:test-gateway
       - name: Selected environments and retained state
         run: bun run nx run test-runner:test-selection
+      - name: Container watch and local debugging
+        run: bun run nx run test-runner:test-private-development
       - name: Distributed system tests
         run: bun run test:e2e
       # Keep component failures inside the existing required check status.

@@ -5,12 +5,11 @@ if [[ "${CONDUCTOR_IS_LOCAL:-0}" != "1" ]]; then
   echo "The development server requires a local Conductor workspace and Docker." >&2
   exit 1
 fi
-if [[ ! "${CONDUCTOR_PORT:-}" =~ ^[1-9][0-9]{0,4}$ ]] || (( CONDUCTOR_PORT > 65534 )); then
-  echo "CONDUCTOR_PORT must be a port between 1 and 65534 (Wallet uses the next port)." >&2
+if [[ ! "${CONDUCTOR_PORT:-}" =~ ^[1-9][0-9]{0,4}$ ]] || (( CONDUCTOR_PORT > 65535 )); then
+  echo "CONDUCTOR_PORT must be a port between 1 and 65535." >&2
   exit 1
 fi
-export USER_HTTP_PORT="$CONDUCTOR_PORT"
-export WALLET_HTTP_PORT="$((CONDUCTOR_PORT + 1))"
+export GATEWAY_PROXY_PORT="$CONDUCTOR_PORT"
 
 cleanup() {
   local status=$?

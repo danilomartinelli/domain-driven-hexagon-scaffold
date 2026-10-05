@@ -1,12 +1,11 @@
 # Domain-Driven Hexagon Scaffold delivery design
 
-Status: accepted design, approved on 2026-10-04. Identity, bounded rename and
-application capabilities are implemented;
+Status: accepted design, approved on 2026-10-04.
 [ADR 0003's implementation status](adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
-records the delivered slices and remaining work. This document records the agreed
-behavior and delivery boundaries. The [adoption guide](adoption.md) describes the
-shipped identity command. Other proposed commands, images and workflows below
-remain accepted design.
+records the delivered slices and remaining work. This document preserves the
+agreed design and delivery boundaries. The [adoption guide](adoption.md),
+[database workflow](database.md) and [distribution guide](distribution.md)
+describe the shipped behavior.
 [ADR 0003](adr/0003-application-capabilities-and-oci-delivery.md) records the
 architectural trade-offs.
 
@@ -14,20 +13,20 @@ The implementation specification is published as
 [issue #58](https://github.com/danilomartinelli/vibecoding-starter-js/issues/58),
 including the confirmed testing boundaries and the `ready-for-agent` label.
 
-## Starting point
+## Starting point on 2026-10-04
 
-The repository already has independent User and Wallet applications, application
+At design approval, the repository already had independent User and Wallet applications, application
 and library generators, application-owned databases, durable messaging, isolated
 test environments and independently runnable distributions. Current behavior is
 documented in the [workspace guide](nx-workspace.md),
 [generator guide](library-generators.md), [distribution guide](distribution.md)
 and [recovery guide](recovery.md).
 
-The remaining friction is configuration tied to the two example applications:
+The remaining friction was configuration tied to the two example applications:
 development startup, HTTP ports, gateway routes and required infrastructure.
-Applications currently run on the development host, while Kong runs in Docker;
-using Kong is a client convention rather than a network boundary. Application OCI
-images and their publication workflow have not been implemented.
+Applications ran on the development host, while Kong ran in Docker;
+using Kong was a client convention rather than a network boundary. Application OCI
+images and their publication workflow had not been implemented.
 
 ## Identity and adoption
 

@@ -87,3 +87,59 @@ credentials, inspect committed database state, and clean owned resources. Both
 component suites independently provision the capabilities declared by their selected app;
 cross-database permission checks belong to distributed E2E. `check:full` and CI
 include distribution verification; no live verification result is cached.
+
+## Linux OCI images
+
+Build one selected application, including generated names, without a central list:
+
+```sh
+bun run image:build user --platform=linux/arm64 --tag=ddh-user:arm64
+bun run image:build wallet --platform=linux/amd64 --tag=ddh-wallet:amd64
+# Substitute a generated application name:
+bun run image:build reports --platform=linux/arm64 --tag=ddh-reports:local
+```
+
+The platform defaults to the local machine architecture. Docker must support
+execution of the selected Linux platform, either natively or through emulation.
+The build context is allowlisted, excludes host dependencies and operator files,
+and contains only the selected application's implementation. Bun installs the
+frozen lockfile inside the target Linux build stage. The final image contains
+only the independent distribution, its runtime/migration dependency closure and
+Bun. It omits seeds, test fixtures, sibling implementations and operator secrets.
+Images need neither a source checkout nor an install on startup.
+
+The default command runs Bun directly as PID 1. Persistent images also run the
+separate owning migration interface; supply an existing private network and
+separate environment files containing the documented settings:
+
+```sh
+docker run --rm --network "$APP_NETWORK" --env-file "$OWNER_ENV" ddh-user:arm64 run migration:status
+docker run --rm --network "$APP_NETWORK" --env-file "$OWNER_ENV" ddh-user:arm64 run migration:up
+docker run --name user --network "$APP_NETWORK" --env-file "$RUNTIME_ENV" ddh-user:arm64
+docker stop --time=20 user
+```
+
+No business port is published by these commands. Startup never runs migrations.
+Nonpersistent images have no migration scripts or database tooling. Runtime
+roles cannot run migrations, and another `DATABASE_APP` is rejected. Owner files
+belong only to the one-shot migration process. Local builds produce images only; registry publication and deployment are separate
+actions.
+
+```sh
+bun run test:images                         # execute both supported architectures
+bun run test:images --platform=linux/arm64   # one target for focused feedback
+```
+
+These uncached checks reuse the User/Wallet distribution fixtures with real
+PostgreSQL and RabbitMQ, execute business requests through Kong, reject direct
+host access, exercise drain/deadline/restart outcomes and execute all eight
+capability combinations as generated images. Their containers have no checkout
+mounts. Logs under `.context/image-checks/` record runtime architecture, Docker
+host architecture and native versus emulated execution.
+
+On 2026-10-05, User and Wallet executed on `linux/arm64` natively and
+`linux/amd64` through emulation on an ARM64 Docker host. Both exercised owned
+migration/status/rollback, REST/GraphQL, messaging and restart. The generated
+capability matrix also executed on both architectures. CI uses native Ubuntu runners
+for each architecture; a green build alone is not execution evidence. The full
+local gate includes both image execution paths.

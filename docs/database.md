@@ -18,7 +18,8 @@ make down  # bun run dev:down: stop containers and their network; keep named vol
 `bun run dev` runs the uncached `infrastructure:dev` target for development's
 `default` run (`--run=<id>` selects another). It derives infrastructure from the selected declarations, waits for service
 healthchecks, applies pending migrations for selected persistent applications,
-then runs `start:dev` with the manifest's settings. The
+then runs `start:dev` with the manifest's settings. That command builds the selected
+Linux distributions and watches each application inside its own container. The
 infrastructure keeps running after the applications or migrations exit;
 `make down` stops it. A failed infrastructure startup removes only that run's
 containers and network. `make dev` never seeds: seeds are not idempotent, so
@@ -128,7 +129,42 @@ Each application owns its routes in `application.json`; generation registers non
 `upstreamPath` control forwarding. Route names must be distinct within an app.
 With exposure disabled, its route declarations contribute nothing to Kong.
 Operational probes, documentation and GraphQL are never registered implicitly.
-Application listeners run on the host.
+Application business and operational listeners are unpublished inside the private
+Docker network. Kong is the only host entry point for business routes; operational
+access to infrastructure remains explicitly bound to loopback.
+
+## Container watch, debugging and probes
+
+`make dev` binds application and private package source read-only into images
+whose dependencies were installed on Linux. Bun `--watch` observes normal source
+edits. Re-run after changing dependencies or capabilities to rebuild and reconcile
+the selected environment. Stopping the foreground command stops its application
+containers and retains the ready infrastructure until `make down`.
+
+Request debugging explicitly; inspectors alone are mapped to loopback:
+
+```sh
+DDH_DEBUG_PORT=6499 bun run env:exec --environment=development --run=default -- bun run start:user:debug
+bun run env:exec --environment=development --run=default -- bun run start:debug
+```
+
+The example inspector WebSocket is `ws://127.0.0.1:6499/inspect`. Default ports
+follow application discovery order: User 6499 and Wallet 6500 in the supplied
+scaffold. `DDH_DEBUG_PORT` selects the first port; simultaneous inspectors use
+consecutive ports. This does not publish application business ports.
+Run only one supervisor per selected application. Inspect operational HTTP from
+inside its container:
+
+```sh
+project=$(bun --no-env-file -e 'import { readEnvironment } from "./database/environment"; console.log(readEnvironment("development", "default").project)')
+docker compose -p "$project" -f ".context/test-runs/$project/compose.json" exec -T app-user bun -e 'console.log(await (await fetch("http://127.0.0.1:" + process.env.USER_HTTP_PORT + "/health/ready")).json())'
+```
+
+The same private probes work for workers and all-disabled applications. Container
+healthchecks probe liveness; they do not restart unhealthy containers or establish
+that accepted work completed. Kong uses HTTP readiness, so a broker outage leaves
+usable HTTP operations routable while an owning database outage removes the
+upstream until recovery. See [shutdown](shutdown.md) and [OCI images](distribution.md#linux-oci-images).
 
 ## Disposable tests
 
@@ -212,8 +248,9 @@ HTTP ports stay fixed because Kong routes to the selected manifest.
 The manifest configures `GATEWAY_NAME`, `GATEWAY_HOST` (default
 `host.docker.internal`), `GATEWAY_PROXY_PORT`, `GATEWAY_ADMIN_PORT`,
 `USER_HTTP_PORT` and `WALLET_HTTP_PORT`. Those ports and host are configurable
-at first preparation. Kong runs in its own container; User and Wallet keep
-running on the host with Bun, listening on their selected HTTP ports.
+at first preparation. Kong and development applications share the private Docker network. Application
+HTTP ports identify private listeners and are never published. Owned component
+and distributed test fixtures retain their isolated operational host access.
 Tests reject overrides of gateway identity, host and ports as well as database
 and broker overrides. Keep development gateway/HTTP settings consistent with
 the prepared manifest; changing only `env:exec` cannot reconfigure Kong.
@@ -263,8 +300,9 @@ Migrations and seeds each have 60 seconds; test commands have five minutes.
 `env:exec --environment=development` has no command deadline, so watch servers
 keep running until they exit or receive a signal.
 Each ownership inspection/log command has 15 seconds; Compose shutdown has 30
-seconds. SIGINT/SIGTERM terminate the active process group, with forced
-termination after five seconds, then attempt cleanup and return 130/143.
+seconds, including a 20-second container stop grace period. SIGINT/SIGTERM terminate the active process group, with forced
+termination after five seconds (25 seconds for development application commands),
+then attempt cleanup and return 130/143.
 Under Nx, Ctrl-C stops the task tree leaf-first and force-kills survivors after
 its grace period; the `nx` wrapper sets `NX_PROCESS_KILL_GRACE_PERIOD` to 90
 seconds so the runner can finish these bounded steps and record its result.
@@ -275,10 +313,9 @@ killed runner or unavailable Docker daemon may leave resources for a later
 ## Gateway URLs
 
 Follow [Development](#development) to start Docker infrastructure, migrate each
-database and start both host applications through the same `env:exec` selection.
+database and start both application containers through the same `env:exec` selection.
 Preparation waits for Kong's own healthcheck; it does not start the applications
-or make their upstreams ready. Requests need the corresponding host application
-running. RabbitMQ delivery to a running Wallet is required for a newly created
+or make their upstreams ready. Requests need the corresponding application container running. RabbitMQ delivery to a running Wallet is required for a newly created
 User's Wallet to become visible.
 
 All public HTTP operations use one base URL, `http://127.0.0.1:<GATEWAY_PROXY_PORT>`:
@@ -298,8 +335,9 @@ bun run env:exec --environment=development --run=default -- bun -e 'const base =
 ```
 
 The [gateway renderer](../scripts/lib/gateway.ts) reads explicit `routes` from
-the selected applications' declarations and uses the manifest's container-to-host
-address and application ports. Kong runs in
+the selected applications' declarations. Development upstreams use container DNS
+and active `/health/ready/http` probes, independently of messaging readiness.
+Isolated host component fixtures retain their manifest's container-to-host address. Kong runs in
 [DB-less mode](https://developer.konghq.com/gateway/db-less-mode/). REST paths,
 query strings and bodies are preserved; each GraphQL route maps to its owning
 application's `/graphql`. There is no combined `/graphql` endpoint or federation.
@@ -307,10 +345,9 @@ Kong routes HTTP only; RabbitMQ remains the service-event transport. Pending
 Wallet lookup returns REST 404 or GraphQL `walletByUser: null`. Deleting a User
 does not delete its Wallet or cancel a pending creation event.
 
-Docker Desktop supplies `host.docker.internal`; the Compose `host-gateway` mapping
-also supports Linux Docker Engine. Host applications must listen on an interface
-reachable from the container, as the default Nest listeners do. Set `GATEWAY_HOST`
-at preparation if your Docker environment requires another reachable address.
+For isolated host test fixtures, Docker Desktop supplies `host.docker.internal`;
+the Compose `host-gateway` mapping also supports Linux Docker Engine.
+`GATEWAY_HOST` configures that test seam. Development uses private container DNS.
 The local Admin API is `http://127.0.0.1:<GATEWAY_ADMIN_PORT>`; it is separate from
 the public proxy and bound to loopback. Development and test gateways have
 distinct names, ports and owner labels. Failed setup and normal shutdown use the

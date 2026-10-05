@@ -127,7 +127,12 @@ export async function createWorkspace({
     ]);
     for (const file of new Set(files.stdout.split('\0').filter(Boolean))) {
       if (file.split('/').some((part) => part.startsWith('.env'))) continue;
-      if (file.includes('/') && !roots.has(file.split('/')[0])) continue;
+      if (
+        file.includes('/') &&
+        !roots.has(file.split('/')[0]) &&
+        file !== 'docs/distribution.md'
+      )
+        continue;
       const destination = join(root, file);
       await mkdir(dirname(destination), { recursive: true });
       const source = join(sourceRoot, file);

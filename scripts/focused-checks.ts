@@ -9,7 +9,7 @@ const nxRunnerInputs =
   /(^|\/)(project|package)\.json$|^nx\.json$|^bun\.lock$|^scripts\/tests\/workspace-fixture\.ts$/;
 /** Provisioning and cleanup code whose failures component suites cannot show. */
 const lifecycleInputs =
-  /^scripts\/lib\/(environments|compose|gateway|session)\.ts$|^scripts\/(environment-cli|with-test-database|reconcile-databases|start-applications)\.ts$|^database\/(environment|topology)\.ts$|^docker\//;
+  /^scripts\/lib\/(environments|compose|gateway|session|application-containers|ownership|image)\.ts$|^scripts\/(environment-cli|with-test-database|reconcile-databases|start-applications|serve-application|image)\.ts$|^database\/(environment|topology)\.ts$|^docker\//;
 /** Declarations are discovered from disk rather than imported by test-runner. */
 const selectionInputs = /^src\/apps\/[^/]+\/application\.json$/;
 const lintable = /\.(ts|mjs)$/;

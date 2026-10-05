@@ -26,8 +26,9 @@ bun run env:exec --environment=development --run=default -- bun run start:wallet
 
 `start:wallet` runs once, `start:wallet:dev` restarts on source changes and
 `start:wallet:debug` adds Bun's inspector. They invoke the `wallet:serve`,
-`wallet:watch` and `wallet:debug` Nx targets. The server listens on
-`WALLET_HTTP_PORT`, allocated per run and logged at startup. The seed adds one
+`wallet:watch` and `wallet:debug` Nx targets. The unpublished container listener uses `WALLET_HTTP_PORT`, allocated per run
+and logged at startup. Business clients use Kong; operational probes run inside
+the container. The seed adds one
 lookup example: a zero-balance Wallet for a standalone example User
 identity. It is the fixture's only source; no user-created event is scheduled
 for it. Seeds are not idempotent, so a second run fails and rolls back.
@@ -35,8 +36,8 @@ for it. Seeds are not idempotent, so a second run fails and rolls back.
 With the server running, look up the example from another terminal:
 
 ```sh
-bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$WALLET_HTTP_PORT/v1/wallets/by-user/f59d0748-d455-4465-b0a8-8d8260b1c877"'
-bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$WALLET_HTTP_PORT/graphql" -H "Content-Type: application/json" -d "{\"query\":\"{ walletByUser(userId: \\\"f59d0748-d455-4465-b0a8-8d8260b1c877\\\") { id userId balance } }\"}"'
+bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$GATEWAY_PROXY_PORT/v1/wallets/by-user/f59d0748-d455-4465-b0a8-8d8260b1c877"'
+bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$GATEWAY_PROXY_PORT/wallet/graphql" -H "Content-Type: application/json" -d "{\"query\":\"{ walletByUser(userId: \\\"f59d0748-d455-4465-b0a8-8d8260b1c877\\\") { id userId balance } }\"}"'
 ```
 
 Both return the same wallet identity, user identity and balance. A User

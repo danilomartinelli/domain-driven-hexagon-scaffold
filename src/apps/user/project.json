@@ -76,7 +76,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun src/apps/user/main.ts",
+        "command": "bun --no-env-file scripts/serve-application.ts user serve",
         "cwd": "."
       }
     },
@@ -84,7 +84,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --watch src/apps/user/main.ts",
+        "command": "bun --no-env-file scripts/serve-application.ts user watch",
         "cwd": "."
       }
     },
@@ -92,7 +92,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun --inspect=127.0.0.1:6499 --watch src/apps/user/main.ts",
+        "command": "bun --no-env-file scripts/serve-application.ts user debug",
         "cwd": "."
       }
     },
