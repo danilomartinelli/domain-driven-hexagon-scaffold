@@ -118,6 +118,7 @@ export async function generateLibrary(tree, options, layer) {
       name: packageName,
       version: '0.0.0',
       private: true,
+      license: 'MIT',
       type: 'module',
       exports: { '.': './index.ts' },
       ...(Object.keys(dependencies).length ? { dependencies } : {}),

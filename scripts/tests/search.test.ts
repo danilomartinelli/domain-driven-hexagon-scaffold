@@ -7,6 +7,60 @@ import { withCleanup } from './cleanup';
 
 const search = new URL('../search.ts', import.meta.url).pathname;
 
+test('wrapper help explains bounded search and read syntax without invoking ripgrep help', async () => {
+  const result = await runCommand([process.execPath, search, '--help'], {
+    cwd: import.meta.dir,
+  });
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stdout).toContain('--read');
+  expect(result.stdout).toContain('-- <file> <first-line> <last-line>');
+  expect(result.stdout).toContain('-- <rg arguments>');
+  expect(result.stderr).toBe('');
+  expect(Buffer.byteLength(result.stdout)).toBeLessThan(2_000);
+});
+
+test('help after the separator remains a ripgrep argument', async () => {
+  const result = await runCommand(
+    [process.execPath, search, '--max-bytes=256', '--', '--help'],
+    { cwd: import.meta.dir },
+  );
+  expect(result.code, result.stderr).toBe(125);
+  expect(result.stdout).toContain('ripgrep');
+  expect(result.stdout).not.toContain('bun run search');
+  expect(result.stderr).toContain('[search:truncated]');
+});
+
+test('wrapper-looking patterns still work as explicit ripgrep expressions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'starter-search-options-'));
+  await withCleanup(async () => {
+    await writeFile(join(directory, 'flags.txt'), '--help\n--read\n');
+    for (const pattern of ['--help', '--read']) {
+      const result = await runCommand(
+        [process.execPath, search, '-e', pattern, 'flags.txt'],
+        { cwd: directory },
+      );
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stdout).toContain(pattern);
+      expect(result.stdout).not.toContain('Usage:');
+    }
+  }, [() => rm(directory, { recursive: true, force: true })]);
+});
+
+test.each(['--read', '--resume=0:1', '--max-bytes=1000', '--timeout-ms=1000'])(
+  'wrapper option %s without a separator explains the required syntax',
+  async (option) => {
+    const result = await runCommand(
+      [process.execPath, search, option, 'file.txt', '1', '2'],
+      { cwd: import.meta.dir },
+    );
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Wrapper options require -- before');
+    expect(result.stderr).toContain('--help');
+    expect(result.stderr).not.toContain('rg:');
+  },
+);
+
 test.each(['search', 'read'])(
   'the default %s page leaves room for the calling tool envelope',
   async (mode) => {

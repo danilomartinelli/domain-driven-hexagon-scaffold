@@ -1,4 +1,13 @@
-import { cp, mkdir, mkdtemp, readdir, rm, symlink } from 'node:fs/promises';
+import {
+  copyFile,
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  symlink,
+} from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -17,6 +26,30 @@ export interface Workspace {
   root: string;
   run: (args: string[]) => Promise<CommandResult>;
   cleanup: () => Promise<void>;
+}
+
+async function preserveDiagnostics(root: string): Promise<void> {
+  const runs = join(root, '.context/test-runs');
+  if (!existsSync(runs)) return;
+  for (const entry of await readdir(runs, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    for (const file of ['run.log', 'result.json']) {
+      const source = join(runs, entry.name, file);
+      const info = await lstat(source).catch((error: unknown) => {
+        if (
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'ENOENT'
+        )
+          return undefined;
+        throw error;
+      });
+      if (!info?.isFile()) continue;
+      const destination = join(sourceRoot, '.context/test-runs', entry.name);
+      await mkdir(destination, { recursive: true, mode: 0o700 });
+      await copyFile(source, join(destination, file));
+    }
+  }
 }
 
 /** Copy checked source/configuration; only external installed tools are shared. */
@@ -100,7 +133,16 @@ export async function createWorkspace(): Promise<Workspace> {
           },
         });
       },
-      cleanup: (): Promise<void> => rm(root, { recursive: true, force: true }),
+      cleanup: async (): Promise<void> => {
+        try {
+          await preserveDiagnostics(root);
+        } catch (error) {
+          throw new Error(`Diagnostic export failed; retained ${root}`, {
+            cause: error,
+          });
+        }
+        await rm(root, { recursive: true, force: true });
+      },
     };
   } catch (error) {
     await rm(root, { recursive: true, force: true });

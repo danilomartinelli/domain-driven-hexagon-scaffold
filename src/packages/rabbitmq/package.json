@@ -9,5 +9,6 @@
   },
   "dependencies": {
     "amqplib": "2.2.0"
-  }
+  },
+  "license": "MIT"
 }

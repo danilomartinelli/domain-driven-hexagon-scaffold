@@ -142,7 +142,10 @@ and, for `bun test` commands, pass/fail counts. Container logs stay in `run.log`
 and reach the terminal only when a run fails. A failed command repeats a bounded,
 ANSI-free failure excerpt after cleanup so verbose container output does not hide
 the diagnostic. Every run ends with one `Result:` line naming its statuses,
-counts and log. Failed CI jobs upload only `run.log` and `result.json` as the
+counts and log. Disposable workspace fixtures copy only `run.log` and
+`result.json` back to the source checkout's `.context/test-runs/` before removal,
+including runs nested under Nx. An export failure retains the temporary workspace
+and fails cleanup. Failed CI jobs upload only `run.log` and `result.json` as the
 `test-run-diagnostics-<attempt>` artifact, retained for seven days; generated
 manifests and Compose configuration are excluded.
 The manifest provides database and broker settings to `env:exec`; shell values

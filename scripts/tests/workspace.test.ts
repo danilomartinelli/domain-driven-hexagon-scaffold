@@ -15,6 +15,65 @@ import { tableNames as documentedTableNames } from '../lib/document-tables';
 import { readProjectGraph } from '../lib/nx-graph';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 
+test.each([false, true])(
+  'nested diagnostics survive cleanup (blocked export: %s)',
+  async (blockedExport) => {
+    const source = await createWorkspace();
+    try {
+      const initialized = await source.run(['git', 'init', '--quiet']);
+      expect(initialized.code, initialized.stderr).toBe(0);
+      const result = await source.run([
+        process.execPath,
+        '-e',
+        `
+      import { strict as assert } from 'node:assert';
+      import { existsSync } from 'node:fs';
+      import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+      import { join } from 'node:path';
+      import { createWorkspace } from './scripts/tests/workspace-fixture.ts';
+      const workspace = await createWorkspace();
+      const project = 'ddh-test-diagnostics-' + crypto.randomUUID();
+      const relative = join('.context/test-runs', project);
+      try {
+        const failed = await workspace.run([
+          process.execPath, '-e', 'console.error("nested failure evidence"); process.exit(17);'
+        ]);
+        const directory = join(workspace.root, relative);
+        await mkdir(directory, { recursive: true });
+        await writeFile(join(directory, 'run.log'), failed.stderr.trim());
+        await writeFile(join(directory, 'result.json'), JSON.stringify({ exitCode: failed.code }));
+        await writeFile(join(directory, 'environment.json'), 'synthetic-private-config');
+        await writeFile(join(directory, 'compose.json'), 'synthetic-private-config');
+        assert.equal(failed.code, 17);
+        if (${String(blockedExport)}) {
+          await mkdir('.context/test-runs', { recursive: true });
+          await writeFile(relative, 'blocked diagnostic destination');
+          const [outcome] = await Promise.allSettled([workspace.cleanup()]);
+          assert.equal(outcome.status, 'rejected');
+          assert.match(outcome.reason.message, /Diagnostic export failed; retained/);
+          assert.equal(existsSync(workspace.root), true);
+          await rm(relative);
+        }
+      } finally {
+        await workspace.cleanup();
+      }
+      assert.equal(existsSync(workspace.root), false);
+      assert.equal(await readFile(join(relative, 'run.log'), 'utf8'), 'nested failure evidence');
+      assert.deepEqual(JSON.parse(await readFile(join(relative, 'result.json'), 'utf8')), { exitCode: 17 });
+      assert.deepEqual((await readdir(relative)).sort(), ['result.json', 'run.log']);
+      `,
+      ]);
+      expect(result.code, result.stdout + result.stderr).toBe(0);
+    } finally {
+      await rm(join(source.root, '.context/test-runs'), {
+        recursive: true,
+        force: true,
+      });
+      await source.cleanup();
+    }
+  },
+);
+
 test.each([
   { noColor: '1', forceColor: undefined, colored: false },
   { noColor: '1', forceColor: '1', colored: false },

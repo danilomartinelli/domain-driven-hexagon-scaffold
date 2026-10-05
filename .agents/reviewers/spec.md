@@ -18,5 +18,11 @@ and give file/line evidence for each finding. Distinguish demonstrated defects f
 unverified acceptance criteria. Stay under 400 words; say explicitly when there
 are no findings or no specification is available.
 
+For tools that edit an allowlisted set of fields or fragments, check preservation
+inside the files they modify. Require a public-command test whose fixture adds
+unmanaged data to a managed file and proves that preview and application preserve
+it. Checking only untouched files or a pristine scaffold leaves this criterion
+unverified; trace the runtime write set as well as the declared types.
+
 Do not edit, stage, commit, run formatting, launch other agents, or publish comments.
 Return the report to the parent; it owns fixes, validation and review aggregation.
