@@ -26,7 +26,5 @@
   "@starter/nest-support",
   "@starter/integration-contracts",
   "@starter/rabbitmq",
-  "amqplib",
-  "node-pg-migrate",
-  "pg"
+  "amqplib"
 ]

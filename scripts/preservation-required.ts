@@ -1,64 +1,17 @@
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { runCommand } from './lib/command';
-
-async function git(...args: string[]): Promise<string> {
-  const result = await runCommand(['git', ...args], {
-    cwd: process.cwd(),
-    maxOutput: Infinity,
-  });
-  if (result.code !== 0)
-    throw new Error(result.stderr || 'Git comparison failed.');
-  return result.stdout;
-}
+import { changedFiles, isDocumentation } from './lib/changed-files';
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
     args: process.argv.slice(2),
     options: { base: { type: 'string' }, head: { type: 'string' } },
   });
-  const base = values.base ?? 'origin/master';
-  let files: string[];
+  const changed = await changedFiles(values);
   // Dispatch and the first push have no previous commit. Validate conservatively.
-  if (base === '' || /^0+$/.test(base)) files = ['(no comparison baseline)'];
-  else {
-    const baseSha = (
-      await git('rev-parse', '--verify', '--end-of-options', `${base}^{commit}`)
-    ).trim();
-    const headSha = (
-      await git(
-        'rev-parse',
-        '--verify',
-        '--end-of-options',
-        `${values.head ?? 'HEAD'}^{commit}`,
-      )
-    ).trim();
-    const ancestor = (await git('merge-base', baseSha, headSha)).trim();
-    let changed = await git(
-      'diff',
-      '--name-only',
-      '--no-renames',
-      '-z',
-      ancestor,
-      ...(values.head ? [headSha] : []),
-      '--',
-    );
-    if (!values.head) {
-      changed += await git(
-        'diff',
-        '--cached',
-        '--name-only',
-        '--no-renames',
-        '-z',
-        ancestor,
-        '--',
-      );
-      changed += await git('ls-files', '--others', '--exclude-standard', '-z');
-    }
-    files = [...new Set(changed.split('\0').filter(Boolean))].filter(
-      (file) => !file.startsWith('docs/') && !file.endsWith('.md'),
-    );
-  }
+  const files = changed
+    ? changed.filter((file) => !isDocumentation(file))
+    : ['(no comparison baseline)'];
   const required = files.length > 0;
   if (process.env.GITHUB_OUTPUT)
     appendFileSync(process.env.GITHUB_OUTPUT, `required=${String(required)}\n`);

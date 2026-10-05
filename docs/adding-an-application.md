@@ -33,6 +33,13 @@ its tests and the distribution verification below exist.
 - [ ] `package.json`: `start:<name>`, `start:<name>:dev` and `start:<name>:debug`,
       plus the project in `start`, `start:dev` and `start:debug` so `make dev`
       serves it. `bun run dev` already migrates every persistent application.
+- [ ] A listener port, `<NAME>_HTTP_PORT`, in the manifest schema and variables in
+      `database/environment.ts` and in `newManifest` in `scripts/lib/environments.ts`,
+      unless the manifest already reserves it. Every application needs it,
+      whatever its capabilities: `make dev` supplies only the manifest's variables.
+- [ ] With messaging declared, `<NAME>_RABBITMQ_URL` (and an optional unique
+      `<NAME>_RABBITMQ_QUEUE`) in those same variables for a generated
+      application: the manifest supplies only the shared `RABBITMQ_*` fields.
 
 ## Database
 
@@ -44,9 +51,6 @@ Skip this section when persistence is not declared.
       the `<name>_runtime` role.
 - [ ] A baseline from `DATABASE_APP=<name> bun run migration:create <name>-baseline`
       that grants the runtime role exactly what the application needs.
-- [ ] A listener port, `<NAME>_HTTP_PORT`, in the manifest schema and variables in
-      `database/environment.ts` and in `newManifest` in `scripts/lib/environments.ts`,
-      unless the manifest already reserves it.
 - [ ] Declaring persistence changes existing manifests: development runs gain
       its database on the next `env:prepare`, and test runs need a new run ID.
 
@@ -67,9 +71,11 @@ Skip this section when persistence is not declared.
       The workspace tests fail on a missing project row or script.
 - [ ] [developer-checks.md](developer-checks.md): the architecture description, when
       the application adds rules or representative violations.
-- [ ] `distribution.json` declaring delivery dependencies, an uncached `distribution`
-      target, delivered run/migration commands and a live `test-distribution` target
-      that runs outside the workspace with only owned infrastructure.
+- [ ] `distribution.json` listing the application's runtime imports (packaging adds
+      the migration tooling's own dependencies for persistence), an uncached
+      `distribution` target, delivered run/migration commands and a live
+      `test-distribution` target that runs outside the workspace with only owned
+      infrastructure.
 - [ ] `docs/<name>.md` with startup, migration, seed and API commands, linked from
       [database.md](database.md) and `src/apps/AGENTS.md`.
 - [ ] The persistent applications in [database.md](database.md) and

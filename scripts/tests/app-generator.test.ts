@@ -10,7 +10,12 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appWorkspace, generate, run } from './app-generator-fixture';
+import {
+  appWorkspace,
+  expectRendered,
+  generate,
+  run,
+} from './app-generator-fixture';
 import { withApp } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
 
@@ -52,6 +57,7 @@ test('nest-app generates an independent checked project without persistent dry-r
         join(workspace.root, 'src/apps/telemetry/package.json'),
       ).json(),
     ).toMatchObject({ private: true, exports: {} });
+    await expectRendered(workspace.root, 'telemetry');
     // The defaults keep the previous hybrid capabilities: messaging and exposure.
     expect(
       await Bun.file(

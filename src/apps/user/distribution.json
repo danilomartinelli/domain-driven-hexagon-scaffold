@@ -27,7 +27,5 @@
   "@starter/integration-contracts",
   "@starter/rabbitmq",
   "amqplib",
-  "node-pg-migrate",
-  "pg",
   "commander"
 ]

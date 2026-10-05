@@ -140,6 +140,41 @@ test('distribution migration interface follows the application declaration', asy
         migrations: 'app/database/migrations',
       },
     });
+    // A persistent application lists only its runtime imports; packaging
+    // supplies the migration tooling's own dependencies.
+    const ledger = join(workspace.root, 'src/apps/ledger');
+    mkdirSync(join(ledger, 'database/migrations'), { recursive: true });
+    for (const [file, content] of Object.entries({
+      'project.json': { name: 'ledger', projectType: 'application' },
+      'application.json': {
+        name: 'ledger',
+        persistence: true,
+        messaging: false,
+        exposure: false,
+      },
+      'distribution.json': [],
+    }))
+      writeFileSync(join(ledger, file), JSON.stringify(content));
+    // Outside the workspace, so its node_modules cannot satisfy the artifact.
+    const delivery = mkdtempSync(join(tmpdir(), 'starter-ledger-'));
+    try {
+      const ledgerPackaged = await workspace.run([
+        process.execPath,
+        '--no-env-file',
+        'scripts/distribute.ts',
+        'ledger',
+        `--output=${join(delivery, 'ledger')}`,
+      ]);
+      expect(ledgerPackaged, ledgerPackaged.stderr).toMatchObject({ code: 0 });
+      const unconfigured = await runCommand(
+        [process.execPath, '--no-env-file', 'run', 'migration:up'],
+        { cwd: join(delivery, 'ledger'), env: { PATH: process.env.PATH } },
+      );
+      expect(unconfigured.code).toBe(1);
+      expect(unconfigured.stderr).toContain('Missing LEDGER_DB_PORT');
+    } finally {
+      rmSync(delivery, { recursive: true, force: true });
+    }
   } finally {
     await workspace.cleanup();
   }

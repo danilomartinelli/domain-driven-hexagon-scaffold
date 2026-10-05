@@ -30,8 +30,6 @@ const runtimeDependencies = {
     'graphql',
   ],
 };
-/** The distributed migration commands need these only with persistence. */
-const migrationDependencies = ['node-pg-migrate', 'pg', 'zod'];
 
 /** @param {string} command @param {boolean} [cache] @returns {import('@nx/devkit').TargetConfiguration} */
 function target(command, cache = false) {
@@ -106,10 +104,9 @@ export default async function nestApp(
     getProjects(tree).has(name)
   )
     throw new Error(`Destination or project already exists: ${root}`);
-  const manifest =
-    /** @type {{dependencies: Record<string, string>, devDependencies: Record<string, string>}} */ (
-      readJson(tree, 'package.json')
-    );
+  const manifest = /** @type {{dependencies: Record<string, string>}} */ (
+    readJson(tree, 'package.json')
+  );
   const selected = [
     'base',
     ...capabilities.filter((capability) => enabled[capability]),
@@ -128,12 +125,6 @@ export default async function nestApp(
       return [dependency, version];
     }),
   );
-  for (const dependency of persistence ? migrationDependencies : [])
-    if (
-      !manifest.dependencies[dependency] &&
-      !manifest.devDependencies[dependency]
-    )
-      throw new Error(`Root manifest does not declare ${dependency}.`);
   const prefix = name.replaceAll('-', '_').toUpperCase();
   const unit = `bun --no-env-file test --cwd ${root} ./tests/unit`;
   /** @type {Record<string, string>} */
@@ -179,9 +170,8 @@ export default async function nestApp(
       include: ['**/*.ts'],
       exclude: ['node_modules'],
     }),
-    'distribution.json': JSON.stringify([
-      ...new Set([...imported, ...(persistence ? migrationDependencies : [])]),
-    ]),
+    // Packaging adds the migration tooling's own dependencies for persistence.
+    'distribution.json': JSON.stringify(imported),
     'bunfig.toml': '[test]\nroot = "./tests/unit"\n',
   };
   const templates = fileURLToPath(

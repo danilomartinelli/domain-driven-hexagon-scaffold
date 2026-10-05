@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
+import {
+  commitBaseline,
+  createWorkspace,
+  isolatedEnvironment,
+} from './workspace-fixture';
 import { runCommand } from '../lib/command';
 import { z } from 'zod';
 
@@ -79,23 +83,7 @@ test('preservation selection includes staged, unstaged and new runtime files, bu
     return result.stdout;
   };
   try {
-    await run('git', 'init', '--initial-branch=master');
-    await run('git', 'add', '.');
-    await run(
-      'git',
-      '-c',
-      'core.hooksPath=/dev/null',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.name=Preservation test',
-      '-c',
-      'user.email=test@example.invalid',
-      'commit',
-      '-m',
-      'baseline',
-    );
-    await run('git', 'update-ref', 'refs/remotes/origin/master', 'HEAD');
+    await commitBaseline(workspace);
     const select = () =>
       run(process.execPath, 'scripts/preservation-required.ts');
     expect(await select()).toContain('[preservation:skipped]');

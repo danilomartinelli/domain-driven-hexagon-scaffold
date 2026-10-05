@@ -15,7 +15,13 @@ import pg from 'pg';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { availablePort } from '../lib/environments';
-import { appWorkspace, generate, run } from './app-generator-fixture';
+import {
+  appWorkspace,
+  expectRendered,
+  generate,
+  replaceOnce,
+  run,
+} from './app-generator-fixture';
 import { until, withApp } from './app-runtime-fixture';
 import { brokerGate } from './broker-gate';
 import { withCleanup } from './cleanup';
@@ -66,12 +72,6 @@ function databaseSettings(
     [variable(`${credential}USERNAME`)]: target.username,
     [variable(`${credential}PASSWORD`)]: target.password,
   };
-}
-
-function replaceOnce(source: string, from: string, to: string): string {
-  if (!source.includes(from))
-    throw new Error(`Generated composition lacks: ${from}`);
-  return source.replace(from, to);
 }
 
 /**
@@ -220,6 +220,7 @@ test('every capability combination generates, passes project checks and runs wit
         ),
       );
       const app = join(workspace.root, 'src/apps', name);
+      await expectRendered(workspace.root, name);
       expect(await Bun.file(join(app, 'application.json')).json()).toEqual(
         combination,
       );

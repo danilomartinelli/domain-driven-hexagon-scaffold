@@ -121,8 +121,8 @@ reading the live file.
 Use the repository's `explore` command for CLI exploration. It saves the complete
 successful response under `.context/codegraph/` and returns bounded pages with
 continuation cursors, so limiting files does not leave output size unbounded.
-See [the query conventions](issue-tracker.md#conventions) for budgets, failure
-statuses and continuation syntax.
+See [bounded output](bounded-output.md#codegraph-exploration) for budgets,
+failure statuses and continuation syntax.
 
 Restart an existing client session to discover `codegraph_explore`. Codex requires
 a trusted checkout. Claude may report `Pending approval` for a new project MCP

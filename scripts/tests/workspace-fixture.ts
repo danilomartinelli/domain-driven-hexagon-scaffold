@@ -152,3 +152,29 @@ export async function createWorkspace(): Promise<Workspace> {
     throw error;
   }
 }
+
+/** Commit the copied files on `master` and point `origin/master` at that baseline. */
+export async function commitBaseline(workspace: Workspace): Promise<void> {
+  for (const args of [
+    ['git', 'init', '--initial-branch=master'],
+    ['git', 'add', '.'],
+    [
+      'git',
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'user.name=Workspace fixture',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '-m',
+      'baseline',
+    ],
+    ['git', 'update-ref', 'refs/remotes/origin/master', 'HEAD'],
+  ]) {
+    const result = await workspace.run(args);
+    if (result.code !== 0) throw new Error(result.stderr || result.stdout);
+  }
+}

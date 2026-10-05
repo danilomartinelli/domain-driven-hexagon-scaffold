@@ -41,6 +41,29 @@ const writeJson = (path: string, value: unknown) => {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 };
 
+/** Database tooling copied into persistent artifacts beside generated re-exports. */
+const migrationTooling = ['migrate.mjs', 'distribution.ts'];
+
+/** Packages the copied tooling imports; application manifests list only runtime imports. */
+function migrationPackages(): string[] {
+  return [
+    ...new Set(
+      migrationTooling.flatMap((file) =>
+        new Bun.Transpiler({ loader: file.endsWith('.ts') ? 'ts' : 'js' })
+          .scanImports(readFileSync(join(root, 'database', file), 'utf8'))
+          .map(({ path }) => path)
+          .filter((path) => !/^(\.|\/|node:|bun(:|$))/.test(path))
+          .map((path) =>
+            path
+              .split('/')
+              .slice(0, path.startsWith('@') ? 2 : 1)
+              .join('/'),
+          ),
+      ),
+    ),
+  ];
+}
+
 function copySource(from: string, to: string): void {
   cpSync(from, to, {
     recursive: true,
@@ -95,11 +118,18 @@ export function distribute(name: string, output?: string): string {
   const destination = output ? resolve(output) : join(root, 'dist', name);
   if (output && existsSync(destination))
     throw new Error('Output directory must not exist');
-  const dependencies = z
-    .array(z.string())
-    .parse(
-      JSON.parse(readFileSync(join(appSource, 'distribution.json'), 'utf8')),
-    );
+  const dependencies = [
+    ...new Set([
+      ...z
+        .array(z.string())
+        .parse(
+          JSON.parse(
+            readFileSync(join(appSource, 'distribution.json'), 'utf8'),
+          ),
+        ),
+      ...(app ? migrationPackages() : []),
+    ]),
+  ];
   const sourceManifest = readManifest(root);
   const direct: Record<string, string> = {};
   const copied = new Set<string>();
@@ -179,7 +209,7 @@ export function distribute(name: string, output?: string): string {
     copySource(appSource, join(temporary, 'app'));
     if (app) {
       mkdirSync(join(temporary, 'database'));
-      for (const file of ['migrate.mjs', 'distribution.ts'])
+      for (const file of migrationTooling)
         cpSync(join(root, 'database', file), join(temporary, 'database', file));
       for (const file of ['applications', 'target'])
         writeFileSync(
@@ -211,7 +241,11 @@ export function distribute(name: string, output?: string): string {
       join(root, 'tooling/config/typescript.json'),
       join(temporary, 'tsconfig.json'),
     );
-    writeFileSync(join(temporary, 'bunfig.toml'), 'env = false\n');
+    // Dependencies are bundled: a missing package must fail, never auto-install.
+    writeFileSync(
+      join(temporary, 'bunfig.toml'),
+      'env = false\n\n[install]\nauto = "disable"\n',
+    );
     cpSync(join(root, '.bun-version'), join(temporary, '.bun-version'));
     cpSync(join(root, 'bun.lock'), join(temporary, 'workspace.bun.lock'));
     cpSync(
