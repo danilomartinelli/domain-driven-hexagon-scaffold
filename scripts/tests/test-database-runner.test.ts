@@ -5,6 +5,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { z } from 'zod';
 import { withCleanup } from './cleanup';
+import { runCommand } from '../lib/command';
+import { availablePort } from '../lib/environments';
 
 const root = join(import.meta.dir, '../..');
 const resultSchema = z.object({
@@ -13,6 +15,53 @@ const resultSchema = z.object({
   cleanupExitCode: z.number(),
   commandExitCode: z.number(),
 });
+
+test('the test wrapper preserves first-preparation broker and gateway overrides through cleanup', async () => {
+  const ports = new Set<number>();
+  while (ports.size < 4) ports.add(await availablePort());
+  const [broker, management, proxy, admin] = [...ports];
+  const result = await runCommand(
+    [
+      process.execPath,
+      'scripts/with-test-database.ts',
+      '--app=user',
+      '--',
+      process.execPath,
+      '-e',
+      `
+      const manifest = await Bun.file(process.env.DDH_ENVIRONMENT_FILE).json();
+      const expected = {
+        RABBITMQ_PORT: manifest.broker.port,
+        RABBITMQ_MANAGEMENT_PORT: manifest.broker.managementPort,
+        GATEWAY_HOST: manifest.gateway.host,
+        GATEWAY_PROXY_PORT: manifest.gateway.proxyPort,
+        GATEWAY_ADMIN_PORT: manifest.gateway.adminPort,
+      };
+      for (const [key, value] of Object.entries(expected)) {
+        if (process.env[key] !== String(value)) throw new Error('Changed preparation override: ' + key);
+      }
+      if (process.env.RABBITMQ_MANAGEMENT_URL !== 'http://127.0.0.1:' + process.env.RABBITMQ_MANAGEMENT_PORT)
+        throw new Error('Management URL ignores preparation override');
+      console.log('probe preparation overrides verified');
+    `,
+    ],
+    {
+      cwd: root,
+      timeout: 120_000,
+      env: {
+        ...process.env,
+        RABBITMQ_PORT: String(broker),
+        RABBITMQ_MANAGEMENT_PORT: String(management),
+        GATEWAY_HOST: 'host.docker.internal',
+        GATEWAY_PROXY_PORT: String(proxy),
+        GATEWAY_ADMIN_PORT: String(admin),
+      },
+    },
+  );
+  expect(result.code, result.stdout + result.stderr).toBe(0);
+  expect(result.stdout).toContain('probe preparation overrides verified');
+  await assertCleanedUp(result.stdout, result.stderr, 0);
+}, 150_000);
 
 async function runProbe(
   code: number,

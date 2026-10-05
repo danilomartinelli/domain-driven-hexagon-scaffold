@@ -310,10 +310,30 @@ export function assertTestEnvironment(
   }
   const broker = brokerVariables(manifest);
   const gateway = gatewayVariables(manifest);
+  // Preparation inputs need not be exported runtime targets. Validate them
+  // against owned inventory when present, even if the service is inactive.
+  const preparationOverrides = {
+    RABBITMQ_PORT: manifest.broker?.port,
+    RABBITMQ_MANAGEMENT_PORT: manifest.broker?.managementPort,
+    GATEWAY_HOST: manifest.gateway?.host,
+    GATEWAY_PROXY_PORT: manifest.gateway?.proxyPort,
+    GATEWAY_ADMIN_PORT: manifest.gateway?.adminPort,
+  };
+  for (const [key, value] of Object.entries(preparationOverrides)) {
+    if (
+      env[key] !== undefined &&
+      value !== undefined &&
+      env[key] !== String(value)
+    )
+      throw new Error(
+        `Refusing ${key.startsWith('RABBITMQ_') ? 'broker' : 'gateway'} target: ${key} differs from the owned run.`,
+      );
+  }
   const registered = new Set([
     ...Object.keys(databases),
     ...Object.keys(broker),
     ...Object.keys(gateway),
+    ...Object.keys(preparationOverrides),
     ...(manifest.topology ?? []).map(
       (app) => `${environmentPrefix(app.name)}_HTTP_PORT`,
     ),

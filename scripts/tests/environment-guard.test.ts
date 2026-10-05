@@ -1,10 +1,155 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCommand } from '../lib/command';
+import {
+  environmentLocation,
+  environmentVariables,
+  type EnvironmentManifest,
+} from '../../database/environment';
+import { selectedApplications } from '../../database/topology';
 
 const root = new URL('../../', import.meta.url).pathname;
+
+const preparationOverrides = {
+  RABBITMQ_PORT: '31003',
+  RABBITMQ_MANAGEMENT_PORT: '15999',
+  GATEWAY_HOST: 'host.docker.internal',
+  GATEWAY_PROXY_PORT: '31004',
+  GATEWAY_ADMIN_PORT: '31005',
+};
+
+async function withReadyManifest(
+  services: 'active' | 'absent' | 'retained',
+  check: (manifest: EnvironmentManifest) => void,
+) {
+  const run = `guard-${randomUUID().slice(0, 8)}`;
+  const location = environmentLocation('test', run);
+  const active = services === 'active';
+  const manifest: EnvironmentManifest = {
+    environment: 'test',
+    run,
+    project: location.project,
+    owner: randomUUID(),
+    status: 'ready',
+    apps: active ? ['user'] : [],
+    topology: selectedApplications(active ? ['user'] : []),
+    applicationPorts: active ? { user: 31001 } : {},
+    databases: active
+      ? [
+          {
+            app: 'user',
+            prefix: 'USER_DB',
+            host: '127.0.0.1',
+            port: 31002,
+            username: 'fixture',
+            password: 'fixture',
+            database: `${location.project.replaceAll('-', '_')}_user`,
+            runtime: { username: 'user_runtime', password: 'fixture' },
+          },
+        ]
+      : [],
+    ...(services !== 'absent' && {
+      broker: {
+        port: 31003,
+        managementPort: 15999,
+        username: 'fixture',
+        password: 'fixture',
+        vhost: location.project,
+      },
+      gateway: {
+        name: `${location.project}-gateway`,
+        host: 'host.docker.internal',
+        proxyPort: 31004,
+        adminPort: 31005,
+      },
+    }),
+  };
+  await mkdir(location.directory, { recursive: true });
+  try {
+    await writeFile(location.manifestPath, JSON.stringify(manifest), {
+      mode: 0o600,
+    });
+    check(manifest);
+  } finally {
+    await rm(location.directory, { recursive: true, force: true });
+  }
+}
+
+test.each(['active', 'absent', 'retained'] as const)(
+  'test environments accept preparation overrides with %s services',
+  async (services) => {
+    await withReadyManifest(services, (manifest) => {
+      const env = environmentVariables(manifest, preparationOverrides);
+      expect(env).toMatchObject(preparationOverrides);
+      if (services === 'active') {
+        expect(env.RABBITMQ_MANAGEMENT_URL).toBe('http://127.0.0.1:15999');
+      } else {
+        for (const key of [
+          'RABBITMQ_HOST',
+          'RABBITMQ_USERNAME',
+          'RABBITMQ_PASSWORD',
+          'RABBITMQ_MANAGEMENT_URL',
+          'USER_RABBITMQ_URL',
+          'GATEWAY_NAME',
+        ])
+          expect(env[key], key).toBeUndefined();
+      }
+    });
+  },
+);
+
+test.each(['active', 'retained'] as const)(
+  'test environments reject preparation overrides conflicting with %s resources',
+  async (services) => {
+    await withReadyManifest(services, (manifest) => {
+      for (const key of Object.keys(preparationOverrides)) {
+        expect(() =>
+          environmentVariables(manifest, {
+            [key]: key === 'GATEWAY_HOST' ? 'foreign.invalid' : '16000',
+          }),
+        ).toThrow(`${key} differs from the owned run`);
+      }
+    });
+  },
+);
+
+test.each(['active', 'absent', 'retained'] as const)(
+  'preparation overrides do not authorize foreign targets with %s services',
+  async (services) => {
+    await withReadyManifest(services, (manifest) => {
+      for (const key of [
+        'RABBITMQ_MANAGEMENT_URI',
+        'OTHER_RABBITMQ_URL',
+        'GATEWAY_URL',
+      ]) {
+        expect(() =>
+          environmentVariables(manifest, {
+            ...preparationOverrides,
+            [key]: 'foreign.invalid',
+          }),
+        ).toThrow(
+          `unregistered ${key.startsWith('GATEWAY_') ? 'gateway' : 'broker'} target: ${key}`,
+        );
+      }
+      if (services !== 'active') {
+        for (const key of [
+          'RABBITMQ_HOST',
+          'RABBITMQ_USERNAME',
+          'RABBITMQ_PASSWORD',
+          'RABBITMQ_MANAGEMENT_URL',
+          'GATEWAY_NAME',
+        ]) {
+          expect(() =>
+            environmentVariables(manifest, { [key]: 'foreign' }),
+          ).toThrow('unregistered');
+        }
+      }
+    });
+  },
+);
 
 test('direct test cleanup and database tools reject an unowned target before connecting', async () => {
   for (const command of [

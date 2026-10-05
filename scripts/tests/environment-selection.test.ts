@@ -103,6 +103,29 @@ test('an all-disabled generated application prepares without infrastructure or d
       if ((await new Response(p.stdout).text()).trim() || await p.exited) throw new Error('Unexpected infrastructure');
     `,
     ]);
+    await run(workspace, [
+      'env',
+      'RABBITMQ_PORT=5672',
+      'RABBITMQ_MANAGEMENT_PORT=15999',
+      'GATEWAY_HOST=alternate.invalid',
+      'GATEWAY_PROXY_PORT=8000',
+      'GATEWAY_ADMIN_PORT=8001',
+      'bun',
+      'scripts/with-test-database.ts',
+      '--app=quiet-worker',
+      '--',
+      'bun',
+      '-e',
+      `
+      const m = await Bun.file(process.env.DDH_ENVIRONMENT_FILE).json();
+      if (m.broker || m.gateway || m.databases.length) throw new Error('Unexpected infrastructure from unused overrides');
+      if (process.env.RABBITMQ_MANAGEMENT_PORT !== '15999' || process.env.GATEWAY_HOST !== 'alternate.invalid')
+        throw new Error('Preparation overrides were discarded');
+      for (const key of ['RABBITMQ_USERNAME', 'RABBITMQ_PASSWORD', 'RABBITMQ_MANAGEMENT_URL', 'QUIET_WORKER_RABBITMQ_URL', 'GATEWAY_NAME']) {
+        if (process.env[key]) throw new Error('Disabled credential: ' + key);
+      }
+      `,
+    ]);
   }, [
     async () => {
       await withCleanup(
