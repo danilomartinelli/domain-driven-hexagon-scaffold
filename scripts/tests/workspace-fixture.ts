@@ -24,7 +24,10 @@ export function isolatedEnvironment(): NodeJS.ProcessEnv {
 
 export interface Workspace {
   root: string;
-  run: (args: string[]) => Promise<CommandResult>;
+  run: (
+    args: string[],
+    options?: { timeout?: number },
+  ) => Promise<CommandResult>;
   cleanup: () => Promise<void>;
 }
 
@@ -110,7 +113,7 @@ export async function createWorkspace(): Promise<Workspace> {
     }
     return {
       root,
-      run: async (args): Promise<CommandResult> => {
+      run: async (args, { timeout = 30_000 } = {}): Promise<CommandResult> => {
         // Nx 23.2.1 reuses native file hashes by mtime (whole seconds on Unix).
         // These fixtures mutate files between commands, sometimes within one
         // tick. Rehash their bytes while retaining graph and task caches, so
@@ -120,7 +123,7 @@ export async function createWorkspace(): Promise<Workspace> {
         });
         return runCommand(args, {
           cwd: root,
-          timeout: 30_000,
+          timeout,
           env: {
             ...isolatedEnvironment(),
             NX_SKIP_NX_CACHE: 'false',

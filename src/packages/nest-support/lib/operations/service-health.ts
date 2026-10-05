@@ -1,3 +1,4 @@
+import type { ApplicationDeclaration } from '@starter/capabilities/declaration';
 import { CachedProbe } from './cached-probe';
 
 export interface Readiness {
@@ -8,8 +9,9 @@ export interface HealthSnapshot {
   service: string;
   lifecycle: 'running' | 'draining' | 'stopping';
   http: Readiness;
-  consumer: Readiness & MessagingState;
-  publisher: Readiness;
+  database: Readiness;
+  consumer: Readiness | MessagingReadiness;
+  publisher: Readiness | MessagingReadiness;
 }
 
 interface MessagingState {
@@ -20,9 +22,16 @@ interface MessagingState {
   lastFailureAt: string | null;
 }
 
+type MessagingReadiness = Readiness &
+  MessagingState & { reason: string | null };
+
+/**
+ * Supply exactly the probes of the declared capabilities: `database` when
+ * persistence is enabled and the messaging roles the application really uses.
+ */
 interface HealthSources {
-  database: () => Promise<void>;
-  consumer: () => MessagingState;
+  database?: () => Promise<void>;
+  consumer?: () => MessagingState;
   publisher?: () => MessagingState;
   backlog?: () => Promise<{
     pendingCount: number;
@@ -40,53 +49,64 @@ export interface BacklogSnapshot {
 /** Coalesces concurrent database probes and caches their result for one second. */
 export class ServiceHealth {
   lifecycle: HealthSnapshot['lifecycle'] = 'running';
-  private readonly database: CachedProbe<void>;
+  readonly service: string;
+  private readonly database?: CachedProbe<void>;
   private readonly outbox?: CachedProbe<{
     pendingCount: number;
     oldestAgeSeconds: number | null;
   }>;
 
   constructor(
-    readonly service: string,
+    declaration: ApplicationDeclaration,
     private readonly sources: HealthSources,
   ) {
-    this.database = new CachedProbe(sources.database);
+    const { name, persistence, messaging } = declaration;
+    // A mismatch would report a disabled dependency as failed or hide an enabled one.
+    if (persistence !== Boolean(sources.database))
+      throw new Error(
+        `${name}: supply a database probe exactly when persistence is enabled`,
+      );
+    if (messaging !== Boolean(sources.consumer ?? sources.publisher))
+      throw new Error(
+        `${name}: supply consumer or publisher probes exactly when messaging is enabled`,
+      );
+    this.service = name;
+    if (sources.database) this.database = new CachedProbe(sources.database);
     if (sources.backlog) this.outbox = new CachedProbe(sources.backlog);
   }
 
   async snapshot(): Promise<HealthSnapshot> {
-    const { available: database } =
-      this.lifecycle === 'running'
-        ? await this.database.read()
-        : { available: false };
+    const running = this.lifecycle === 'running';
+    const database: Readiness = !this.database
+      ? { status: 'not_applicable' }
+      : running && (await this.database.read()).available
+        ? { status: 'ready' }
+        : { status: 'not_ready' };
+    const usable = running && database.status !== 'not_ready';
     const readiness = (
-      state: MessagingState,
-    ): Readiness & MessagingState & { reason: string | null } => ({
-      ...state,
-      status:
-        database && this.lifecycle === 'running' && state.connected
-          ? 'ready'
-          : 'not_ready',
-      reason:
-        this.lifecycle !== 'running'
+      source: (() => MessagingState) | undefined,
+    ): Readiness | MessagingReadiness => {
+      if (!source) return { status: 'not_applicable' };
+      const state = source();
+      return {
+        ...state,
+        status: usable && state.connected ? 'ready' : 'not_ready',
+        reason: !running
           ? this.lifecycle
-          : !database
+          : database.status === 'not_ready'
             ? 'database_unavailable'
             : state.connected
               ? null
               : 'messaging_unavailable',
-    });
+      };
+    };
     return {
       service: this.service,
       lifecycle: this.lifecycle,
-      http: {
-        status:
-          database && this.lifecycle === 'running' ? 'ready' : 'not_ready',
-      },
-      consumer: readiness(this.sources.consumer()),
-      publisher: this.sources.publisher
-        ? readiness(this.sources.publisher())
-        : { status: 'not_applicable' },
+      http: { status: usable ? 'ready' : 'not_ready' },
+      database,
+      consumer: readiness(this.sources.consumer),
+      publisher: readiness(this.sources.publisher),
     };
   }
 

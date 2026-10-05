@@ -1,0 +1,5 @@
+# Unit tests
+
+Add infrastructure-free tests of application behavior here. No tests or placeholder
+assertions are generated. The test target reports no tests and exits nonzero until
+behavior is added.

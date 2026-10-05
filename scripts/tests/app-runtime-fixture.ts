@@ -21,10 +21,19 @@ export interface RunningApp {
   stop: (signal?: 'SIGTERM' | 'SIGINT') => Promise<void>;
 }
 
+/** Start a generated app with only the supplied settings and an owned HTTP port. */
 export async function withApp(
-  cwd: string,
-  command: string[],
-  broker: string,
+  {
+    cwd,
+    command,
+    prefix = 'TELEMETRY',
+    settings,
+  }: {
+    cwd: string;
+    command: string[];
+    prefix?: string;
+    settings: Record<string, string>;
+  },
   use: (app: RunningApp) => Promise<void>,
 ): Promise<void> {
   const port = await availablePort();
@@ -32,8 +41,8 @@ export async function withApp(
     cwd,
     env: {
       PATH: process.env.PATH,
-      TELEMETRY_HTTP_PORT: String(port),
-      TELEMETRY_RABBITMQ_URL: broker,
+      ...settings,
+      [`${prefix}_HTTP_PORT`]: String(port),
     },
     stdin: 'ignore',
     stdout: 'pipe',

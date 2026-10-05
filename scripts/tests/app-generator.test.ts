@@ -1,5 +1,13 @@
 import { expect, test } from 'bun:test';
-import { cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import {
+  cp,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appWorkspace, generate, run } from './app-generator-fixture';
@@ -44,6 +52,17 @@ test('nest-app generates an independent checked project without persistent dry-r
         join(workspace.root, 'src/apps/telemetry/package.json'),
       ).json(),
     ).toMatchObject({ private: true, exports: {} });
+    // The defaults keep the previous hybrid capabilities: messaging and exposure.
+    expect(
+      await Bun.file(
+        join(workspace.root, 'src/apps/telemetry/application.json'),
+      ).json(),
+    ).toEqual({
+      name: 'telemetry',
+      persistence: false,
+      messaging: true,
+      exposure: true,
+    });
     for (const target of ['test', 'test-component']) {
       const empty = await workspace.run([
         'bun',
@@ -57,9 +76,11 @@ test('nest-app generates an independent checked project without persistent dry-r
         /No tests found|did not match any test files/,
       );
     }
-    expect(
-      (await workspace.run(generate('bad-preset', '--preset=crud'))).code,
-    ).not.toBe(0);
+    for (const invalid of ['--preset=crud', '--persistence=maybe']) {
+      const rejected = await workspace.run(generate('rejected', invalid));
+      expect(rejected.code, invalid).not.toBe(0);
+    }
+    expect(existsSync(join(workspace.root, 'src/apps/rejected'))).toBe(false);
     await run(workspace, [
       'bun',
       'run',
@@ -78,6 +99,57 @@ test('nest-app generates an independent checked project without persistent dry-r
     for (const name of ['../escape', 'user', 'core']) {
       expect((await workspace.run(generate(name))).code).not.toBe(0);
     }
+    // Composition consumes the declaration. Withdrawn exposure removes the
+    // business adapters while operational HTTP and messaging keep running.
+    const declaration = join(
+      workspace.root,
+      'src/apps/telemetry/application.json',
+    );
+    const declare = async (capabilities: Record<string, boolean>) => {
+      await writeFile(
+        declaration,
+        JSON.stringify({
+          name: 'telemetry',
+          persistence: false,
+          messaging: true,
+          exposure: true,
+          ...capabilities,
+        }),
+      );
+    };
+    await declare({ exposure: false });
+    await withApp(
+      {
+        cwd: workspace.root,
+        command: ['src/apps/telemetry/main.ts'],
+        settings: { TELEMETRY_RABBITMQ_URL: 'amqp://127.0.0.1:1' },
+      },
+      async ({ url }) => {
+        expect((await fetch(`${url}/health/ready/http`)).status).toBe(200);
+        expect((await fetch(`${url}/health/ready/consumer`)).status).toBe(503);
+        const graphql = await fetch(`${url}/graphql`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ query: '{ httpReady }' }),
+        });
+        expect(graphql.status).toBe(404);
+      },
+    );
+    // Claiming a capability without its adapter fails at startup instead of
+    // reporting a dependency the composition lacks.
+    await declare({ persistence: true });
+    const mismatch = await workspace.run([
+      'env',
+      'TELEMETRY_HTTP_PORT=1',
+      'TELEMETRY_RABBITMQ_URL=amqp://127.0.0.1:1',
+      process.execPath,
+      '--no-env-file',
+      'src/apps/telemetry/main.ts',
+    ]);
+    expect(mismatch.code).not.toBe(0);
+    expect(mismatch.stdout + mismatch.stderr).toContain(
+      'supply a database probe exactly when persistence is enabled',
+    );
   } finally {
     await workspace.cleanup();
   }
@@ -112,9 +184,11 @@ test('generated distribution owns its source and needs no database registry or s
     // The original workspace is gone before delivered code executes.
     await workspace.cleanup();
     await withApp(
-      artifact,
-      ['run', 'start'],
-      'amqp://127.0.0.1:1',
+      {
+        cwd: artifact,
+        command: ['run', 'start'],
+        settings: { TELEMETRY_RABBITMQ_URL: 'amqp://127.0.0.1:1' },
+      },
       async ({ url, stop }) => {
         expect((await fetch(`${url}/health/ready/http`)).status).toBe(200);
         expect((await fetch(`${url}/health/ready/consumer`)).status).toBe(503);

@@ -18,7 +18,7 @@ make down  # bun run dev:down: stop containers and their network; keep named vol
 `bun run dev` runs the uncached `infrastructure:dev` target for development's
 `default` run (`--run=<id>` selects another). It prepares PostgreSQL, RabbitMQ
 and Kong and waits for their healthchecks, applies pending migrations for every
-registered application, then runs `start:dev` with the manifest's settings. The
+persistent application, then runs `start:dev` with the manifest's settings. The
 infrastructure keeps running after the applications or migrations exit;
 `make down` stops it. A failed infrastructure startup removes only that run's
 containers and network. `make dev` never seeds: seeds are not idempotent, so
@@ -64,7 +64,7 @@ bun run test:component
 suites through
 `scripts/with-test-database.ts --app=<name> -- <command>`. An explicit `--app` provisions only the selected application databases and RabbitMQ,
 without Kong or sibling databases. Without `--app`, the wrapper provisions,
-migrates and seeds every registered application plus the gateway. Cross-database
+migrates and seeds every persistent application plus the gateway. Cross-database
 credential rejection runs in the distributed suite.
 
 Distribution verification uses `--no-database-setup` so each isolated artifact
@@ -230,14 +230,20 @@ component tests continue to address their independent service directly.
 
 ## Application-owned database content
 
-`database/applications.ts` registers each application's environment-variable
-prefix, migration directory, ordered seed files and optional runtime role. The
-`user` application (`USER_DB_*`, content in `src/apps/user/database/`) is the
-default. `wallet` (`WALLET_DB_*`) owns its content in `src/apps/wallet/database/`.
+`database/applications.ts` derives the database applications from each
+`src/apps/<name>/application.json` that declares `"persistence": true`; there is
+no list of names to edit. Each one uses the `<NAME>_DB_*` environment prefix
+(`order-history` becomes `ORDER_HISTORY_DB_*`), owns
+`src/apps/<name>/database/migrations/`, runs optional seeds from
+`src/apps/<name>/database/seeds/*.sql` in file-name order and connects through
+the restricted `<name>_runtime` role (hyphens become underscores). The `user`
+application (`USER_DB_*`, content in `src/apps/user/database/`) is the default.
+`wallet` (`WALLET_DB_*`) owns its content in `src/apps/wallet/database/`.
 Each has a new database with its own migration history; no data is transferred.
-Select an application with `DATABASE_APP`; unknown applications fail before
-connecting. The orchestrator iterates the registry to provision, migrate, seed
-and validate every target.
+Select an application with `DATABASE_APP`; unknown or nonpersistent applications
+fail before connecting, as does a malformed or misnamed declaration; directories
+without `application.json` are skipped. The orchestrator iterates the derived list to provision, migrate,
+seed and validate every target.
 
 ```sh
 bun run migration:create add-user-index

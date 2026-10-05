@@ -13,6 +13,7 @@ import {
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { readApplicationDeclaration } from '@starter/capabilities/declaration';
 import { applications } from '../../database/applications';
 import {
   containsPath,
@@ -65,16 +66,29 @@ export function distribute(name: string, output?: string): string {
     name: z.literal(name),
     projectType: z.literal('application'),
   }).parse(JSON.parse(readFileSync(join(appSource, 'project.json'), 'utf8')));
-  const app = applications.find((entry) => entry.name === name);
-  if (!app && existsSync(join(appSource, 'database')))
+  if (!existsSync(join(appSource, 'application.json')))
     throw new Error(
-      'Register the application database before distributing its content',
+      'Declare the application capabilities in application.json before distributing it',
+    );
+  const declaration = readApplicationDeclaration(
+    join(appSource, 'application.json'),
+  );
+  if (declaration.name !== name)
+    throw new Error(`application.json must declare name "${name}"`);
+  const app = applications.find((entry) => entry.name === name);
+  if (!declaration.persistence && existsSync(join(appSource, 'database')))
+    throw new Error(
+      'Declare persistence in application.json before distributing database content',
     );
   const migrations = app
     ? relative(appSource, fileURLToPath(app.migrations))
     : undefined;
   if (app && !containsPath(appSource, fileURLToPath(app.migrations)))
     throw new Error('Migrations must belong to the selected application');
+  if (app && !existsSync(app.migrations))
+    throw new Error(
+      'Declared persistence requires an owned database/migrations directory',
+    );
   const pinnedBun = readFileSync(join(root, '.bun-version'), 'utf8').trim();
   if (Bun.version !== pinnedBun)
     throw new Error(`Distribution requires Bun ${pinnedBun}`);

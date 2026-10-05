@@ -32,10 +32,13 @@ live in the [Nx guide](docs/nx-workspace.md); validation lives in
 ## Direction
 
 The [adoption guide](docs/adoption.md) describes the delivered project identity,
-MIT metadata and bounded rename command. The
-[accepted scaffold delivery design](docs/scaffold-design.md) records the next
-direction; [ADR 0003](docs/adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
-distinguishes this delivery from the remaining application-capability and OCI work.
+MIT metadata and bounded rename command. Each application also declares
+persistence, messaging and Kong exposure independently, and its generation,
+runtime composition and probes follow those choices. The
+[accepted scaffold delivery design](docs/scaffold-design.md) records the direction;
+[ADR 0003](docs/adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
+distinguishes these deliveries from the remaining environment, container topology
+and OCI work.
 
 Contribution rules:
 

@@ -12,7 +12,22 @@
       "type": "string",
       "enum": ["hybrid"],
       "default": "hybrid",
-      "description": "HTTP/GraphQL and independently recovering RabbitMQ, without a database."
+      "description": "The single application preset; capabilities select its adapters."
+    },
+    "persistence": {
+      "type": "boolean",
+      "default": false,
+      "description": "Own a PostgreSQL database: runtime pool, migration interface and database readiness."
+    },
+    "messaging": {
+      "type": "boolean",
+      "default": true,
+      "description": "Consume RabbitMQ messages with an independently recovering transport and consumer readiness."
+    },
+    "exposure": {
+      "type": "boolean",
+      "default": true,
+      "description": "Serve explicitly registered business REST/GraphQL adapters; operational HTTP health endpoints are always present."
     }
   },
   "required": ["name"],

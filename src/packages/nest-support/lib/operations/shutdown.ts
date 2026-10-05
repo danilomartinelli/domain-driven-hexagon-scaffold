@@ -2,10 +2,13 @@ import { Logger, type INestApplication } from '@nestjs/common';
 import type { Request, Response, NextFunction } from 'express';
 import { ServiceHealth } from './service-health';
 
-/** Own signal handling before Nest closes transports or invokes database hooks. */
+/**
+ * Own signal handling before Nest closes transports or invokes database hooks.
+ * Applications without messaging have no transport to drain first.
+ */
 export function installShutdown(
   app: INestApplication,
-  stopMessaging: () => Promise<void>,
+  stopMessaging: () => Promise<void> = () => Promise.resolve(),
 ): void {
   const health = app.get(ServiceHealth);
   const logger = new Logger('Shutdown');

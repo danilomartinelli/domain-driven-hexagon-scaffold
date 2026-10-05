@@ -1,6 +1,6 @@
 ---
 name: create-migration
-description: Create and validate a SQL migration for this workspace's registered application when the user requests a schema change.
+description: Create and validate a SQL migration for a persistent application in this workspace when the user requests a schema change.
 disable-model-invocation: true
 ---
 
@@ -9,8 +9,10 @@ Read [database instructions](../../../database/AGENTS.md) and the
 The request supplies the schema change and, when relevant, the application.
 Resolve ambiguity about data retention or rollback before writing destructive SQL.
 
-1. Inspect the selected entry in `database/applications.ts` and the relevant
-   migrations/schema. Run from the repository root after developer setup.
+1. Confirm the selected application's `application.json` declares persistence;
+   `database/applications.ts` derives its prefix, runtime role and migration
+   directory. Inspect the relevant migrations/schema. Run from the repository
+   root after developer setup.
 2. Create the file with `bun run migration:create <migration-name>`. Keep both
    `-- Up Migration` and `-- Down Migration` sections. Let `node-pg-migrate`
    manage the transaction, history and advisory lock.

@@ -16,6 +16,7 @@
         "@nestjs/microservices": "12.1.1",
         "@nestjs/platform-express": "12.1.1",
         "@nestjs/swagger": "12.0.2",
+        "@starter/capabilities": "workspace:*",
         "@starter/core": "workspace:*",
         "@starter/integration-contracts": "workspace:*",
         "@starter/nest-support": "workspace:*",
@@ -64,6 +65,13 @@
         "typescript-eslint": "8.71.0",
       },
     },
+    "src/packages/capabilities": {
+      "name": "@starter/capabilities",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "4.6.5",
+      },
+    },
     "src/packages/core": {
       "name": "@starter/core",
       "version": "0.0.0",
@@ -90,6 +98,7 @@
         "@nestjs/event-emitter": "12.0.1",
         "@nestjs/graphql": "14.0.3",
         "@nestjs/swagger": "12.0.2",
+        "@starter/capabilities": "workspace:*",
         "@starter/core": "workspace:*",
         "class-transformer": "0.5.1",
         "class-validator": "0.15.1",
@@ -343,6 +352,8 @@
     "@slonik/utilities": ["@slonik/utilities@49.10.10", "", { "dependencies": { "@slonik/errors": "^49.10.10", "@slonik/types": "^49.10.10" }, "peerDependencies": { "zod": "^3.25 || ^4" } }, "sha512-9nV4yqSjILF2ePUG42QI36CgW9fjmodXTsNDW/iDXHDKOwcaglZ81w3jKO6BPzr3OHfbDIRFPaTKfXfxYavi+Q=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
+
+    "@starter/capabilities": ["@starter/capabilities@workspace:src/packages/capabilities"],
 
     "@starter/config": ["@starter/config@workspace:tooling/config"],
 

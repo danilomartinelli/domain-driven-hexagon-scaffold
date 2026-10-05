@@ -1,21 +1,104 @@
 import { getProjects, readJson } from '@nx/devkit';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { format, resolveConfig } from 'prettier';
+
+/** @typedef {'persistence' | 'messaging' | 'exposure'} Capability */
+/** @type {Capability[]} */
+const capabilities = ['persistence', 'messaging', 'exposure'];
+
+/** Packages imported or required at runtime, per enabled capability. */
+const runtimeDependencies = {
+  base: [
+    '@nestjs/common',
+    '@nestjs/core',
+    '@nestjs/platform-express',
+    '@starter/capabilities',
+    '@starter/nest-support',
+    'reflect-metadata',
+    'rxjs',
+    'env-var',
+  ],
+  persistence: ['slonik'],
+  messaging: ['@starter/core', '@starter/rabbitmq', 'amqplib', 'zod'],
+  exposure: [
+    '@nestjs/apollo',
+    '@nestjs/graphql',
+    '@apollo/server',
+    '@as-integrations/express5',
+    'graphql',
+  ],
+};
+/** The distributed migration commands need these only with persistence. */
+const migrationDependencies = ['node-pg-migrate', 'pg', 'zod'];
 
 /** @param {string} command @param {boolean} [cache] @returns {import('@nx/devkit').TargetConfiguration} */
 function target(command, cache = false) {
   return { executor: 'nx:run-commands', cache, options: { command, cwd: '.' } };
 }
 
-/** @param {import('@nx/devkit').Tree} tree
- * @param {{name: string, preset?: string}} options
+/**
+ * Keep or drop template text between `#if <capabilities>`, `#else` and `#endif`
+ * markers; `a|b` selects either capability. A `//` or `<!--` marker alone on a
+ * line removes that line; HTML comment markers can also select inline Markdown.
+ * @param {string} text @param {Record<Capability, boolean>} enabled @param {string} file
  */
-export default async function nestApp(tree, { name, preset = 'hybrid' }) {
+function render(text, enabled, file) {
+  const marker =
+    /^[ \t]*(?:\/\/|<!--)#(if|else|endif)(?:[ \t]+([\w|]+))?[ \t]*(?:-->)?[ \t]*(?:\n|(?![\s\S]))|<!--#(if|else|endif)(?:[ \t]+([\w|]+))?[ \t]*-->/gm;
+  /** @param {string} expression */
+  const evaluate = (expression) =>
+    expression.split('|').some((name) => {
+      if (!capabilities.includes(/** @type {Capability} */ (name)))
+        throw new Error(`Unknown capability ${name} in ${file}`);
+      return enabled[/** @type {Capability} */ (name)];
+    });
+  /** @type {boolean[]} */
+  const stack = [];
+  let output = '';
+  let offset = 0;
+  for (const match of text.matchAll(marker)) {
+    if (stack.every(Boolean)) output += text.slice(offset, match.index);
+    offset = match.index + match[0].length;
+    // Unmatched alternatives leave their capture groups undefined.
+    const [, line, lineExpression, inline, inlineExpression] =
+      /** @type {(string | undefined)[]} */ ([...match]);
+    const directive = line ?? inline ?? '';
+    const expression = lineExpression ?? inlineExpression;
+    if (directive === 'if') {
+      if (!expression) throw new Error(`Missing #if capability in ${file}`);
+      stack.push(evaluate(expression));
+    } else if (!stack.length || expression)
+      throw new Error(`Invalid #${directive} in ${file}`);
+    else if (directive === 'else') stack.push(!stack.pop());
+    else stack.pop();
+  }
+  if (stack.length) throw new Error(`Unclosed #if in ${file}`);
+  return output + text.slice(offset);
+}
+
+/** @param {import('@nx/devkit').Tree} tree
+ * @param {{name: string, preset?: string, persistence?: boolean, messaging?: boolean, exposure?: boolean}} options
+ */
+export default async function nestApp(
+  tree,
+  {
+    name,
+    preset = 'hybrid',
+    persistence = false,
+    messaging = true,
+    exposure = true,
+  },
+) {
   if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name))
     throw new Error('Use a lowercase kebab-case project name, without a path.');
   if (preset !== 'hybrid') throw new Error('Supported app preset: hybrid.');
+  /** @type {Record<Capability, boolean>} */
+  const enabled = { persistence, messaging, exposure };
+  for (const capability of capabilities)
+    if (typeof enabled[capability] !== 'boolean')
+      throw new Error(`--${capability} must be true or false.`);
   const root = `src/apps/${name}`;
   if (
     tree.exists(root) ||
@@ -23,32 +106,40 @@ export default async function nestApp(tree, { name, preset = 'hybrid' }) {
     getProjects(tree).has(name)
   )
     throw new Error(`Destination or project already exists: ${root}`);
-  const manifest = /** @type {{dependencies: Record<string, string>}} */ (
-    readJson(tree, 'package.json')
+  const manifest =
+    /** @type {{dependencies: Record<string, string>, devDependencies: Record<string, string>}} */ (
+      readJson(tree, 'package.json')
+    );
+  const selected = [
+    'base',
+    ...capabilities.filter((capability) => enabled[capability]),
+  ];
+  const imported = selected.flatMap(
+    (set) =>
+      runtimeDependencies[
+        /** @type {keyof typeof runtimeDependencies} */ (set)
+      ],
   );
   const dependencies = Object.fromEntries(
-    [
-      '@nestjs/apollo',
-      '@nestjs/common',
-      '@nestjs/core',
-      '@nestjs/graphql',
-      '@nestjs/platform-express',
-      '@apollo/server',
-      '@as-integrations/express5',
-      '@starter/core',
-      '@starter/nest-support',
-      '@starter/rabbitmq',
-      'amqplib',
-      'graphql',
-      'reflect-metadata',
-      'rxjs',
-      'env-var',
-      'zod',
-    ].map((dependency) => [dependency, manifest.dependencies[dependency]]),
+    imported.map((dependency) => {
+      const version = manifest.dependencies[dependency];
+      if (!version)
+        throw new Error(`Root manifest does not declare ${dependency}.`);
+      return [dependency, version];
+    }),
   );
+  for (const dependency of persistence ? migrationDependencies : [])
+    if (
+      !manifest.dependencies[dependency] &&
+      !manifest.devDependencies[dependency]
+    )
+      throw new Error(`Root manifest does not declare ${dependency}.`);
+  const prefix = name.replaceAll('-', '_').toUpperCase();
   const unit = `bun --no-env-file test --cwd ${root} ./tests/unit`;
   /** @type {Record<string, string>} */
   const files = {
+    // The single declaration consumed by composition, probes and tooling discovery.
+    'application.json': JSON.stringify({ name, ...enabled }),
     'package.json': JSON.stringify({
       name: `@starter/${name}-app`,
       version: '0.0.0',
@@ -88,28 +179,38 @@ export default async function nestApp(tree, { name, preset = 'hybrid' }) {
       include: ['**/*.ts'],
       exclude: ['node_modules'],
     }),
-    'distribution.json': JSON.stringify(Object.keys(dependencies)),
+    'distribution.json': JSON.stringify([
+      ...new Set([...imported, ...(persistence ? migrationDependencies : [])]),
+    ]),
     'bunfig.toml': '[test]\nroot = "./tests/unit"\n',
-    'tests/unit/README.md':
-      '# Unit tests\n\nAdd infrastructure-free tests of application behavior here. No tests or placeholder assertions are generated. The test target reports no tests and exits nonzero until behavior is added.\n',
-    'tests/component/README.md':
-      '# Component tests\n\nAdd process-level HTTP, GraphQL and RabbitMQ tests here. The uncached test-component target selects only this directory and has no unit-test preload. Each live fixture must provision its own broker, assign unique ports and queues, verify ownership before cleanup and close all processes in finally. Never target development or sibling infrastructure. No database or generic User/Wallet environment is selected.\n',
   };
   const templates = fileURLToPath(
     new URL('./nest-app-files/', import.meta.url),
   );
-  for (const path of readdirSync(templates, {
-    recursive: true,
-    withFileTypes: true,
-  })) {
-    if (!path.isFile()) continue;
-    const destination = relative(templates, join(path.parentPath, path.name));
-    files[destination.replace(/\.template$/, '')] = readFileSync(
-      join(path.parentPath, path.name),
-      'utf8',
-    )
-      .replaceAll('__name__', name)
-      .replaceAll('__PREFIX__', name.replaceAll('-', '_').toUpperCase());
+  for (const set of selected) {
+    const directory = join(templates, set);
+    if (!existsSync(directory)) continue;
+    for (const path of readdirSync(directory, {
+      recursive: true,
+      withFileTypes: true,
+    })) {
+      if (!path.isFile()) continue;
+      const source = join(path.parentPath, path.name);
+      const destination = relative(directory, source).replace(
+        /\.template$/,
+        '',
+      );
+      if (destination in files)
+        throw new Error(`Duplicate template output ${destination}`);
+      files[destination] = render(
+        readFileSync(source, 'utf8'),
+        enabled,
+        relative(templates, source),
+      )
+        .replaceAll('__name__', name)
+        .replaceAll('__PREFIX__', prefix)
+        .replaceAll('__role__', `${name.replaceAll('-', '_')}_runtime`);
+    }
   }
   const config = await resolveConfig(`${tree.root}/prettier.config.mjs`);
   // Validate and format the complete output before adding any writes to Nx's tree.

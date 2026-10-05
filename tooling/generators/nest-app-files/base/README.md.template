@@ -1,0 +1,154 @@
+# __name__
+
+Independent Nest 12/Bun application generated with these capabilities, declared
+in `application.json`:
+
+| Capability             | Enabled                                                 |
+| ---------------------- | ------------------------------------------------------- |
+| PostgreSQL persistence | <!--#if persistence-->yes<!--#else-->no<!--#endif-->    |
+| RabbitMQ messaging     | <!--#if messaging-->yes<!--#else-->no<!--#endif-->      |
+| Kong exposure          | <!--#if exposure-->yes<!--#else-->no<!--#endif-->       |
+
+The declaration selects applicable configuration, adapters and readiness probes;
+withdrawing exposure in it removes the business REST/GraphQL adapters.
+Disabled capabilities have no settings, adapters, background connections or
+readiness dependency. Operational HTTP is always present. Add business
+behavior under `application/` and `domain/` only when needed; no User/Wallet
+implementation, CRUD, SQL, event contract, public route or example assertion is
+generated. The private package exports no application implementation.
+
+## Run
+
+From the workspace root, supply an available HTTP port and the settings of the
+enabled capabilities:
+
+```sh
+__PREFIX___HTTP_PORT=3010 \
+<!--#if persistence-->
+  __PREFIX___DB_HOST=127.0.0.1 __PREFIX___DB_PORT=5432 __PREFIX___DB_NAME=__name__ \
+  __PREFIX___DB_USERNAME=__role__ __PREFIX___DB_PASSWORD=change-me \
+<!--#endif-->
+<!--#if messaging-->
+  __PREFIX___RABBITMQ_URL=amqp://localhost:5672 \
+<!--#endif-->
+  bun run nx run __name__:serve
+```
+
+Use `__name__:watch` or `__name__:debug` for Bun watch/inspector mode. No dotenv
+file is loaded and the app does not prepare or delete infrastructure.
+<!--#if persistence-->
+`__PREFIX___DB_*` selects this application's own database with the restricted
+`__role__` runtime role. Startup neither connects eagerly nor migrates.
+<!--#endif-->
+<!--#if messaging-->
+`__PREFIX___RABBITMQ_QUEUE` defaults to `__name__.commands.v1`. Configure broker
+heartbeat in the URL when needed and use a unique broker/queue per environment.
+HTTP starts while RabbitMQ is unavailable; broker retries use bounded exponential
+delays.
+<!--#endif-->
+
+## Probes
+
+`/health/live` reports the process without probing dependencies. `/health/ready`
+aggregates each applicable component, also
+available as `/health/ready/http`, `/health/ready/database`,
+`/health/ready/consumer` and `/health/ready/publisher`. Disabled capabilities
+and unused messaging roles report `not_applicable`. `/health/backlog` is not
+applicable until implemented. HTTP readiness depends on the lifecycle
+<!--#if persistence-->
+and the database
+<!--#endif-->
+but never on the broker. They share the application's HTTP listener; keep them
+out of client routes.
+<!--#if exposure-->
+POST `{ "query": "{ httpReady }" }` to `/graphql` for HTTP readiness.
+<!--#endif-->
+
+## Extend
+
+Register application-owned providers in `composition/app.module.ts`
+(`applicationProviders`). Use explicit `@Inject(Token)`, factory `inject` lists,
+GraphQL type functions and explicit validation; Bun does not emit design metadata.
+<!--#if exposure-->
+
+Add business REST controllers to `businessControllers` and GraphQL resolvers to
+`businessResolvers`. Only registered adapters are served; nothing is exposed
+automatically. Client routes are configured separately in the gateway.
+<!--#else-->
+
+Exposure is disabled: there are no business REST or GraphQL adapters, and no
+client routes. Enable exposure by generating a new application with
+`--exposure` rather than registering business adapters here.
+<!--#endif-->
+<!--#if persistence-->
+
+Inject `DATABASE_POOL` from `database/database.module.ts` into application-owned
+persistence adapters. Add owned SQL under `database/migrations/` (see its README);
+migrations grant `__role__` exactly what the application needs. Run them
+explicitly with `DATABASE_APP=__name__ bun run migration:up` inside a prepared
+environment; startup never migrates.
+<!--#endif-->
+<!--#if messaging-->
+
+Register message handlers as providers in `applicationProviders`, then add their
+injection tokens to `handlers`. Each AMQP message uses a JSON
+`{ "pattern": "your.versioned.pattern", "data": ... }` envelope and nonempty AMQP
+`messageId` and `correlationId` properties. The adapter passes those identities
+explicitly to the handler. Resolve `undefined` after committing effects. Return
+`{ accepted: false, reason: 'invalid-your-payload' }` for permanent validation
+rejections before effects; use a stable, non-sensitive reason code. Throw for
+transient failures that should be retried.
+
+Invalid envelopes and rejected payloads are retained byte-for-byte in
+`<queue>.failed`, with publisher confirmation before ACK. Available identities,
+content metadata and headers are preserved independently; `x-failure-reason`
+records `invalid-json`, `invalid-envelope`, `missing-identity`, `unknown-pattern`
+or the handler's rejection reason. Original expiration is omitted so inspection
+evidence survives. The retention log includes the same reason and identities.
+
+The 10-second handling deadline ends the AMQP session without acknowledging
+uncertain work. It cannot cancel application effects: the transport waits for
+the actual operation to settle before reconnecting or completing `stop()`.
+A stuck handler keeps this instance unavailable until it settles or the process
+is restarted. Other instances can receive redelivery after connection loss;
+commit idempotency claims and effects atomically in the owning database before
+resolving. This scaffold does not implement a business publisher or an outbox.
+<!--#endif-->
+
+SIGINT/SIGTERM refuses new work and drains accepted requests
+<!--#if messaging-->
+and deliveries, cancelling consumption and closing AMQP first,
+<!--#endif-->
+before Nest closes HTTP
+<!--#if persistence-->
+and the database pool
+<!--#endif-->
+within the shared 15-second deadline; a timeout exits nonzero.
+
+## Check and distribute
+
+```sh
+bun run nx run __name__:lint
+bun run nx run __name__:typecheck
+bun run lint:boundaries
+bun run nx run __name__:test
+bun run nx run __name__:test-component
+bun run nx run __name__:distribution
+```
+
+Unit tests use `tests/unit/` without preload or infrastructure. Live tests use
+`tests/component/` in an uncached target; their fixtures must own their resources
+and cleanup. Neither directory contains generated tests, so each test command
+reports no tests and exits nonzero until meaningful tests are added.
+
+Copy `dist/__name__/` outside the workspace and run `bun run start` there with
+the same environment. The artifact includes Bun TypeScript sources, its
+declaration and its installed runtime dependencies; no workspace or install is
+needed. Build for the deployment OS/architecture using the pinned Bun version.
+<!--#if persistence-->
+The artifact also provides `migration:up`, `migration:status` and
+`migration:down` for this application's own database; supply
+`__PREFIX___DB_MIGRATION_USERNAME`/`_PASSWORD` only to those commands.
+<!--#else-->
+Persistence is disabled, so the artifact has no database migration interface.
+<!--#endif-->

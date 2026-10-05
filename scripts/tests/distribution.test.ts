@@ -1,10 +1,4 @@
-import {
-  cpSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { expect, test } from 'bun:test';
 import {
   existsSync,
@@ -77,7 +71,7 @@ test('User distribution carries executable private libraries and only its own so
   }
 }, 90_000);
 
-test('distribution migration configuration follows the selected application registry', async () => {
+test('distribution migration interface follows the application declaration', async () => {
   const workspace = await createWorkspace();
   try {
     // The packaging closure must be installed inside this copy, never shared links.
@@ -97,27 +91,28 @@ test('distribution migration configuration follows the selected application regi
       join(root, 'docs/distribution.md'),
       join(workspace.root, 'docs/distribution.md'),
     );
-    const registry = join(workspace.root, 'database/applications.ts');
+    const declaration = join(workspace.root, 'src/apps/user/application.json');
+    const declared = readFileSync(declaration, 'utf8');
     writeFileSync(
-      registry,
-      readFileSync(registry, 'utf8')
-        .replace("prefix: 'USER_DB'", "prefix: 'PROFILE_DB'")
-        .replace("runtimeRole: 'user_runtime'", "runtimeRole: 'profile_reader'")
-        .replace(
-          '../src/apps/user/database/migrations/',
-          '../src/apps/user/database/schema-changes/',
-        ),
+      declaration,
+      JSON.stringify({
+        ...(JSON.parse(declared) as object),
+        persistence: false,
+      }),
     );
-    renameSync(
-      join(workspace.root, 'src/apps/user/database/migrations'),
-      join(workspace.root, 'src/apps/user/database/schema-changes'),
-    );
-    const packaged = await workspace.run([
+    const package_ = [
       process.execPath,
       '--no-env-file',
       'scripts/distribute.ts',
       'user',
-    ]);
+    ];
+    const undeclared = await workspace.run(package_);
+    expect(undeclared.code).toBe(1);
+    expect(undeclared.stderr).toContain(
+      'Declare persistence in application.json',
+    );
+    writeFileSync(declaration, declared);
+    const packaged = await workspace.run(package_);
     expect(packaged, packaged.stderr).toMatchObject({ code: 0 });
     const artifact = join(workspace.root, 'dist/user');
     const refused = await runCommand(
@@ -126,8 +121,8 @@ test('distribution migration configuration follows the selected application regi
         cwd: artifact,
         env: {
           PATH: process.env.PATH,
-          PROFILE_DB_PORT: '5432',
-          PROFILE_DB_MIGRATION_USERNAME: 'profile_reader',
+          USER_DB_PORT: '5432',
+          USER_DB_MIGRATION_USERNAME: 'user_runtime',
         },
       },
     );
@@ -140,9 +135,9 @@ test('distribution migration configuration follows the selected application regi
     ).toMatchObject({
       service: 'user',
       database: {
-        prefix: 'PROFILE_DB',
-        runtimeRole: 'profile_reader',
-        migrations: 'app/database/schema-changes',
+        prefix: 'USER_DB',
+        runtimeRole: 'user_runtime',
+        migrations: 'app/database/migrations',
       },
     });
   } finally {

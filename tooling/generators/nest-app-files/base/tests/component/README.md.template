@@ -1,0 +1,34 @@
+# Component tests
+
+Add process-level tests here for:
+
+- the operational HTTP probes;
+<!--#if exposure-->
+- the registered business REST and GraphQL adapters;
+<!--#endif-->
+<!--#if messaging-->
+- message handling, retention and recovery with RabbitMQ;
+<!--#endif-->
+<!--#if persistence-->
+- committed PostgreSQL state of application-owned SQL;
+<!--#endif-->
+- bounded shutdown.
+
+The uncached test-component target selects only this directory and has no
+unit-test preload.
+<!--#if persistence|messaging-->
+Each live fixture must provision its own
+<!--#if persistence-->
+PostgreSQL database and runtime role,
+<!--#endif-->
+<!--#if messaging-->
+broker and queues,
+<!--#endif-->
+assign unique ports, verify ownership before cleanup and close all processes
+in finally.
+<!--#else-->
+This application needs no database or broker; assign unique ports and close all
+processes in finally.
+<!--#endif-->
+Never target development or sibling infrastructure. No generic User/Wallet
+environment is selected.

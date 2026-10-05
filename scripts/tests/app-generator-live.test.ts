@@ -81,12 +81,16 @@ async function checkScenario(scenario: Scenario): Promise<void> {
       module,
       (await readFile(module, 'utf8'))
         .replace(
-          'const handlers: MessageHandler[] = [];',
-          'const handlers: MessageHandler[] = [probe];',
+          'const applicationProviders: Provider[] = [];',
+          "const applicationProviders: Provider[] = [{ provide: 'probe', useValue: probe }];",
         )
         .replace(
-          'controllers: [HealthController]',
-          'controllers: [HealthController, ProbeController]',
+          'const handlers: InjectionToken<MessageHandler>[] = [];',
+          "const handlers: InjectionToken<MessageHandler>[] = ['probe'];",
+        )
+        .replace(
+          'const businessControllers: Type[] = [];',
+          'const businessControllers: Type[] = [ProbeController];',
         ) +
         "\nimport { probe } from '../application/probe';\nimport { ProbeController } from '../adapters/probe.controller';\n",
     );
@@ -147,9 +151,13 @@ async function checkScenario(scenario: Scenario): Promise<void> {
         const queue = 'telemetry.commands.v1';
         await channel.assertQueue(queue, { durable: true });
         await withApp(
-          workspace.root,
-          ['src/apps/telemetry/main.ts'],
-          `amqp://probe:${password}@127.0.0.1:${gate.port}`,
+          {
+            cwd: workspace.root,
+            command: ['src/apps/telemetry/main.ts'],
+            settings: {
+              TELEMETRY_RABBITMQ_URL: `amqp://probe:${password}@127.0.0.1:${gate.port}`,
+            },
+          },
           async ({ url, stop, logs }) => {
             expect((await fetch(`${url}/health/ready/http`)).status).toBe(200);
             expect((await fetch(`${url}/health/ready/consumer`)).status).toBe(

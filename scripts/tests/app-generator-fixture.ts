@@ -6,8 +6,9 @@ import { createWorkspace, type Workspace } from './workspace-fixture';
 export async function run(
   workspace: Workspace,
   args: string[],
+  options?: { timeout?: number },
 ): Promise<string> {
-  const result = await workspace.run(args);
+  const result = await workspace.run(args, options);
   expect(result.code, result.stdout + result.stderr).toBe(0);
   return result.stdout;
 }

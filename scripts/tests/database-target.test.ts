@@ -1,10 +1,42 @@
 import { expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { applications } from '../../database/applications';
 import { runCommand } from '../lib/command';
 
 const root = new URL('../../', import.meta.url).pathname;
+
+test('persistent applications keep their owned database conventions', () => {
+  const path = (url: URL) => relative(root, fileURLToPath(url));
+  expect(
+    applications
+      .map((app) => ({
+        name: app.name,
+        prefix: app.prefix,
+        runtimeRole: app.runtimeRole,
+        migrations: path(app.migrations),
+        seeds: app.seeds.map(path),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  ).toEqual([
+    {
+      name: 'user',
+      prefix: 'USER_DB',
+      runtimeRole: 'user_runtime',
+      migrations: 'src/apps/user/database/migrations',
+      seeds: ['src/apps/user/database/seeds/users.seed.sql'],
+    },
+    {
+      name: 'wallet',
+      prefix: 'WALLET_DB',
+      runtimeRole: 'wallet_runtime',
+      migrations: 'src/apps/wallet/database/migrations',
+      seeds: ['src/apps/wallet/database/seeds/wallets.seed.sql'],
+    },
+  ]);
+});
 
 test('database tooling outside a selected environment reads .env with shell precedence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'starter-target-'));

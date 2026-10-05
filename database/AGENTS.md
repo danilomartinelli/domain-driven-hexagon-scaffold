@@ -1,16 +1,18 @@
 # Database instructions
 
 Read [the database workflow](../docs/database.md) before changing migrations,
-seeds or target selection. The registered applications are `wallet`, whose
+seeds or target selection. The persistent applications are `wallet`, whose
 migrations and seed live in `src/apps/wallet/database/`, and `user`, whose
 profile/outbox baseline and seed live in `src/apps/user/database/`.
 
 ## Application content
 
-- [applications.ts](applications.ts) defines each application's environment
-  prefix, migration directory, ordered seed files and optional runtime role.
-  Keep this registry as the source for provisioning, migration, seeding and
-  target validation. Unknown `DATABASE_APP` values must fail before connecting.
+- [applications.ts](applications.ts) derives each persistent application's
+  environment prefix, migration directory, ordered seed files and runtime role
+  from its `src/apps/<name>/application.json` declaration and naming conventions.
+  Keep this derived view as the source for provisioning, migration, seeding and
+  target validation; never add a parallel list of application names. Unknown or
+  nonpersistent `DATABASE_APP` values must fail before connecting.
 - An application with a runtime role migrates and seeds as the owner
   (`<prefix>_MIGRATION_*`); its migrations grant the runtime role only what
   the running application needs. Never run migrations with runtime credentials.
