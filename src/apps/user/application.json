@@ -1,0 +1,6 @@
+{
+  "name": "user",
+  "persistence": true,
+  "messaging": true,
+  "exposure": true
+}

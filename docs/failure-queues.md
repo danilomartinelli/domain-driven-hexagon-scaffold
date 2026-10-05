@@ -14,7 +14,10 @@ message, command, event or correlation identity.
 These are separate contracts. Replaying a User command may create a profile and
 outbox event; replaying a Wallet event never invokes User creation. Replay sends
 directly to the selected application's queue rather than broadcasting the event
-again to other subscribers.
+again to other subscribers. The commands accept any application whose
+`application.json` declares messaging and that owns a
+`src/apps/<name>/messaging/failures.ts` command; User and Wallet are the
+applications that currently do.
 
 ## Select and inspect
 

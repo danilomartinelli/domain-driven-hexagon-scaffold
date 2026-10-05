@@ -1,12 +1,23 @@
+import { existsSync } from 'node:fs';
+import { discoverApplications } from '@starter/capabilities/declaration';
 import { environmentVariables, readEnvironment } from '../database/environment';
 import { operateEnvironment } from './lib/environments';
 
+const apps = new URL('../src/apps/', import.meta.url);
+
+/** A messaging application opts into recovery by owning a failure-queue command. */
+function recoverable(app: string | undefined): app is string {
+  return discoverApplications(apps).some(
+    (declaration) =>
+      declaration.name === app &&
+      declaration.messaging &&
+      existsSync(new URL(`${app}/messaging/failures.ts`, apps)),
+  );
+}
+
 async function main(): Promise<number> {
   const [app, action, ...args] = process.argv.slice(2);
-  if (
-    (app !== 'user' && app !== 'wallet') ||
-    (action !== 'inspect' && action !== 'replay')
-  )
+  if (!recoverable(app) || (action !== 'inspect' && action !== 'replay'))
     throw new Error('Invalid destination or action');
   const options = new Map<string, string>();
   const forward: string[] = [];
@@ -47,7 +58,7 @@ try {
   process.exitCode = await main();
 } catch {
   console.error(
-    'Failure-queue command requires an owned, ready environment and matching broker settings. Use --environment=test|development --run=<id>; select inspect or replay on user or wallet.',
+    'Failure-queue command requires an owned, ready environment and matching broker settings. Use --environment=test|development --run=<id>; select inspect or replay on a messaging application with a failure-queue command.',
   );
   process.exitCode = 1;
 }

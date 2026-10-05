@@ -1,0 +1,32 @@
+import {
+  Global,
+  Inject,
+  Module,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
+import { createPool, type DatabasePool } from 'slonik';
+import { resultParser } from '@starter/nest-support/persistence';
+import { databaseUri } from '../configs/environment';
+
+/** Inject this pool into application-owned persistence adapters. */
+export const DATABASE_POOL = Symbol('__PREFIX___DATABASE_POOL');
+
+/** Owns the restricted runtime pool; startup neither connects eagerly nor migrates. */
+@Global()
+@Module({
+  providers: [
+    {
+      provide: DATABASE_POOL,
+      useFactory: async (): Promise<DatabasePool> =>
+        createPool(databaseUri(), { interceptors: [resultParser] }),
+    },
+  ],
+  exports: [DATABASE_POOL],
+})
+export class DatabaseModule implements OnApplicationShutdown {
+  constructor(@Inject(DATABASE_POOL) private readonly pool: DatabasePool) {}
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.pool.end();
+  }
+}

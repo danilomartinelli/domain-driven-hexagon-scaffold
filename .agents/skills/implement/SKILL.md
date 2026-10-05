@@ -9,8 +9,9 @@ Implement the work described by the user in the spec or tickets.
 Before exploring issues, source, tools or registry metadata, follow
 `docs/agents/issue-tracker.md#conventions`. Start with the selected child's
 acceptance criteria, then use structural navigation or scoped text searches
-to select the source ranges needed for the decision. Use the guide's paginated
-reader for those selected ranges.
+to select the source ranges needed for the decision, and read those ranges.
+When a read is truncated, page it with the helpers in
+`docs/agents/bounded-output.md`.
 
 Before the first test, formatter or Nx task, complete the setup in
 `docs/developer-checks.md#setup`. Continue when the checkout's pinned Bun and
@@ -28,8 +29,11 @@ During implementation, follow `docs/developer-checks.md#focused-feedback` for
 the focused test, typecheck and lint loop, including command exit statuses and
 affected component suites for infrastructure/runner changes.
 
-Stage only the intended changes, including new files. Run `bun --bun lint-staged`
-before capturing the review snapshot so formatting is included. Use /code-review
+Stage only the intended changes, including new files. Changes already in the
+worktree when the session started belong to the commit only when the selected
+issue requires them; leave the rest unstaged and report that decision. Run
+`bun --bun lint-staged` before capturing the review snapshot so formatting is
+included. Use /code-review
 in staged mode before committing. Resolve findings, rerun affected checks and
 review the updated snapshot.
 

@@ -5,18 +5,19 @@ or `bun run nx run wallet:distribution`. Copy the entire resulting `dist/user`
 or `dist/wallet` directory to a machine with the same OS/architecture and Bun
 1.4.2. No sibling source or workspace is required.
 
-[Generated hybrid apps](library-generators.md#hybrid-application) use the same
-`<name>:distribution` target. A database-free app receives only `start`; registered
-database applications additionally receive the scoped migration tooling described
-below. Packaging rejects unregistered `database/` content instead of silently
-omitting its migration configuration. Generated app artifacts include their own
-README with environment and transport instructions.
+[Generated applications](library-generators.md#application-capabilities) use the
+same `<name>:distribution` target. Packaging reads `app/application.json`: an
+application without declared persistence receives only `start` and no database
+migration interface; a persistent one additionally receives the scoped migration
+tooling described below. Packaging rejects `database/` content without declared
+persistence instead of silently omitting its migration configuration. Generated
+app artifacts include their own README with environment and transport instructions.
 
-Each artifact contains `app/` TypeScript and owned SQL migrations, private
-libraries and installed transitive runtime/migration dependencies in
-`node_modules/`, standalone decorator configuration, and `distribution.json`
-with the installed package inventory and the selected database metadata from
-`database/applications.ts` (prefix, runtime role and owned migration path). `workspace.bun.lock` records the source
+Each artifact contains `app/` TypeScript, its `application.json` declaration and
+owned SQL migrations, private libraries and installed transitive runtime/migration
+dependencies in `node_modules/`, standalone decorator configuration, and
+`distribution.json` with the installed package inventory and the database metadata
+derived from the declaration (prefix, runtime role and owned migration path). `workspace.bun.lock` records the source
 lock; it is provenance, not an artifact install recipe. Dependencies are already
 included: do not run an install inside the artifact. Rebuild from a frozen
 workspace install when changing dependencies or target platform.

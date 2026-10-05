@@ -18,10 +18,19 @@ they expose no credentials, message bodies or profile data.
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/health/live`            | 200 while the process serves HTTP; never queries a dependency                                                                                                                                        |
 | `/health/ready/http`      | 200 when the owning database is queryable; 503 otherwise                                                                                                                                             |
+| `/health/ready/database`  | 200 when the owning database is queryable; 503 otherwise. `status: "not_applicable"` without declared persistence                                                                                    |
 | `/health/ready/consumer`  | 200 when the subscription is active and its database is queryable; 503 otherwise                                                                                                                     |
 | `/health/ready/publisher` | User: 200 when its publishing session and database are available, 503 otherwise. Wallet: 200 with `status: "not_applicable"`                                                                         |
-| `/health/ready`           | Separate `http`, `consumer`, `publisher` states; 503 if any applicable component is not ready                                                                                                        |
+| `/health/ready`           | Separate `http`, `database`, `consumer`, `publisher` states; 503 if any applicable component is not ready                                                                                            |
 | `/health/backlog`         | User: 200 with `pendingCount` and `oldestAgeSeconds`; zero pending has null age. Database failure: 503 with `status: "unavailable"`, never a false zero. Wallet: 200 with `status: "not_applicable"` |
+
+Each application's `application.json` selects the applicable components. HTTP
+readiness considers the lifecycle and the database only when persistence is
+declared; consumer and publisher readiness apply only to the messaging roles the
+application uses. Disabled capabilities and unused roles report `not_applicable`
+rather than failure, and the probes never instantiate their adapters. User and
+Wallet declare all three capabilities, so their database, HTTP and consumer
+readiness are applicable.
 
 Use `/health/ready/http` to decide whether to send REST/GraphQL traffic. The
 aggregate probe deliberately reports messaging degradation even when HTTP is
@@ -34,7 +43,7 @@ busy loop. A database outage after startup leaves liveness available. Initial
 application startup still requires its own database, and never waits for RabbitMQ.
 
 ```sh
-bun run env:exec --environment=development --run=default -- sh -c 'for port in "$USER_HTTP_PORT" "$WALLET_HTTP_PORT"; do for path in live ready/http ready/consumer ready/publisher ready backlog; do curl -sS --max-time 20 -w "\nHTTP %{http_code}\n" "http://127.0.0.1:$port/health/$path"; done; done'
+bun run env:exec --environment=development --run=default -- sh -c 'for port in "$USER_HTTP_PORT" "$WALLET_HTTP_PORT"; do for path in live ready/http ready/database ready/consumer ready/publisher ready backlog; do curl -sS --max-time 20 -w "\nHTTP %{http_code}\n" "http://127.0.0.1:$port/health/$path"; done; done'
 ```
 
 Consumer and User publisher states include `connected`, `failures`, `retries`,

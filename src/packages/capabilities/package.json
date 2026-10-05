@@ -1,0 +1,13 @@
+{
+  "name": "@starter/capabilities",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./declaration": "./declaration.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  }
+}

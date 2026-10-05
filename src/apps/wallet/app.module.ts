@@ -1,4 +1,8 @@
 import {
+  exposedAdapters,
+  readApplicationDeclaration,
+} from '@starter/capabilities/declaration';
+import {
   HealthController,
   ServiceHealth,
 } from '@starter/nest-support/operations';
@@ -32,21 +36,32 @@ import { SlonikWalletReadAdapter } from './database/wallet-read.adapter';
 import { FindWalletByUserGraphqlResolver } from './queries/find-wallet-by-user/find-wallet-by-user.graphql-resolver';
 import { FindWalletByUserHttpController } from './queries/find-wallet-by-user/find-wallet-by-user.http.controller';
 
+// The declaration selects the applicable readiness probes and whether the
+// business REST/GraphQL adapters are composed.
+const declaration = readApplicationDeclaration(
+  new URL('./application.json', import.meta.url),
+);
+
 /** Wallet's composition root: its database and independently recovering messaging. */
 @Module({
   imports: [
     DatabaseModule,
-    GraphQLModule.forRoot<ApolloDriverConfig>({
-      driver: ApolloDriver,
-      autoSchemaFile: true,
-    }),
+    ...exposedAdapters(declaration, [
+      GraphQLModule.forRoot<ApolloDriverConfig>({
+        driver: ApolloDriver,
+        autoSchemaFile: true,
+      }),
+    ]),
   ],
-  controllers: [HealthController, FindWalletByUserHttpController],
+  controllers: [
+    HealthController,
+    ...exposedAdapters(declaration, [FindWalletByUserHttpController]),
+  ],
   providers: [
     {
       provide: ServiceHealth,
       useFactory: (pool: DatabasePool, consumer: RabbitWalletConsumer) =>
-        new ServiceHealth('wallet', {
+        new ServiceHealth(declaration, {
           database: async () => {
             await pool.query(sql.unsafe`SELECT id FROM wallets LIMIT 0`);
           },
@@ -74,7 +89,7 @@ import { FindWalletByUserHttpController } from './queries/find-wallet-by-user/fi
         new FindWalletByUser(reads),
       inject: [SlonikWalletReadAdapter],
     },
-    FindWalletByUserGraphqlResolver,
+    ...exposedAdapters(declaration, [FindWalletByUserGraphqlResolver]),
   ],
 })
 export class AppModule

@@ -21,6 +21,7 @@ part of that design.
 | `type-fixtures`         | `src` (excluding nested projects)    | Compile-only decorator fixture in `src/type-tests`; no runtime or unit suite                                                                                                                                                                          |
 | `user`                  | `src/apps/user`                      | Independent User REST/GraphQL, owned profile/outbox transaction, database, migrations and seed; core and external-process component tests including the seven original Gherkin cases                                                                  |
 | `wallet`                | `src/apps/wallet`                    | Independent Wallet creation and lookup application with its own domain, creation use case, read and transaction ports, RabbitMQ consumer, adapters, migrations and seed; core tests in `tests/unit`, provisioned component suite in `tests/component` |
+| `capabilities`          | `src/packages/capabilities`          | Application declaration (`application.json`) parsing and discovery shared by composition, probes and tooling; infrastructure-free tests                                                                                                               |
 | `rabbitmq`              | `src/packages/rabbitmq`              | Technical failure-queue inspection/replay transport. Application component suites cover its real broker behavior; lint and typecheck targets are local.                                                                                               |
 | `integration-contracts` | `src/packages/integration-contracts` | Versioned serializable integration envelopes and independent baseline fixtures; infrastructure-free contract tests                                                                                                                                    |
 | `core`                  | `src/packages/core`                  | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                                                                                           |
@@ -28,13 +29,13 @@ part of that design.
 | `example`               | `src/packages/example`               | Existing deep-module search-term example and its real unit test; optional starter template                                                                                                                                                            |
 | `config`                | `tooling/config`                     | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                                                                                               |
 | `generators`            | `tooling/generators`                 | Local `nest-app`/`ts-lib`/`nest-lib` plugin; uncached CLI and distribution validation in owned scratch workspaces, plus a separate live broker component probe                                                                                        |
-| `database`              | `database`                           | Registry and migration/seed tooling for the two owned databases; exercised by live checks, no standalone unit suite                                                                                                                                   |
+| `database`              | `database`                           | Declaration-derived registry and migration/seed tooling for owned databases; exercised by live checks, no standalone unit suite                                                                                                                       |
 | `infrastructure`        | `docker`                             | Compose definitions plus uncached development workflow, preparation, command and shutdown targets; formatting applies, no TypeScript/unit target                                                                                                      |
 | `test-runner`           | `scripts`                            | Isolated database provisioning and real Docker lifecycle tests in `scripts/tests`                                                                                                                                                                     |
 | `e2e`                   | `tests`                              | Infrastructure-free compatibility matrix (`test`); seven original Gherkin cases and database/API regressions with opt-in setup, including retained-message transitions (`test-compatibility`)                                                         |
 | `workspace`             | `.`                                  | Repository formatting and architecture checks                                                                                                                                                                                                         |
 
-`core`, `nest-support`, `integration-contracts`, `rabbitmq`, `example` and `config` are private Bun workspace packages.
+`core`, `nest-support`, `integration-contracts`, `rabbitmq`, `capabilities`, `example` and `config` are private Bun workspace packages.
 The `generators` private workspace package supplies the Nx generator collection.
 Runtime package manifests export specific root entry points, with no wildcard
 access to internals. Callers use imports such as `@starter/core/domain` and
@@ -54,12 +55,14 @@ graph TD
   e2e --> database
   e2e --> user
   e2e --> wallet
+  user --> capabilities
   user --> nest-support
   user --> core
   user --> integration-contracts
   user --> rabbitmq
   user --> test-runner
   user --> database
+  wallet --> capabilities
   wallet --> nest-support
   wallet --> core
   wallet --> integration-contracts
@@ -68,11 +71,15 @@ graph TD
   wallet --> database
   test-runner --> database
   test-runner --> infrastructure
+  test-runner --> capabilities
+  database --> capabilities
   generators --> test-runner
   type-fixtures --> core
   nest-support --> core
+  nest-support --> capabilities
   workspace --> config
   workspace --> generators
+  workspace --> capabilities
   workspace --> core
   workspace --> nest-support
   workspace --> integration-contracts
@@ -80,7 +87,9 @@ graph TD
   example
 ```
 
-Database tooling has its own dotenv loader, so it depends on no application.
+Database tooling has its own dotenv loader, so it depends on no application;
+it discovers persistent applications by reading their `application.json` data
+through `capabilities`, never by importing application code.
 The independent applications' edges to `database` and `test-runner` come from their component suites'
 environment guard and runner; their production code imports only its own files
 and the shared packages. Source imports (including type-only

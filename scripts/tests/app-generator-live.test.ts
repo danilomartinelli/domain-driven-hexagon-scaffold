@@ -6,7 +6,12 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { availablePort } from '../lib/environments';
-import { appWorkspace, generate, run } from './app-generator-fixture';
+import {
+  appWorkspace,
+  generate,
+  replaceOnce,
+  run,
+} from './app-generator-fixture';
 import { until, withApp } from './app-runtime-fixture';
 import { brokerGate } from './broker-gate';
 import { withCleanup } from './cleanup';
@@ -77,17 +82,25 @@ async function checkScenario(scenario: Scenario): Promise<void> {
     `,
     );
     const module = join(app, 'composition/app.module.ts');
+    let composition = await readFile(module, 'utf8');
+    for (const [from, to] of [
+      [
+        'const applicationProviders: Provider[] = [];',
+        "const applicationProviders: Provider[] = [{ provide: 'probe', useValue: probe }];",
+      ],
+      [
+        'const handlers: InjectionToken<MessageHandler>[] = [];',
+        "const handlers: InjectionToken<MessageHandler>[] = ['probe'];",
+      ],
+      [
+        'const businessControllers: Type[] = [];',
+        'const businessControllers: Type[] = [ProbeController];',
+      ],
+    ])
+      composition = replaceOnce(composition, from, to);
     await writeFile(
       module,
-      (await readFile(module, 'utf8'))
-        .replace(
-          'const handlers: MessageHandler[] = [];',
-          'const handlers: MessageHandler[] = [probe];',
-        )
-        .replace(
-          'controllers: [HealthController]',
-          'controllers: [HealthController, ProbeController]',
-        ) +
+      composition +
         "\nimport { probe } from '../application/probe';\nimport { ProbeController } from '../adapters/probe.controller';\n",
     );
     // Every scenario emits the same probe source; check its static contracts once.
@@ -147,9 +160,13 @@ async function checkScenario(scenario: Scenario): Promise<void> {
         const queue = 'telemetry.commands.v1';
         await channel.assertQueue(queue, { durable: true });
         await withApp(
-          workspace.root,
-          ['src/apps/telemetry/main.ts'],
-          `amqp://probe:${password}@127.0.0.1:${gate.port}`,
+          {
+            cwd: workspace.root,
+            command: ['src/apps/telemetry/main.ts'],
+            settings: {
+              TELEMETRY_RABBITMQ_URL: `amqp://probe:${password}@127.0.0.1:${gate.port}`,
+            },
+          },
           async ({ url, stop, logs }) => {
             expect((await fetch(`${url}/health/ready/http`)).status).toBe(200);
             expect((await fetch(`${url}/health/ready/consumer`)).status).toBe(

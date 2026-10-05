@@ -1,0 +1,6 @@
+{
+  "name": "wallet",
+  "persistence": true,
+  "messaging": true,
+  "exposure": true
+}

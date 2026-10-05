@@ -1,11 +1,12 @@
 # Domain-Driven Hexagon Scaffold delivery design
 
-Status: accepted design, approved on 2026-10-04. Identity and bounded rename are
-implemented by [issue #59](https://github.com/danilomartinelli/vibecoding-starter-js/issues/59);
-application capabilities and OCI delivery remain pending.
-This document records the agreed behavior and delivery boundaries. The
-[adoption guide](adoption.md) describes the shipped identity command. Other
-proposed commands, images and workflows below remain accepted design.
+Status: accepted design, approved on 2026-10-04. Identity, bounded rename and
+application capabilities are implemented;
+[ADR 0003's implementation status](adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
+records the delivered slices and remaining work. This document records the agreed
+behavior and delivery boundaries. The [adoption guide](adoption.md) describes the
+shipped identity command. Other proposed commands, images and workflows below
+remain accepted design.
 [ADR 0003](adr/0003-application-capabilities-and-oci-delivery.md) records the
 architectural trade-offs.
 

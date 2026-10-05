@@ -2,9 +2,10 @@
 
 Issue #6 upgraded the application to Nest 12 on **Bun 1.4.2**. Run the same
 individual install, database, start, and test commands in [the runtime guide](runtime.md).
-User's adapters are registered in its `AppModule` / `UserModule`. User and Wallet
-consume RabbitMQ through repository-owned adapters; no separate CLI entry point
-has been added.
+User's adapters are registered in its `AppModule`, `UserModule` and, for the
+business REST/GraphQL adapters composed with declared exposure, `UserApiModule`.
+User and Wallet consume RabbitMQ through repository-owned adapters; no separate
+CLI entry point has been added.
 
 ## Dependency selection
 

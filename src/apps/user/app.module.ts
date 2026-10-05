@@ -1,4 +1,8 @@
 import {
+  exposedAdapters,
+  readApplicationDeclaration,
+} from '@starter/capabilities/declaration';
+import {
   HealthController,
   ServiceHealth,
 } from '@starter/nest-support/operations';
@@ -15,6 +19,7 @@ import {
 import { CqrsModule } from '@nestjs/cqrs';
 import { DatabaseModule } from './database/database.module';
 import { UserModule } from './user.module';
+import { UserApiModule } from './user-api.module';
 import { RequestContextMiddleware } from '@starter/nest-support/context';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ContextInterceptor } from '@starter/nest-support/context';
@@ -29,6 +34,12 @@ import { RabbitOutboxPublisher } from './messaging/rabbit-outbox-publisher';
 import { userRabbitMqOptions } from './configs/environment';
 import { CreateUser } from './application/create-user';
 import { RabbitUserCommandConsumer } from './messaging/rabbit-user-command-consumer';
+
+// The declaration selects the applicable readiness probes and whether the
+// business REST/GraphQL adapters are composed.
+const declaration = readApplicationDeclaration(
+  new URL('./application.json', import.meta.url),
+);
 
 const interceptors = [
   {
@@ -45,10 +56,13 @@ const interceptors = [
   imports: [
     DatabaseModule,
     CqrsModule.forRoot(),
-    GraphQLModule.forRoot<ApolloDriverConfig>({
-      driver: ApolloDriver,
-      autoSchemaFile: true,
-    }),
+    ...exposedAdapters(declaration, [
+      GraphQLModule.forRoot<ApolloDriverConfig>({
+        driver: ApolloDriver,
+        autoSchemaFile: true,
+      }),
+      UserApiModule,
+    ]),
 
     // Modules
     UserModule,
@@ -62,7 +76,7 @@ const interceptors = [
         consumer: RabbitUserCommandConsumer,
         publisher: RabbitOutboxPublisher,
       ) =>
-        new ServiceHealth('user', {
+        new ServiceHealth(declaration, {
           database: async () => {
             await pool.query(sql.unsafe`SELECT id FROM users LIMIT 0`);
           },

@@ -3,7 +3,7 @@
     "nest-app": {
       "factory": "./nest-app.mjs",
       "schema": "./nest-app.schema.json",
-      "description": "Generate an independent hybrid Nest/Bun application."
+      "description": "Generate an independent Nest/Bun application with selected persistence, messaging and exposure."
     },
     "ts-lib": {
       "factory": "./ts-lib.mjs",

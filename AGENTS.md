@@ -13,8 +13,10 @@ pending integration events in its own database. The independent Wallet applicati
 
 - `src/packages/core/` contains framework-free technical primitives;
   `src/packages/nest-support/` contains Nest adapters, `src/packages/rabbitmq/`
-  failure-queue transport and `src/packages/integration-contracts/` versioned
-  event envelopes. Keep business entities and use cases in the application.
+  failure-queue transport, `src/packages/integration-contracts/` versioned
+  event envelopes and `src/packages/capabilities/` the parser for each app's
+  `application.json` capability declaration. Keep business entities and use
+  cases in the application.
 - `database/` owns migration/seed tooling; application directories own their SQL;
   `scripts/` owns environment runners and repository checks; `tooling/config/`
   owns shared quality settings and `tooling/generators/` the local Nx generators.

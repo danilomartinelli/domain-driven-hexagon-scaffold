@@ -1,0 +1,12 @@
+# Migrations
+
+Add owned SQL migrations for `__name__` here. From the workspace root:
+
+```sh
+DATABASE_APP=__name__ bun run migration:create __name__-baseline
+```
+
+Keep the `-- Up Migration` and `-- Down Migration` sections. Migrations run with
+the database owner (`__PREFIX___DB_MIGRATION_USERNAME`) and grant the restricted
+`__role__` role exactly what the running application needs. Optional ordered
+seeds belong in `../seeds/*.sql`. No tables, SQL behavior or seeds are generated.

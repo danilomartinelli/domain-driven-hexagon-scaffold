@@ -1,4 +1,10 @@
-/** Each application owns its content; orchestration iterates this registry. */
+import { existsSync, readdirSync } from 'node:fs';
+import {
+  discoverApplications,
+  environmentPrefix,
+} from '@starter/capabilities/declaration';
+
+/** Each persistent application owns its content; orchestration iterates this view. */
 export interface DatabaseApplication {
   name: string;
   prefix: string;
@@ -12,38 +18,31 @@ export interface DatabaseApplication {
    */
   runtimeRole?: string;
 }
-export const applications: DatabaseApplication[] = [
-  {
-    name: 'wallet',
-    prefix: 'WALLET_DB',
-    migrations: new URL(
-      '../src/apps/wallet/database/migrations/',
-      import.meta.url,
-    ),
-    seeds: [
-      new URL(
-        '../src/apps/wallet/database/seeds/wallets.seed.sql',
-        import.meta.url,
-      ),
-    ],
-    runtimeRole: 'wallet_runtime',
-  },
-  {
-    name: 'user',
-    prefix: 'USER_DB',
-    migrations: new URL(
-      '../src/apps/user/database/migrations/',
-      import.meta.url,
-    ),
-    seeds: [
-      new URL(
-        '../src/apps/user/database/seeds/users.seed.sql',
-        import.meta.url,
-      ),
-    ],
-    runtimeRole: 'user_runtime',
-  },
-];
+
+const apps = new URL('../src/apps/', import.meta.url);
+
+/** Seeds run in file-name order after migrations, in one transaction. */
+function seeds(directory: URL): URL[] {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory)
+    .filter((file) => file.endsWith('.sql'))
+    .sort()
+    .map((file) => new URL(file, directory));
+}
+
+/**
+ * Derived from each `src/apps/<name>/application.json` that declares persistence;
+ * there is no separate list of application names to edit.
+ */
+export const applications: DatabaseApplication[] = discoverApplications(apps)
+  .filter((declaration) => declaration.persistence)
+  .map(({ name }) => ({
+    name,
+    prefix: `${environmentPrefix(name)}_DB`,
+    migrations: new URL(`${name}/database/migrations/`, apps),
+    seeds: seeds(new URL(`${name}/database/seeds/`, apps)),
+    runtimeRole: `${name.replaceAll('-', '_')}_runtime`,
+  }));
 
 export function selectApplication(
   name = process.env.DATABASE_APP ?? 'user',

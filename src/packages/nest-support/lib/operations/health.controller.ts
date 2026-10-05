@@ -14,6 +14,11 @@ import {
   type BacklogSnapshot,
 } from './service-health';
 
+/** Readiness components; disabled capabilities report them as not applicable. */
+const components = ['http', 'database', 'consumer', 'publisher'] as const;
+const isComponent = (value: string): value is (typeof components)[number] =>
+  (components as readonly string[]).includes(value);
+
 @Controller('health')
 export class HealthController {
   constructor(@Inject(ServiceHealth) private readonly health: ServiceHealth) {}
@@ -29,9 +34,7 @@ export class HealthController {
   ): Promise<HealthSnapshot> {
     const snapshot = await this.health.snapshot();
     response.status(
-      [snapshot.http, snapshot.consumer, snapshot.publisher].some(
-        ({ status }) => status === 'not_ready',
-      )
+      components.some((component) => snapshot[component].status === 'not_ready')
         ? 503
         : 200,
     );
@@ -52,13 +55,7 @@ export class HealthController {
     @Param('component') component: string,
     @Res({ passthrough: true }) response: Response,
   ): Promise<Readiness & { service: string }> {
-    if (
-      component !== 'http' &&
-      component !== 'consumer' &&
-      component !== 'publisher'
-    ) {
-      throw new NotFoundException();
-    }
+    if (!isComponent(component)) throw new NotFoundException();
     const snapshot = await this.health.snapshot();
     const state = snapshot[component];
     response.status(state.status === 'not_ready' ? 503 : 200);

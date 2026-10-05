@@ -19,7 +19,11 @@ runner lifecycle cases stay in local `check:full`.
 
 Amended on 2026-10-04: [ADR 0003](0003-application-capabilities-and-oci-delivery.md)
 revises the mandatory adapter set and host-based development topology for the next
-scaffold delivery and adds OCI packaging. These new decisions are accepted but not
+scaffold delivery and adds OCI packaging. The revised adapter set is implemented:
+each application, including the generated scaffold, declares PostgreSQL
+persistence, RabbitMQ messaging and Kong exposure independently, and only enabled
+capabilities contribute adapters, configuration and readiness. User and Wallet
+declare all three. The topology and OCI decisions are accepted but not yet
 implemented; the migration requirements and implementation record below describe
 the completed baseline.
 
@@ -150,7 +154,8 @@ been deleted. Wallet closure or cancellation is a separate functional change.
 ## Application adapters and gateway
 
 All applications will support REST, GraphQL and RabbitMQ consumers, including
-the scaffold produced by the application generator. User retains its existing
+the scaffold produced by the application generator. (Superseded by ADR 0003's
+independently declared capabilities; see the amendment above.) User retains its existing
 REST and GraphQL operations and activates its existing `user.create` message
 handler. Wallet consumes user-created events to create wallets and exposes a
 wallet lookup by `userId` through REST and GraphQL. This does not require CRUD

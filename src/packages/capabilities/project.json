@@ -1,0 +1,63 @@
+{
+  "name": "capabilities",
+  "projectType": "library",
+  "tags": ["scope:shared", "type:technical"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun eslint src/packages/capabilities --max-warnings 0",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --bun tsc --project src/packages/capabilities/tsconfig.json",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun test ./src/packages/capabilities/tests",
+        "cwd": "."
+      }
+    },
+    "test-watch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --watch ./src/packages/capabilities/tests",
+        "cwd": "."
+      }
+    },
+    "test-coverage": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test --coverage ./src/packages/capabilities/tests",
+        "cwd": "."
+      }
+    },
+    "test-debug": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --inspect-brk test ./src/packages/capabilities/tests",
+        "cwd": "."
+      }
+    },
+    "lint-fix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun --bun eslint src/packages/capabilities --max-warnings 0 --fix",
+        "cwd": "."
+      }
+    }
+  }
+}

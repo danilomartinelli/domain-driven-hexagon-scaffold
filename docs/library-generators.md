@@ -12,12 +12,12 @@ bun run nx generate @starter/generators:ts-lib text-normalization
 bun run nx generate @starter/generators:nest-lib text-adapter
 ```
 
-| Preset                               | Layer         | Responsibility                                          |
-| ------------------------------------ | ------------- | ------------------------------------------------------- |
-| `ts-lib`                             | `core`        | Framework-free shared technical behavior                |
-| `nest-lib` (default)                 | `adapter`     | Nest-facing technical adapters; no generated module     |
-| `nest-lib --layer=composition`       | `composition` | Register and export an existing injectable provider     |
-| `nest-app --preset=hybrid` (default) | application   | HTTP/GraphQL, recovering RabbitMQ and bounded lifecycle |
+| Preset                         | Layer         | Responsibility                                      |
+| ------------------------------ | ------------- | --------------------------------------------------- |
+| `ts-lib`                       | `core`        | Framework-free shared technical behavior            |
+| `nest-lib` (default)           | `adapter`     | Nest-facing technical adapters; no generated module |
+| `nest-lib --layer=composition` | `composition` | Register and export an existing injectable provider |
+| `nest-app` (`--preset=hybrid`) | application   | Selected persistence, messaging and exposure        |
 
 Business entities, use cases and persistence models remain application-owned.
 The Nest library preset rejects `--layer=core`. Composition requires both `--provider`
@@ -98,11 +98,13 @@ only that run's temporary directory in `finally`; it never provisions Docker
 or copies development environment files. The suite runs in `test:unit`,
 `check`, `check:full` and CI through the plugin's `test` target.
 
-## Hybrid application
+## Application capabilities
 
 ```sh
-bun run nx generate @starter/generators:nest-app telemetry --preset=hybrid --dry-run
-bun run nx generate @starter/generators:nest-app telemetry --preset=hybrid
+bun run nx generate @starter/generators:nest-app telemetry --dry-run
+bun run nx generate @starter/generators:nest-app telemetry \
+  --persistence=false --messaging=true --exposure=true
+bun run nx generate @starter/generators:nest-app ledger --persistence --no-messaging --no-exposure
 bun run nx show project telemetry --json
 bun run nx run telemetry:lint
 bun run nx run telemetry:typecheck
@@ -111,38 +113,75 @@ TELEMETRY_HTTP_PORT=3010 TELEMETRY_RABBITMQ_URL=amqp://localhost:5672 \
   bun run nx run telemetry:serve
 ```
 
-`hybrid` is the only app preset. It uses the installed Nest 12 and Bun 1.4.2
-directly, without an upstream Nest preset. Output includes:
+`hybrid` remains the only app preset; three independent boolean options select
+its capabilities, so all eight combinations come from the same generator:
+
+| Option          | Default | Enabled                                                                             | Disabled                                                    |
+| --------------- | ------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `--persistence` | `false` | Runtime pool, `<PREFIX>_DB_*` settings, migration interface and database readiness  | No database settings, pool, migrations or readiness         |
+| `--messaging`   | `true`  | Recovering RabbitMQ consumer, `<PREFIX>_RABBITMQ_*` settings and consumer readiness | No broker settings, adapters, connections or readiness      |
+| `--exposure`    | `true`  | GraphQL module and explicit business REST/GraphQL registration lists                | No business REST/GraphQL adapters; operational HTTP remains |
+
+The defaults keep the previous hybrid capabilities, messaging and exposure; the
+output now adds `application.json` and registers message handlers by injection
+token. The generator writes the choice
+to `application.json`, the application's single declaration, and emits only the
+configuration readers, adapters, package dependencies and documentation of the
+enabled capabilities. Disabled means absent: no settings are required and nothing
+connects in the background. It uses the installed Nest 12 and Bun 1.4.2 directly,
+without an upstream Nest preset. Output for all capabilities includes:
 
 ```text
 src/apps/telemetry/
-  main.ts                    # bootstrap and shared bounded shutdown
-  configs/environment.ts     # TELEMETRY_* variables, no dotenv loading
-  application/message-handler.ts  # plain handler port and explicit identity
-  adapters/                  # operational GraphQL and RabbitMQ lifecycle
-  composition/app.module.ts   # explicit provider wiring, health and transports
-  tests/unit/                # infrastructure-free native tests
-  tests/component/           # separately selected live tests
+  application.json            # name and the three capabilities
+  main.ts                     # bootstrap and shared bounded shutdown
+  configs/environment.ts      # TELEMETRY_* readers of enabled capabilities only
+  composition/app.module.ts   # declaration, explicit registration lists and probes
+  database/                   # persistence: runtime pool module and migrations/README.md
+  application/message-handler.ts  # messaging: plain handler port and explicit identity
+  adapters/                   # messaging transport and exposure's GraphQL status
+  tests/unit/                 # infrastructure-free native tests
+  tests/component/            # separately selected live tests
 ```
 
 The private manifest has `exports: {}` and the project has `scope:telemetry` and
-`type:app` tags. No application becomes a shared library. HTTP health endpoints
-and GraphQL `{ httpReady }` work with the broker down; RabbitMQ reconnects with
-bounded exponential delay. Invalid or unsupported envelopes are confirmed into
-`<queue>.failed` before acknowledgement, preserving available identity, content
-metadata, headers and an `x-failure-reason`. Handlers return a permanent
-`{ accepted: false, reason }` rejection or throw for a transient retry. Timed-out
-operations remain tracked until they settle, before this instance reconnects or
-finishes draining. Use atomic idempotency for redelivery across instances.
-Register real handlers in composition;
-the generator supplies no business rules, CRUD, complete use cases or tests.
-Message identity is passed explicitly and GraphQL/DI metadata is declared for Bun.
+`type:app` tags. No application becomes a shared library. Composition reads
+`application.json` and passes it to the shared readiness probes, which reject a
+declaration that does not match the supplied database and messaging probes.
+Business REST/GraphQL adapters, including the GraphQL module, are composed only
+while the declaration enables exposure.
+Liveness never probes dependencies. HTTP readiness considers the lifecycle and,
+only with persistence, the database. Consumer readiness applies only with messaging;
+the publisher role, backlog and disabled capabilities report `not_applicable`.
+See [probe semantics](recovery.md#independent-operational-signals).
 
-Only `TELEMETRY_HTTP_PORT` and `TELEMETRY_RABBITMQ_URL` are required.
-`TELEMETRY_RABBITMQ_QUEUE` defaults to `telemetry.commands.v1`; select unique queues
-per environment. Use `telemetry:watch` and `telemetry:debug` for development.
-SIGINT/SIGTERM refuses new work, drains accepted requests/deliveries and closes
-messaging before Nest, with a 15-second process deadline.
+Composition offers explicit registration lists. `applicationProviders` holds
+application-owned providers; with exposure, `businessControllers` and
+`businessResolvers` hold business REST controllers and GraphQL resolvers; with
+messaging, `handlers` holds the injection tokens of registered message handlers.
+Nothing is exposed or consumed automatically. Exposure keeps an operational
+GraphQL `{ httpReady }` query so the schema is valid; client routes are configured
+separately in the gateway. Without exposure, `/graphql` does not exist.
+
+With messaging, HTTP health endpoints work with the broker down; RabbitMQ
+reconnects with bounded exponential delay. Invalid or unsupported envelopes are
+confirmed into `<queue>.failed` before acknowledgement, preserving available
+identity, content metadata, headers and an `x-failure-reason`. Handlers return a
+permanent `{ accepted: false, reason }` rejection or throw for a transient retry.
+Timed-out operations remain tracked until they settle, before this instance
+reconnects or finishes draining. Use atomic idempotency for redelivery across
+instances. Message identity is passed explicitly and GraphQL/DI metadata is
+declared for Bun. The generator supplies no business rules, CRUD, SQL, event
+contracts, public routes or tests.
+
+Only `TELEMETRY_HTTP_PORT` is always required. Messaging requires
+`TELEMETRY_RABBITMQ_URL`; `TELEMETRY_RABBITMQ_QUEUE` defaults to
+`telemetry.commands.v1`, so select unique queues per environment. Persistence
+requires `TELEMETRY_DB_HOST`, `_PORT`, `_NAME`, `_USERNAME` and `_PASSWORD` for the
+restricted `telemetry_runtime` role; the pool connects lazily and startup never
+migrates. Use `telemetry:watch` and `telemetry:debug` for development.
+SIGINT/SIGTERM refuses new work, drains accepted requests and deliveries and
+closes messaging before Nest closes HTTP and the pool, with a 15-second deadline.
 
 The app's `test`, `test-watch`, `test-coverage` and `test-debug` targets select only
 `tests/unit/`; `test-component` is uncached and selects only `tests/component/`.
@@ -156,26 +195,37 @@ bun run nx run telemetry:distribution
 TELEMETRY_HTTP_PORT=3010 TELEMETRY_RABBITMQ_URL=amqp://localhost:5672 bun run start
 ```
 
-Distribution carries the installed dependency closure and executes without the
-workspace or sibling sources. The preset does not generate a database or migration
-commands. To add persistence, follow the [application checklist](adding-an-application.md),
-register the app's own database prefix and migrations, add migration dependencies to
-its distribution manifest and use `DATABASE_APP=telemetry` for workspace commands.
-Registered databases receive scoped migration commands in the artifact; unregistered
-database content is rejected by packaging.
+Distribution carries the installed dependency closure and the declaration, and
+executes without the workspace or sibling sources. A persistent declaration makes
+the app a database application without editing a registry: workspace commands
+accept `DATABASE_APP=<name>` and the artifact adds owned `migration:*` commands.
+Add SQL under `database/migrations/` as described in
+[application-owned database content](database.md#application-owned-database-content).
+Packaging rejects `database/` content when persistence is not declared. Prepared
+environments also provision, migrate and validate its database like any persistent
+application. Environment HTTP ports, root start commands, broker settings and Kong
+routes remain explicit; follow the [application checklist](adding-an-application.md).
 
 The [app generator tests](../scripts/tests/app-generator.test.ts) exercise the CLI,
 dry-run/collision guarantees, project checks and a distribution after deleting its
 scratch workspace. The [live probe](../scripts/tests/app-generator-live.test.ts)
 adds only test-owned behavior and proves startup with a blocked broker, HTTP/GraphQL,
-explicit message identity, recovery, retained invalid input and normal draining shutdown:
+explicit message identity, recovery, retained invalid input and normal draining
+shutdown. The [capability matrix](../scripts/tests/app-capabilities-live.test.ts)
+generates all eight combinations, runs their lint, type and architecture checks,
+adds test-owned SQL, handlers and controllers, and executes each distribution
+outside the deleted workspace. It migrates and commits real PostgreSQL state,
+exchanges and recovers real RabbitMQ work, degrades readiness on database loss,
+keeps HTTP during broker loss and proves disabled capabilities need no settings
+and never contact sentinel endpoints:
 
 ```sh
 bun run nx run generators:test --skip-nx-cache
 bun run nx run generators:test-component --skip-nx-cache
 ```
 
-The live target owns a unique labelled RabbitMQ container and TCP outage gate;
-cleanup verifies ownership and never deletes volumes. It runs with `test:component`,
-`check:full` and CI. Generation itself only writes the requested app and does not
-alter User/Wallet, root start commands, database environments or the lockfile.
+The live target owns unique labelled PostgreSQL and RabbitMQ containers and TCP
+outage gates; cleanup verifies ownership and never deletes volumes. It runs with
+`test:component`, `check:full` and CI. Generation itself only writes the requested
+app and does not alter User/Wallet, root start commands, database environments or
+the lockfile.

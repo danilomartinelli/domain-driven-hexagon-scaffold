@@ -1,0 +1,159 @@
+import {
+//#if messaging
+  Inject,
+  Logger,
+//#endif
+  Module,
+//#if messaging
+  type BeforeApplicationShutdown,
+  type InjectionToken,
+  type OnApplicationBootstrap,
+//#endif
+  type Provider,
+//#if exposure
+  type Type,
+//#endif
+} from '@nestjs/common';
+//#if exposure
+import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
+//#endif
+//#if persistence
+import { sql, type DatabasePool } from 'slonik';
+//#endif
+import {
+//#if exposure
+  exposedAdapters,
+//#endif
+  readApplicationDeclaration,
+} from '@starter/capabilities/declaration';
+import {
+  HealthController,
+  ServiceHealth,
+} from '@starter/nest-support/operations';
+//#if messaging
+import type { MessageHandler } from '../application/message-handler';
+import { RabbitTransport } from '../adapters/rabbitmq.transport';
+//#endif
+//#if exposure
+import { StatusResolver } from '../adapters/status.resolver';
+//#endif
+//#if persistence
+import { DATABASE_POOL, DatabaseModule } from '../database/database.module';
+//#endif
+//#if messaging
+import { messagingOptions } from '../configs/environment';
+//#endif
+
+// application.json selects the applicable readiness probes for this process.
+//#if exposure
+// Business adapters below are composed only while it declares exposure.
+//#endif
+const declaration = readApplicationDeclaration(
+  new URL('../application.json', import.meta.url),
+);
+
+// Register application-owned behavior explicitly; nothing is exposed or consumed
+// automatically. Keep business rules in plain application/ and domain/ modules.
+const applicationProviders: Provider[] = [];
+//#if exposure
+// Business REST controllers and GraphQL resolvers; only registered adapters
+// are served.
+const businessControllers: Type[] = [];
+const businessResolvers: Provider[] = [];
+//#endif
+//#if messaging
+// Tokens of the message handlers registered in applicationProviders. Construct
+// plain application handlers with factory providers and explicit inject lists.
+const handlers: InjectionToken<MessageHandler>[] = [];
+//#endif
+
+@Module({
+  imports: [
+//#if persistence
+    DatabaseModule,
+//#endif
+//#if exposure
+    ...exposedAdapters(declaration, [
+      GraphQLModule.forRoot<ApolloDriverConfig>({
+        driver: ApolloDriver,
+        autoSchemaFile: true,
+        playground: false,
+      }),
+    ]),
+//#endif
+  ],
+  controllers: [
+    HealthController,
+//#if exposure
+    ...exposedAdapters(declaration, businessControllers),
+//#endif
+  ],
+  providers: [
+    ...applicationProviders,
+//#if exposure
+    ...exposedAdapters(declaration, [StatusResolver, ...businessResolvers]),
+//#endif
+//#if messaging
+    {
+      provide: RabbitTransport,
+      inject: handlers,
+      useFactory: (...registered: MessageHandler[]) =>
+        new RabbitTransport(
+          messagingOptions(),
+          registered,
+          new Logger('Messaging'),
+        ),
+    },
+//#endif
+    {
+      provide: ServiceHealth,
+      inject: [
+//#if persistence
+        DATABASE_POOL,
+//#endif
+//#if messaging
+        RabbitTransport,
+//#endif
+      ],
+      useFactory: (
+//#if persistence
+        pool: DatabasePool,
+//#endif
+//#if messaging
+        transport: RabbitTransport,
+//#endif
+      ) =>
+        new ServiceHealth(declaration, {
+//#if persistence
+          database: async () => {
+            await pool.query(sql.unsafe`SELECT 1`);
+          },
+//#endif
+//#if messaging
+          consumer: () => transport.diagnostics.snapshot(),
+//#endif
+        }),
+    },
+  ],
+})
+//#if messaging
+export class AppModule
+  implements OnApplicationBootstrap, BeforeApplicationShutdown
+{
+  constructor(
+    @Inject(RabbitTransport) private readonly transport: RabbitTransport,
+  ) {}
+
+  onApplicationBootstrap(): void {
+    this.transport.start();
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
+    await this.transport.stop();
+  }
+}
+//#else
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest requires a decorated module class.
+export class AppModule {}
+//#endif

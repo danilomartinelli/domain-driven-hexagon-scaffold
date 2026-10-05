@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ## [Unreleased]
 
+### Changed
+
+- Applications declare independent PostgreSQL persistence, RabbitMQ messaging and
+  Kong exposure in `application.json`. The `nest-app` generator emits any of the
+  eight combinations (defaults keep messaging and exposure), and readiness probes report disabled
+  capabilities and unused messaging roles as `not_applicable`.
+- Database tooling, distribution migration commands, failure-queue commands and
+  required-suite guardrails discover applications from their declarations instead
+  of a central list of application names. Persistent applications use the
+  `<NAME>_DB` prefix, `<name>_runtime` role and `database/migrations/` conventions.
+  Applications generated earlier need an `application.json` passed to
+  `ServiceHealth`; discovery skips undeclared directories, while the workflow
+  guardrail and packaging reject them.
+
 ### Fixed
 
 - Keep timed-out generated message handlers tracked through drain, retain permanent payload rejections and preserve failure metadata.

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { parse } from 'dotenv';
 import { z } from 'zod';
+import { discoverApplications } from '@starter/capabilities/declaration';
 import { runCommand } from '../lib/command';
 import { readProjectGraph, type ProjectGraph } from '../lib/nx-graph';
 import { isolatedEnvironment } from './workspace-fixture';
@@ -227,10 +228,15 @@ test('required native, component, system and distribution suites are not empty',
   );
 
   // run-many silently skips a missing target, so every application and the
-  // remaining live suites must declare theirs.
+  // remaining live suites must declare theirs. Quality discovery and runtime
+  // composition read the same application declarations.
   const applications = Object.entries(projects)
     .filter(([, { data }]) => data.tags?.includes('type:app'))
-    .map(([project]) => project);
+    .map(([project]) => project)
+    .sort();
+  expect(
+    discoverApplications(join(root, 'src/apps')).map(({ name }) => name),
+  ).toEqual(applications);
   for (const app of ['user', 'wallet']) expect(applications).toContain(app);
   for (const [project, target] of [
     ...applications.flatMap((app) => [

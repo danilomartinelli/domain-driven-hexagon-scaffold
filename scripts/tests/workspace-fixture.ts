@@ -24,7 +24,10 @@ export function isolatedEnvironment(): NodeJS.ProcessEnv {
 
 export interface Workspace {
   root: string;
-  run: (args: string[]) => Promise<CommandResult>;
+  run: (
+    args: string[],
+    options?: { timeout?: number },
+  ) => Promise<CommandResult>;
   cleanup: () => Promise<void>;
 }
 
@@ -110,7 +113,7 @@ export async function createWorkspace(): Promise<Workspace> {
     }
     return {
       root,
-      run: async (args): Promise<CommandResult> => {
+      run: async (args, { timeout = 30_000 } = {}): Promise<CommandResult> => {
         // Nx 23.2.1 reuses native file hashes by mtime (whole seconds on Unix).
         // These fixtures mutate files between commands, sometimes within one
         // tick. Rehash their bytes while retaining graph and task caches, so
@@ -120,7 +123,7 @@ export async function createWorkspace(): Promise<Workspace> {
         });
         return runCommand(args, {
           cwd: root,
-          timeout: 30_000,
+          timeout,
           env: {
             ...isolatedEnvironment(),
             NX_SKIP_NX_CACHE: 'false',
@@ -147,5 +150,31 @@ export async function createWorkspace(): Promise<Workspace> {
   } catch (error) {
     await rm(root, { recursive: true, force: true });
     throw error;
+  }
+}
+
+/** Commit the copied files on `master` and point `origin/master` at that baseline. */
+export async function commitBaseline(workspace: Workspace): Promise<void> {
+  for (const args of [
+    ['git', 'init', '--initial-branch=master'],
+    ['git', 'add', '.'],
+    [
+      'git',
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'user.name=Workspace fixture',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '-m',
+      'baseline',
+    ],
+    ['git', 'update-ref', 'refs/remotes/origin/master', 'HEAD'],
+  ]) {
+    const result = await workspace.run(args);
+    if (result.code !== 0) throw new Error(result.stderr || result.stdout);
   }
 }

@@ -21,12 +21,11 @@
   "@apollo/server",
   "@as-integrations/express5",
   "cors",
+  "@starter/capabilities",
   "@starter/core",
   "@starter/nest-support",
   "@starter/integration-contracts",
   "@starter/rabbitmq",
   "amqplib",
-  "node-pg-migrate",
-  "pg",
   "commander"
 ]

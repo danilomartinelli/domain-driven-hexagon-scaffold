@@ -1,0 +1,30 @@
+import { get } from 'env-var';
+
+// Each reader covers one enabled capability; disabled capabilities read nothing.
+// No dotenv file is loaded.
+
+/** Operational HTTP, and business adapters when exposure is enabled. */
+export function httpPort(): number {
+  return get('__PREFIX___HTTP_PORT').required().asPortNumber();
+}
+//#if persistence
+
+/** Restricted runtime credentials; migrations use separate owner credentials. */
+export function databaseUri(): string {
+  const setting = (name: string) =>
+    encodeURIComponent(get(`__PREFIX___DB_${name}`).required().asString());
+  const port = get('__PREFIX___DB_PORT').required().asPortNumber();
+  return `postgres://${setting('USERNAME')}:${setting('PASSWORD')}@${setting('HOST')}:${String(port)}/${setting('NAME')}`;
+}
+//#endif
+//#if messaging
+
+export function messagingOptions(): { broker: string; queue: string } {
+  return {
+    broker: get('__PREFIX___RABBITMQ_URL').required().asString(),
+    queue: get('__PREFIX___RABBITMQ_QUEUE')
+      .default('__name__.commands.v1')
+      .asString(),
+  };
+}
+//#endif
