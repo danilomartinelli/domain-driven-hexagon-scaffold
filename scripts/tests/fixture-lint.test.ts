@@ -110,6 +110,9 @@ test.each([
   'src/apps/wallet/tests/component/database-ownership.test.ts',
   'tests/integration/user-wallet.test.ts',
   'scripts/tests/environment.test.ts',
+  'scripts/tests/environment-selection.test.ts',
+  'scripts/tests/fixtures/selected-environment.ts',
+  'scripts/tests/workspace.test.ts',
 ])(
   'rejects sequential awaits inside one cleanup callback in %s',
   async (filePath) => {
@@ -118,6 +121,7 @@ test.each([
       'async function () { await stopUser(); await connection.close(); }',
       'async () => { await connection.close(); await stopUser(); }',
       'async () => { await stopUser(); await pool.end(); }',
+      'async () => { await down(); await workspace.cleanup(); }',
     ]) {
       const messages = await restrictions(
         `export async function fixture(): Promise<void> {

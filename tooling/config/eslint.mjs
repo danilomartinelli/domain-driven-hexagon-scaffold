@@ -30,6 +30,21 @@ const containerRemovalSyntax = [
   },
 ];
 
+const cleanupSyntax = [
+  {
+    selector:
+      "CallExpression[callee.name='withCleanup'] > ArrayExpression.arguments > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement > ExpressionStatement[expression.type='AwaitExpression'] ~ ExpressionStatement > AwaitExpression > CallExpression:matches([callee.property.name=/^(close|end|stop|destroy|shutdown|cleanup)$/], [callee.name=/^(close|end|stop|destroy|shutdown|cleanup)([A-Z_]|$)/])",
+    message:
+      'Use nested withCleanup so an earlier cleanup failure cannot skip closing this resource.',
+  },
+  {
+    selector:
+      "CallExpression[callee.name='withCleanup'] > ArrayExpression.arguments > :matches(ArrowFunctionExpression, FunctionExpression) :matches(ForOfStatement, ForInStatement, ForStatement, WhileStatement, DoWhileStatement) AwaitExpression > CallExpression[callee.property.name='purgeQueue']",
+    message:
+      'Register each queue purge separately with withCleanup and its own channel so a failure cannot skip other queues.',
+  },
+];
+
 export default defineConfig(
   {
     files: [
@@ -69,6 +84,7 @@ export default defineConfig(
         'error',
         ...restrictedSyntax,
         ...containerRemovalSyntax,
+        ...cleanupSyntax,
       ],
     },
   },
@@ -83,22 +99,11 @@ export default defineConfig(
         'error',
         ...restrictedSyntax,
         ...containerRemovalSyntax,
+        ...cleanupSyntax,
         {
           selector: 'TryStatement > BlockStatement.finalizer AwaitExpression',
           message:
             'Use withCleanup from scripts/tests/cleanup.ts to preserve operation and cleanup failures.',
-        },
-        {
-          selector:
-            "CallExpression[callee.name='withCleanup'] > ArrayExpression.arguments > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement > ExpressionStatement[expression.type='AwaitExpression'] ~ ExpressionStatement > AwaitExpression > CallExpression:matches([callee.property.name=/^(close|end|stop|destroy|shutdown)$/], [callee.name=/^(close|end|stop|destroy|shutdown)([A-Z_]|$)/])",
-          message:
-            'Use nested withCleanup so an earlier cleanup failure cannot skip closing this resource.',
-        },
-        {
-          selector:
-            "CallExpression[callee.name='withCleanup'] > ArrayExpression.arguments > :matches(ArrowFunctionExpression, FunctionExpression) :matches(ForOfStatement, ForInStatement, ForStatement, WhileStatement, DoWhileStatement) AwaitExpression > CallExpression[callee.property.name='purgeQueue']",
-          message:
-            'Register each queue purge separately with withCleanup and its own channel so a failure cannot skip other queues.',
         },
       ],
     },

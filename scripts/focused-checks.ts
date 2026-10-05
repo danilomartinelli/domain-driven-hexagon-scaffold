@@ -10,6 +10,8 @@ const nxRunnerInputs =
 /** Provisioning and cleanup code whose failures component suites cannot show. */
 const lifecycleInputs =
   /^scripts\/lib\/(environments|compose|gateway|session)\.ts$|^scripts\/(environment-cli|with-test-database|reconcile-databases|start-applications)\.ts$|^database\/(environment|topology)\.ts$|^docker\//;
+/** Declarations are discovered from disk rather than imported by test-runner. */
+const selectionInputs = /^src\/apps\/[^/]+\/application\.json$/;
 const lintable = /\.(ts|mjs)$/;
 
 /** Projects affected by the files that define the given target. */
@@ -96,11 +98,23 @@ async function main(): Promise<void> {
       'provisioning or cleanup changed',
     );
   }
-  for (const project of await affected(runtime, 'test-component'))
-    printRequired(
-      `bun run nx run ${project}:test-component`,
-      'affected component suite',
-    );
+  for (const target of [
+    'test-component',
+    'test-distribution',
+    'test-selection',
+  ]) {
+    const projects = new Set(await affected(runtime, target));
+    if (
+      target === 'test-selection' &&
+      runtime.some((file) => selectionInputs.test(file))
+    )
+      projects.add('test-runner');
+    for (const project of [...projects].sort())
+      printRequired(
+        `bun run nx run ${project}:${target}`,
+        `affected ${target} suite`,
+      );
+  }
   printRequired(
     'bun run nx run test-runner:test-preservation',
     'runtime, E2E or runner files changed',

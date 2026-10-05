@@ -93,7 +93,7 @@ process's `PATH`; it invokes the installed local tools without downloading them.
 After each implementation slice, run focused tests, typechecking and lint on
 the changed code; resolve failures before broadening validation.
 `bun scripts/focused-checks.ts` prints the lint paths, the affected typecheck,
-test and component targets, and the runner targets below that the branch,
+test, component, distribution and selection targets, and the runner targets below that the branch,
 staged, unstaged and new files require; `--base` and `--head` select immutable
 commits. When running checks by hand, pass the actual changed TypeScript or
 JavaScript paths explicitly; for example:
@@ -128,13 +128,18 @@ bun run nx affected --target=test-component --files=scripts/lib/compose.ts
 
 The component targets keep their owned environment wrappers. For changes to
 provisioning or cleanup, add the matching focused lifecycle target
-(`test-broker`, `test-gateway`, `test-preservation` or `test-nx-runner`) and the
+(`test-broker`, `test-gateway`, `test-selection`, `test-preservation` or `test-nx-runner`) and the
 changed lifecycle tests by name; component tests alone do not cover those
 failures:
 
 ```sh
 bun test ./scripts/tests/environment.test.ts --test-name-pattern 'development workflow'
 ```
+
+Run affected `test-distribution` targets as well, so changes to provisioning or
+application startup exercise independently built applications. Capability
+declaration changes also require `test-runner:test-selection`: these declarations
+are discovered from disk and their dependency is not represented by Nx imports.
 
 The complete `test:tooling` suite belongs to the full gate. This focused feedback
 precedes the full gate and does not replace it.

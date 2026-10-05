@@ -7,7 +7,7 @@ import { appWorkspace, generate, run } from './app-generator-fixture';
 import { withCleanup } from './cleanup';
 
 test('preparing an existing development environment preserves credentials and resource ownership', async () => {
-  const workspace = await appWorkspace({ retain: true });
+  const workspace = await appWorkspace();
   const prepare = [
     'bun',
     'run',
@@ -270,7 +270,7 @@ test('public generator and isolated environments execute every capability union 
 }, 1_500_000);
 
 test('add disable remove and reactivate retain database credentials and accepted work while producers remain active', async () => {
-  const workspace = await appWorkspace({ retain: true });
+  const workspace = await appWorkspace();
   const command = (action: string, ...args: string[]) => [
     'bun',
     'run',

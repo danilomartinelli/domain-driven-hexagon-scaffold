@@ -37,8 +37,11 @@ test('focused check selection follows the changed runtime, Nx and lifecycle file
     for (const target of [
       'test-runner:test-broker',
       'test-runner:test-gateway',
+      'test-runner:test-selection',
       'user:test-component',
       'wallet:test-component',
+      'user:test-distribution',
+      'wallet:test-distribution',
       'test-runner:test-preservation',
     ])
       expect(lifecycle).toContain(`bun run nx run ${target}`);
@@ -62,6 +65,17 @@ test('focused check selection follows the changed runtime, Nx and lifecycle file
     );
     expect(nx).not.toContain('bun run nx run test-runner:test-broker');
     expect(nx.join('\n')).not.toContain('tcp-gate.ts');
+
+    await run('git', 'reset', '--hard', 'HEAD');
+    const declaration = join(workspace.root, 'src/apps/user/application.json');
+    await writeFile(declaration, `${await Bun.file(declaration).text()}\n`);
+    const selection = await requiredCommands();
+    expect(
+      selection.filter(
+        (command) => command === 'bun run nx run test-runner:test-selection',
+      ),
+    ).toHaveLength(1);
+    expect(selection).toContain('bun run nx run user:test-distribution');
   } finally {
     await workspace.cleanup();
   }

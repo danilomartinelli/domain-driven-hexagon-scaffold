@@ -100,6 +100,7 @@ test('parallel Nx component runs migrate independently under a shared parent', a
             );
         }),
       );
+      // eslint-disable-next-line no-restricted-syntax -- Deletion depends on successful shutdown; failed test environments need their manifests for retries.
       await workspace.cleanup();
     },
   ]);

@@ -228,9 +228,13 @@ the diagnostic. Every run ends with one `Result:` line naming its statuses,
 counts and log. Disposable workspace fixtures copy only `run.log` and
 `result.json` back to the source checkout's `.context/test-runs/` before removal,
 including runs nested under Nx. An export failure retains the temporary workspace
-and fails the run. Development retention fixtures keep their runnable workspace
-and private resource inventory under `.context/retained-workspaces/` after stopping
-the services; use `env:inspect` or `env:down` from the printed workspace path.
+and fails the run. Workspace fixtures automatically keep their runnable workspace
+and private inventory under `.context/retained-workspaces/` whenever a manifest
+contains development databases or a broker, including inactive resources and
+failed shutdowns. No retention flag is required. Unreadable inventory also retains
+the workspace and fails cleanup; diagnostic export is still attempted. Copies
+without durable development inventory are removed after diagnostic export.
+Use `env:inspect` or `env:down` from the printed retained workspace path.
 Failed CI jobs upload only `run.log` and `result.json` as the
 `test-run-diagnostics-<attempt>` artifact, retained for seven days; generated
 manifests and Compose configuration are excluded.
