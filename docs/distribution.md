@@ -66,6 +66,11 @@ execution and migration targets are also uncached and always run live.
 
 ## Verification
 
+Run `bun run preflight` inside a distribution before supplying credentials or
+provisioning dependencies. The [compatibility contract](application-compatibility.md)
+uses the same functionality registrations as runtime composition and needs no
+workspace, sibling application, database or broker.
+
 ```sh
 bun run nx run user:test-distribution
 bun run nx run wallet:test-distribution

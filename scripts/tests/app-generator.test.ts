@@ -154,7 +154,7 @@ test('nest-app generates an independent checked project without persistent dry-r
     ]);
     expect(mismatch.code).not.toBe(0);
     expect(mismatch.stdout + mismatch.stderr).toContain(
-      'supply a database probe exactly when persistence is enabled',
+      'persistence integration is not prepared',
     );
   } finally {
     await workspace.cleanup();
@@ -177,6 +177,8 @@ test('generated distribution owns its source and needs no database registry or s
     ).json()) as { scripts: Record<string, string> };
     expect(manifest.scripts).toEqual({
       start: 'bun --no-env-file app/main.ts',
+      preflight:
+        'bun --no-env-file node_modules/@starter/capabilities/preflight.ts app',
     });
     expect(
       await Bun.file(join(artifact, 'database/migrate.mjs')).exists(),

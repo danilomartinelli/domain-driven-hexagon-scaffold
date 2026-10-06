@@ -8,7 +8,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { selectedApplications } from '../../database/topology';
+import {
+  selectedApplications,
+  validateApplications,
+} from '../../database/topology';
 import { workspaceRoot } from '../../database/environment';
 import { runCommand } from './command';
 
@@ -24,7 +27,7 @@ export async function buildImage(
     ) => Promise<{ code: number; stdout: string; stderr: string }>;
   } = {},
 ): Promise<string> {
-  selectedApplications([app]);
+  validateApplications(selectedApplications([app]));
   const platform =
     options.platform ?? `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`;
   if (!['linux/amd64', 'linux/arm64'].includes(platform))

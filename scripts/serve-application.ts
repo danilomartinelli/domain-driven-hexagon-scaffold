@@ -1,12 +1,15 @@
 import { readEnvironmentFile } from '../database/environment';
-import { selectedApplications } from '../database/topology';
+import {
+  selectedApplications,
+  validateApplications,
+} from '../database/topology';
 import {
   applicationDebugPort,
   runApplicationContainers,
 } from './lib/application-containers';
 
 const [name, mode] = process.argv.slice(2);
-selectedApplications([name]);
+validateApplications(selectedApplications([name]));
 if (!['serve', 'watch', 'debug'].includes(mode))
   throw new Error('Select serve, watch or debug');
 const manifest = process.env.DDH_ENVIRONMENT_FILE

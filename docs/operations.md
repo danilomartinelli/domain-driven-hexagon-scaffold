@@ -72,6 +72,13 @@ Use an operator-supplied certificate whose SAN covers the public hostname and a
 matching unencrypted PEM key. Issuance and renewal remain operator responsibilities.
 No secret is passed to an image build or an unrelated service.
 
+Selected images must carry the [application compatibility contract](application-compatibility.md).
+The operator runs their packaged preflight without network or secrets before
+provisioning and before any candidate update changes the installation. An
+incompatible functionality group identifies its missing capability and leaves
+services, credentials and durable work unchanged. Images predating this contract
+must be rebuilt with their author-owned registrations.
+
 ## Bootstrap and reuse
 
 ```sh

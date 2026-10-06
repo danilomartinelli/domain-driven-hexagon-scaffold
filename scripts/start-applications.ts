@@ -1,5 +1,8 @@
 import { readEnvironmentFile } from '../database/environment';
-import { selectedApplications } from '../database/topology';
+import {
+  selectedApplications,
+  validateApplications,
+} from '../database/topology';
 import { runApplicationContainers } from './lib/application-containers';
 
 const target = process.argv[2];
@@ -9,6 +12,7 @@ const apps = process.env.DDH_ENVIRONMENT_FILE
   ? (readEnvironmentFile(process.env.DDH_ENVIRONMENT_FILE).topology ?? [])
   : selectedApplications();
 if (apps.length) {
+  validateApplications(apps);
   const manifest = process.env.DDH_ENVIRONMENT_FILE
     ? readEnvironmentFile(process.env.DDH_ENVIRONMENT_FILE)
     : undefined;

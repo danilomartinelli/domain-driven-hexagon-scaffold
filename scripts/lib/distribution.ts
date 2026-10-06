@@ -13,7 +13,7 @@ import {
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { readApplicationDeclaration } from '@starter/capabilities/declaration';
+import { preflightApplication } from '@starter/capabilities/composition';
 import { applications } from '../../database/applications';
 import {
   containsPath,
@@ -94,9 +94,7 @@ export function distribute(name: string, output?: string): string {
     throw new Error(
       'Declare the application capabilities in application.json before distributing it',
     );
-  const declaration = readApplicationDeclaration(
-    join(appSource, 'application.json'),
-  );
+  const declaration = preflightApplication(appSource);
   if (declaration.name !== name)
     throw new Error(`application.json must declare name "${name}"`);
   const app = applications.find((entry) => entry.name === name);
@@ -121,6 +119,7 @@ export function distribute(name: string, output?: string): string {
     throw new Error('Output directory must not exist');
   const dependencies = [
     ...new Set([
+      '@starter/capabilities',
       ...z
         .array(z.string())
         .parse(
@@ -226,6 +225,8 @@ export function distribute(name: string, output?: string): string {
       engines: { bun: pinnedBun },
       scripts: {
         start: 'bun --no-env-file app/main.ts',
+        preflight:
+          'bun --no-env-file node_modules/@starter/capabilities/preflight.ts app',
         ...(app
           ? {
               'migration:up': 'bun --no-env-file database/migrate.mjs up',

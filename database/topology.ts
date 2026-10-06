@@ -2,6 +2,17 @@ import {
   discoverApplications,
   type ApplicationDeclaration,
 } from '@starter/capabilities/declaration';
+import { preflightApplication } from '@starter/capabilities/composition';
+
+/** Validate only the selected sources; inspection/shutdown use retained inventory. */
+export function validateApplications(
+  declarations: readonly ApplicationDeclaration[],
+): void {
+  for (const declaration of declarations)
+    preflightApplication(
+      new URL(`../src/apps/${declaration.name}/`, import.meta.url),
+    );
+}
 
 /** The selected declarations are also the reusable input to environment renderers. */
 export function selectedApplications(

@@ -2,156 +2,116 @@ import {
 //#if messaging
   Inject,
   Logger,
-//#endif
-  Module,
-//#if messaging
+  Optional,
   type BeforeApplicationShutdown,
   type InjectionToken,
   type OnApplicationBootstrap,
 //#endif
-  type Provider,
-//#if exposure
-  type Type,
-//#endif
+  Module,
+  type ModuleMetadata,
 } from '@nestjs/common';
 //#if exposure
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
+import { exposedAdapters } from '@starter/capabilities/declaration';
 //#endif
 //#if persistence
 import { sql, type DatabasePool } from 'slonik';
+import { DATABASE_POOL, DatabaseModule } from '../database/database.module';
 //#endif
-import {
-//#if exposure
-  exposedAdapters,
-//#endif
-  readApplicationDeclaration,
-} from '@starter/capabilities/declaration';
-import {
-  HealthController,
-  ServiceHealth,
-} from '@starter/nest-support/operations';
+import { composeApplication, preflightApplication, readApplicationComposition } from '@starter/capabilities/composition';
+import { HealthController, ServiceHealth } from '@starter/nest-support/operations';
 //#if messaging
 import type { MessageHandler } from '../application/message-handler';
 import { RabbitTransport } from '../adapters/rabbitmq.transport';
+import { messagingOptions } from '../configs/environment';
 //#endif
 //#if exposure
 import { StatusResolver } from '../adapters/status.resolver';
 //#endif
+
+const directory = new URL('../', import.meta.url);
+const declaration = preflightApplication(directory);
+
+//#if messaging
+type Functionality = ModuleMetadata & { handlers?: InjectionToken<MessageHandler>[] };
+//#else
+type Functionality = ModuleMetadata;
+//#endif
+// Register requirements in composition.json and bind the same group name here.
+// Factories compose adapters; domain/ and application/ remain framework-free.
+const functionality: Record<string, () => Functionality> = {};
+const parts = composeApplication<Functionality>(declaration, readApplicationComposition(directory), {
+  integrations: {
 //#if persistence
-import { DATABASE_POOL, DatabaseModule } from '../database/database.module';
+    persistence: () => ({ imports: [DatabaseModule] }),
 //#endif
 //#if messaging
-import { messagingOptions } from '../configs/environment';
+    messaging: () => ({}),
 //#endif
-
-// application.json selects the applicable readiness probes for this process.
 //#if exposure
-// Business adapters below are composed only while it declares exposure.
+    exposure: () => ({
+      imports: [GraphQLModule.forRoot<ApolloDriverConfig>({ driver: ApolloDriver, autoSchemaFile: true, playground: false })],
+      providers: [StatusResolver],
+    }),
 //#endif
-const declaration = readApplicationDeclaration(
-  new URL('../application.json', import.meta.url),
-);
-
-// Register application-owned behavior explicitly; nothing is exposed or consumed
-// automatically. Keep business rules in plain application/ and domain/ modules.
-const applicationProviders: Provider[] = [];
-//#if exposure
-// Business REST controllers and GraphQL resolvers; only registered adapters
-// are served.
-const businessControllers: Type[] = [];
-const businessResolvers: Provider[] = [];
-//#endif
+  },
+  groups: functionality,
+});
 //#if messaging
-// Tokens of the message handlers registered in applicationProviders. Construct
-// plain application handlers with factory providers and explicit inject lists.
-const handlers: InjectionToken<MessageHandler>[] = [];
+const handlers = parts.flatMap((part) => part.handlers ?? []);
 //#endif
 
 @Module({
-  imports: [
-//#if persistence
-    DatabaseModule,
-//#endif
-//#if exposure
-    ...exposedAdapters(declaration, [
-      GraphQLModule.forRoot<ApolloDriverConfig>({
-        driver: ApolloDriver,
-        autoSchemaFile: true,
-        playground: false,
-      }),
-    ]),
-//#endif
-  ],
+  imports: parts.flatMap((part) => part.imports ?? []),
   controllers: [
     HealthController,
 //#if exposure
-    ...exposedAdapters(declaration, businessControllers),
+    ...exposedAdapters(declaration, parts.flatMap((part) => part.controllers ?? [])),
 //#endif
   ],
   providers: [
-    ...applicationProviders,
-//#if exposure
-    ...exposedAdapters(declaration, [StatusResolver, ...businessResolvers]),
-//#endif
+    ...parts.flatMap((part) => part.providers ?? []),
 //#if messaging
-    {
+    ...(declaration.messaging ? [{
       provide: RabbitTransport,
       inject: handlers,
-      useFactory: (...registered: MessageHandler[]) =>
-        new RabbitTransport(
-          messagingOptions(),
-          registered,
-          new Logger('Messaging'),
-        ),
-    },
+      useFactory: (...registered: MessageHandler[]) => new RabbitTransport(messagingOptions(), registered, new Logger('Messaging')),
+    }] : []),
 //#endif
     {
       provide: ServiceHealth,
       inject: [
 //#if persistence
-        DATABASE_POOL,
+        { token: DATABASE_POOL, optional: true },
 //#endif
 //#if messaging
-        RabbitTransport,
+        { token: RabbitTransport, optional: true },
 //#endif
       ],
       useFactory: (
 //#if persistence
-        pool: DatabasePool,
+        pool?: DatabasePool,
 //#endif
 //#if messaging
-        transport: RabbitTransport,
+        transport?: RabbitTransport,
 //#endif
-      ) =>
-        new ServiceHealth(declaration, {
+      ) => new ServiceHealth(declaration, {
 //#if persistence
-          database: async () => {
-            await pool.query(sql.unsafe`SELECT 1`);
-          },
+        ...(pool ? { database: async () => { await pool.query(sql.unsafe`SELECT 1`); } } : {}),
 //#endif
 //#if messaging
-          consumer: () => transport.diagnostics.snapshot(),
+        ...(transport ? { consumer: () => transport.diagnostics.snapshot() } : {}),
 //#endif
-        }),
+      }),
     },
   ],
 })
 //#if messaging
-export class AppModule
-  implements OnApplicationBootstrap, BeforeApplicationShutdown
-{
-  constructor(
-    @Inject(RabbitTransport) private readonly transport: RabbitTransport,
-  ) {}
-
-  onApplicationBootstrap(): void {
-    this.transport.start();
-  }
-
-  async beforeApplicationShutdown(): Promise<void> {
-    await this.transport.stop();
-  }
+export class AppModule implements OnApplicationBootstrap, BeforeApplicationShutdown {
+  constructor(@Optional() @Inject(RabbitTransport) private readonly transport?: RabbitTransport) {}
+  onApplicationBootstrap(): void { this.transport?.start(); }
+  async beforeApplicationShutdown(): Promise<void> { await this.transport?.stop(); }
 }
 //#else
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest requires a decorated module class.

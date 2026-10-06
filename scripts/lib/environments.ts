@@ -21,7 +21,10 @@ import {
   type EnvironmentManifest,
 } from '../../database/environment';
 import { environmentPrefix } from '@starter/capabilities/declaration';
-import { selectedApplications } from '../../database/topology';
+import {
+  selectedApplications,
+  validateApplications,
+} from '../../database/topology';
 import {
   activeDatabases,
   needsGateway,
@@ -98,6 +101,7 @@ async function reconcileManifest(
   retainMissing = false,
 ): Promise<void> {
   const topology = selectedApplications(selection, { retainMissing });
+  validateApplications(topology);
   const nextPort = portAllocator([
     ...Object.values(manifest.applicationPorts),
     ...[manifest.broker, manifest.gateway, ...manifest.databases].flatMap(
@@ -236,6 +240,7 @@ export async function operateEnvironment(
     if (extending)
       await reconcileManifest(manifest, apps ?? manifest.apps, !apps);
   }
+  if (action === 'exec') validateApplications(manifest.topology ?? []);
   const composePath = join(location.directory, 'compose.json');
   // Use only known fields; inherited Compose options/.env cannot change ownership.
   const composeEnv = {

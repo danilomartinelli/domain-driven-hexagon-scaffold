@@ -134,9 +134,10 @@ without an upstream Nest preset. Output for all capabilities includes:
 ```text
 src/apps/telemetry/
   application.json            # name and the three capabilities
+  composition.json            # prepared integrations and functionality requirements
   main.ts                     # bootstrap and shared bounded shutdown
   configs/environment.ts      # TELEMETRY_* readers of enabled capabilities only
-  composition/app.module.ts   # declaration, explicit registration lists and probes
+  composition/app.module.ts   # registered factories and readiness probes
   database/                   # persistence: runtime pool module and migrations/README.md
   application/message-handler.ts  # messaging: plain handler port and explicit identity
   adapters/                   # messaging transport and exposure's GraphQL status
@@ -155,10 +156,12 @@ only with persistence, the database. Consumer readiness applies only with messag
 the publisher role, backlog and disabled capabilities report `not_applicable`.
 See [probe semantics](recovery.md#independent-operational-signals).
 
-Composition offers explicit registration lists. `applicationProviders` holds
-application-owned providers; with exposure, `businessControllers` and
-`businessResolvers` hold business REST controllers and GraphQL resolvers; with
-messaging, `handlers` holds the injection tokens of registered message handlers.
+Composition binds the functionality groups registered in `composition.json` to
+factories in `functionality`. Factories return module metadata and, with messaging,
+handler injection tokens. The generated group list and factory map start empty;
+add requirements and bindings together as behavior is introduced. The shared
+[compatibility check](application-compatibility.md) rejects unmet requirements
+before adapters or environment changes, including from an independent image.
 Nothing is exposed or consumed automatically. Exposure keeps an operational
 GraphQL `{ httpReady }` query so the schema is valid; client routes are configured
 separately in the gateway. Without exposure, `/graphql` does not exist.

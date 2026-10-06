@@ -11,8 +11,116 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCommand } from '../lib/command';
 import { createWorkspace } from './workspace-fixture';
+import { tcpGate } from './tcp-gate';
+import { withCleanup } from './cleanup';
 
 const root = new URL('../../', import.meta.url).pathname;
+
+test('source startup rejects incompatible User functionality before contacting dependencies', async () => {
+  const workspace = await createWorkspace();
+  const database = await tcpGate();
+  const broker = await tcpGate();
+  await withCleanup(async () => {
+    const file = join(workspace.root, 'src/apps/user/application.json');
+    const declaration = JSON.parse(readFileSync(file, 'utf8')) as object;
+    writeFileSync(file, JSON.stringify({ ...declaration, persistence: false }));
+    const result = await runCommand(
+      [process.execPath, '--no-env-file', 'src/apps/user/main.ts'],
+      {
+        cwd: workspace.root,
+        env: {
+          PATH: process.env.PATH,
+          USER_HTTP_PORT: '34991',
+          USER_DB_HOST: '127.0.0.1',
+          USER_DB_PORT: database.port,
+          USER_DB_NAME: 'uncontacted',
+          USER_DB_USERNAME: 'uncontacted',
+          USER_DB_PASSWORD: 'private-preflight-password',
+          RABBITMQ_HOST: '127.0.0.1',
+          RABBITMQ_PORT: broker.port,
+        },
+      },
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('user-profile requires persistence');
+    expect(result.stderr).not.toContain('private-preflight-password');
+    for (const command of [
+      ['run', 'migration:up'],
+      ['run', 'seed:up'],
+      [
+        'run',
+        'nx',
+        'run',
+        'user:failures-replay',
+        '--environment=development',
+        '--run=preflight',
+        '--message=uncontacted',
+      ],
+    ]) {
+      const refused = await runCommand(
+        [process.execPath, '--no-env-file', ...command],
+        {
+          cwd: workspace.root,
+          env: { PATH: process.env.PATH },
+          timeout: 30_000,
+        },
+      );
+      expect(refused.code).not.toBe(0);
+      expect(refused.stdout + refused.stderr).toContain(
+        'user-profile requires persistence',
+      );
+    }
+    expect(database.attempts()).toBe(0);
+    expect(broker.attempts()).toBe(0);
+  }, [() => database.close(), () => broker.close(), () => workspace.cleanup()]);
+}, 60_000);
+
+test('environment preparation rejects incompatible groups before Docker or inventory changes', async () => {
+  const workspace = await createWorkspace();
+  try {
+    const file = join(workspace.root, 'src/apps/wallet/application.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        name: 'wallet',
+        persistence: true,
+        messaging: false,
+        exposure: true,
+      }),
+    );
+    const bin = join(workspace.root, 'sentinels');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'docker'),
+      '#!/bin/sh\ntouch docker-contacted\nexit 91\n',
+      { mode: 0o755 },
+    );
+    const result = await runCommand(
+      [
+        process.execPath,
+        '--no-env-file',
+        'run',
+        'env:prepare',
+        '--environment=test',
+        '--run=preflight',
+        '--app=wallet',
+      ],
+      {
+        cwd: workspace.root,
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` },
+        timeout: 30_000,
+      },
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      'wallet-creation requires messaging',
+    );
+    expect(existsSync(join(workspace.root, 'docker-contacted'))).toBe(false);
+    expect(existsSync(join(workspace.root, '.context/test-runs'))).toBe(false);
+  } finally {
+    await workspace.cleanup();
+  }
+}, 60_000);
 
 test('User distribution carries executable private libraries and only its own source and migrations', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'starter-distribution-'));
@@ -57,6 +165,49 @@ test('User distribution carries executable private libraries and only its own so
       { cwd: artifact, env: { PATH: process.env.PATH }, timeout: 20_000 },
     );
     expect(probe, probe.stderr).toMatchObject({ code: 0, stdout: 'true\n' });
+    const preflight = await runCommand(
+      [process.execPath, '--no-env-file', 'run', 'preflight'],
+      { cwd: artifact, env: { PATH: process.env.PATH } },
+    );
+    expect(preflight.code, preflight.stderr).toBe(0);
+    expect(JSON.parse(preflight.stdout)).toMatchObject({
+      name: 'user',
+      persistence: true,
+    });
+    const declarationFile = join(artifact, 'app/application.json');
+    const declaration = readFileSync(declarationFile, 'utf8');
+    writeFileSync(
+      declarationFile,
+      JSON.stringify({
+        ...(JSON.parse(declaration) as object),
+        messaging: false,
+      }),
+    );
+    const database = await tcpGate();
+    await withCleanup(async () => {
+      for (const command of ['preflight', 'start']) {
+        const rejected = await runCommand(
+          [process.execPath, '--no-env-file', 'run', command],
+          {
+            cwd: artifact,
+            env: {
+              PATH: process.env.PATH,
+              USER_HTTP_PORT: '34991',
+              USER_DB_HOST: '127.0.0.1',
+              USER_DB_PORT: database.port,
+              USER_DB_NAME: 'uncontacted',
+              USER_DB_USERNAME: 'uncontacted',
+              USER_DB_PASSWORD: 'private-password',
+            },
+          },
+        );
+        expect(rejected.code).not.toBe(0);
+        expect(rejected.stderr).toContain('user-delivery requires messaging');
+        expect(rejected.stderr).not.toContain('private-password');
+      }
+      expect(database.attempts()).toBe(0);
+    }, [() => database.close()]);
+    writeFileSync(declarationFile, declaration);
     const refused = await runCommand(
       [process.execPath, '--no-env-file', 'run', 'migration:up'],
       {
@@ -108,9 +259,7 @@ test('distribution migration interface follows the application declaration', asy
     ];
     const undeclared = await workspace.run(package_);
     expect(undeclared.code).toBe(1);
-    expect(undeclared.stderr).toContain(
-      'Declare persistence in application.json',
-    );
+    expect(undeclared.stderr).toContain('user-profile requires persistence');
     writeFileSync(declaration, declared);
     const packaged = await workspace.run(package_);
     expect(packaged, packaged.stderr).toMatchObject({ code: 0 });
@@ -153,6 +302,7 @@ test('distribution migration interface follows the application declaration', asy
         exposure: false,
       },
       'distribution.json': [],
+      'composition.json': { integrations: ['persistence'], groups: [] },
     }))
       writeFileSync(join(ledger, file), JSON.stringify(content));
     // Outside the workspace, so its node_modules cannot satisfy the artifact.

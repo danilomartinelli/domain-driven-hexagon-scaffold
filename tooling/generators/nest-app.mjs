@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { format, resolveConfig } from 'prettier';
+import { assertApplicationCompatibility } from '@starter/capabilities/composition';
 
 /** @typedef {'persistence' | 'messaging' | 'exposure'} Capability */
 /** @type {Capability[]} */
@@ -97,6 +98,11 @@ export default async function nestApp(
   for (const capability of capabilities)
     if (typeof enabled[capability] !== 'boolean')
       throw new Error(`--${capability} must be true or false.`);
+  const composition = {
+    integrations: capabilities.filter((capability) => enabled[capability]),
+    groups: [],
+  };
+  assertApplicationCompatibility({ name, ...enabled }, composition);
   const root = `src/apps/${name}`;
   if (
     tree.exists(root) ||
@@ -131,6 +137,7 @@ export default async function nestApp(
   const files = {
     // The single declaration consumed by composition, probes and tooling discovery.
     'application.json': JSON.stringify({ name, ...enabled }),
+    'composition.json': JSON.stringify(composition),
     'package.json': JSON.stringify({
       name: `@starter/${name}-app`,
       version: '0.0.0',

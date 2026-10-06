@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { configurationValue } from '@starter/nest-support/configuration';
+import { preflightApplication } from '@starter/capabilities/composition';
 
 /** Artifact-local registry: there is no selectable sibling database or workspace manifest. */
 export function selectApplication(): {
@@ -25,6 +26,7 @@ export function selectApplication(): {
     );
   if (process.env.DATABASE_APP && process.env.DATABASE_APP !== service)
     throw new Error(`This distribution owns only ${service}`);
+  preflightApplication(new URL('../app/', import.meta.url));
   return {
     name: service,
     prefix: database.prefix,

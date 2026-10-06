@@ -5,7 +5,8 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    "./declaration": "./declaration.ts"
+    "./declaration": "./declaration.ts",
+    "./composition": "./composition.ts"
   },
   "dependencies": {
     "zod": "4.6.5"
