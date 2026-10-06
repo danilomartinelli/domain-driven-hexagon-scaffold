@@ -20,8 +20,20 @@ export async function runCommand(
     outputRetention?: 'head' | 'tail';
     /** Identify long nested runs without echoing arguments or environment values. */
     progress?: { label: string; logPath: string; intervalMs?: number };
+    /** Allow owned runners to clean up before forced termination. */
+    cancellation?: { signal: AbortSignal; graceMs: number };
   },
 ): Promise<CommandResult> {
+  const cancellation = options.cancellation;
+  const interruptedCode = () =>
+    cancellation?.signal.reason === 'SIGINT' ? 130 : 143;
+  if (cancellation?.signal.aborted)
+    return {
+      code: interruptedCode(),
+      stdout: '',
+      stderr: 'Command interrupted before start',
+      timedOut: false,
+    };
   const maxOutput = options.maxOutput ?? 64_000;
   const child = spawn(args[0], args.slice(1), {
     cwd: options.cwd,
@@ -48,11 +60,11 @@ export async function runCommand(
       }, progress.intervalMs ?? 30_000)
     : undefined;
   const termination = { timedOut: false, outputOverflow: false };
-  const terminate = (): void => {
+  const terminate = (signal: NodeJS.Signals = 'SIGKILL'): void => {
     if (child.pid === undefined) return;
     try {
       try {
-        process.kill(-child.pid, 'SIGKILL');
+        process.kill(-child.pid, signal);
       } catch (error) {
         if (!(
           process.platform === 'darwin' &&
@@ -63,7 +75,7 @@ export async function runCommand(
           throw error;
         // Darwin can reject a group containing only an unreaped zombie.
         // A direct signal accepts that state but still rejects denied access.
-        process.kill(child.pid, 'SIGKILL');
+        process.kill(child.pid, signal);
       }
     } catch (error) {
       if (!(
@@ -78,6 +90,15 @@ export async function runCommand(
     termination.timedOut = true;
     terminate();
   }, options.timeout ?? 30_000);
+  let forceKill: ReturnType<typeof setTimeout> | undefined;
+  const interrupt = () => {
+    terminate(cancellation?.signal.reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM');
+    forceKill = setTimeout(() => {
+      terminate();
+    }, cancellation?.graceMs ?? 0);
+  };
+  cancellation?.signal.addEventListener('abort', interrupt, { once: true });
+  if (cancellation?.signal.aborted) interrupt();
   const capture = (current: string, data: string): string => {
     lastOutputAt = Date.now();
     if (current.length + data.length > maxOutput) {
@@ -104,16 +125,21 @@ export async function runCommand(
         resolve(status ?? 2);
       });
     });
+    // A closed leader may leave descendants that disconnected their stdio.
+    // Finish terminating the group before discarding its forced-kill timer.
+    if (cancellation?.signal.aborted) terminate();
     if (termination.outputOverflow)
       stderr += `\nCommand output exceeded ${maxOutput.toLocaleString('en-US')} characters; result is incomplete.`;
     if (termination.timedOut)
       stderr += `\nCommand ${label} timed out after ${String(options.timeout ?? 30_000)} ms.${logHint}`;
     return {
-      code: termination.timedOut
-        ? 124
-        : termination.outputOverflow
-          ? 125
-          : code,
+      code: cancellation?.signal.aborted
+        ? interruptedCode()
+        : termination.timedOut
+          ? 124
+          : termination.outputOverflow
+            ? 125
+            : code,
       stdout,
       stderr,
       timedOut: termination.timedOut,
@@ -121,5 +147,7 @@ export async function runCommand(
   } finally {
     clearTimeout(deadline);
     clearInterval(heartbeat);
+    clearTimeout(forceKill);
+    cancellation?.signal.removeEventListener('abort', interrupt);
   }
 }

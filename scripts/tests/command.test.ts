@@ -1,5 +1,67 @@
 import { expect, test } from 'bun:test';
 import { runCommand } from '../lib/command';
+import { withCleanup } from './cleanup';
+
+for (const leaderIgnoresSignal of [true, false]) {
+  test(`cancellation stops descendants and prevents later commands when leader ignores signal: ${String(leaderIgnoresSignal)}`, async () => {
+    const controller = new AbortController();
+    const interrupt = setTimeout(() => {
+      controller.abort('SIGTERM');
+    }, 500);
+    let descendant = 0;
+    await withCleanup(async () => {
+      const result = await runCommand(
+        [
+          process.execPath,
+          '-e',
+          `
+      ${leaderIgnoresSignal ? "process.on('SIGTERM', () => {});" : ''}
+      const child = Bun.spawn([process.execPath, '-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' });
+      console.log(child.pid);
+      setInterval(() => {}, 1000);
+      `,
+        ],
+        {
+          cwd: process.cwd(),
+          timeout: 5_000,
+          cancellation: { signal: controller.signal, graceMs: 100 },
+        },
+      );
+      expect(result.code).toBe(143);
+      expect(result.timedOut).toBe(false);
+      descendant = Number(result.stdout.trim());
+      expect(descendant).toBeGreaterThan(0);
+      await Bun.sleep(50);
+      expect(() => process.kill(descendant, 0)).toThrow();
+      const skipped = await runCommand(
+        [process.execPath, '-e', "console.log('started')"],
+        {
+          cwd: process.cwd(),
+          cancellation: { signal: controller.signal, graceMs: 100 },
+        },
+      );
+      expect(skipped.code).toBe(143);
+      expect(skipped.stdout).toBe('');
+    }, [
+      () => {
+        clearTimeout(interrupt);
+      },
+      () => {
+        if (descendant <= 0) return;
+        try {
+          process.kill(descendant, 'SIGKILL');
+        } catch (error) {
+          if (!(
+            error instanceof Error &&
+            'code' in error &&
+            error.code === 'ESRCH'
+          ))
+            throw error;
+        }
+      },
+    ]);
+  }, 10_000);
+}
 
 test('long command diagnostics expose progress and the existing log without echoing arguments', async () => {
   const result = await runCommand(

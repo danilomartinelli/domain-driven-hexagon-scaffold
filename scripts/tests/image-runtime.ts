@@ -33,10 +33,15 @@ export async function imageRuntime(
   cwd: string,
 ): Promise<ImageRuntime> {
   const platform = process.env.DDH_IMAGE_PLATFORM;
-  const tag = await buildImage(app, {
-    platform,
-    tag: `ddh-${app}-test:${randomUUID()}`,
-  });
+  const supplied = process.env.DDH_VALIDATED_IMAGE;
+  if (supplied && !/^sha256:[a-f0-9]{64}$/.test(supplied))
+    throw new Error('Validation requires an immutable local image ID');
+  const tag =
+    supplied ??
+    (await buildImage(app, {
+      platform,
+      tag: `ddh-${app}-test:${randomUUID()}`,
+    }));
   const name = `${manifest.project}-${app}-artifact`;
   const declaration = manifest.topology?.find((entry) => entry.name === app);
   if (!declaration) throw new Error('Image application is not selected');
@@ -112,6 +117,7 @@ export async function imageRuntime(
     running = false;
   };
   const removeImage = async () => {
+    if (supplied) return;
     const removed = await command(['docker', 'image', 'rm', tag]);
     expect(removed.code, removed.stderr).toBe(0);
   };

@@ -18,6 +18,10 @@ const directory = join(root, '.context/image-checks');
 mkdirSync(directory, { recursive: true });
 for (const platform of platforms) {
   const suites = [
+    {
+      name: 'publication',
+      command: ['bun', 'test', './scripts/tests/publication-images.test.ts'],
+    },
     { name: 'build', command: ['bun', 'test', './scripts/tests/oci.test.ts'] },
     {
       name: 'user',
