@@ -1,4 +1,13 @@
 import { get } from 'env-var';
+//#if persistence|messaging
+import { configurationValue } from '@starter/nest-support/configuration';
+
+function required(name: string): string {
+  const value = configurationValue(name);
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+}
+//#endif
 
 // Each reader covers one enabled capability; disabled capabilities read nothing.
 // No dotenv file is loaded.
@@ -12,7 +21,7 @@ export function httpPort(): number {
 /** Restricted runtime credentials; migrations use separate owner credentials. */
 export function databaseUri(): string {
   const setting = (name: string) =>
-    encodeURIComponent(get(`__PREFIX___DB_${name}`).required().asString());
+    encodeURIComponent(required(`__PREFIX___DB_${name}`));
   const port = get('__PREFIX___DB_PORT').required().asPortNumber();
   return `postgres://${setting('USERNAME')}:${setting('PASSWORD')}@${setting('HOST')}:${String(port)}/${setting('NAME')}`;
 }
@@ -21,7 +30,7 @@ export function databaseUri(): string {
 
 export function messagingOptions(): { broker: string; queue: string } {
   return {
-    broker: get('__PREFIX___RABBITMQ_URL').required().asString(),
+    broker: configurationValue('__PREFIX___RABBITMQ_URL') ?? `amqp://${encodeURIComponent(required('RABBITMQ_USERNAME'))}:${encodeURIComponent(required('RABBITMQ_PASSWORD'))}@${required('RABBITMQ_HOST')}:${required('RABBITMQ_PORT')}/${encodeURIComponent(required('RABBITMQ_VHOST'))}`,
     queue: get('__PREFIX___RABBITMQ_QUEUE')
       .default('__name__.commands.v1')
       .asString(),

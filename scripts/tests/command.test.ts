@@ -63,6 +63,25 @@ for (const leaderIgnoresSignal of [true, false]) {
   }, 10_000);
 }
 
+for (const code of [129, 130, 143]) {
+  test(`operator interruption terminates the active command and preserves status ${String(code)}`, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort(code);
+    }, 100);
+    try {
+      const result = await runCommand(
+        [process.execPath, '-e', 'setInterval(() => {}, 1000)'],
+        { cwd: process.cwd(), timeout: 1000, signal: controller.signal },
+      );
+      expect(result.code).toBe(code);
+      expect(result.timedOut).toBe(false);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+}
+
 test('long command diagnostics expose progress and the existing log without echoing arguments', async () => {
   const result = await runCommand(
     [

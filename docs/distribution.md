@@ -147,3 +147,9 @@ migration/status/rollback, REST/GraphQL, messaging and restart. The generated
 capability matrix also executed on both architectures. CI uses native Ubuntu runners
 for each architecture; a green build alone is not execution evidence. The full
 local gate includes both image execution paths.
+
+## Operate a Compose host
+
+Use the [Compose operations guide](operations.md) for digest selection, scoped file
+secrets, HTTPS, explicit migrations, update/rollback, diagnosis and per-application
+backup/restore. The same image serves both runtime and owned migration commands.

@@ -399,6 +399,7 @@ test('large Git file inventories preserve all workspace source files', async () 
     for (const path of [
       'scripts/tests/workspace-fixture.ts',
       'scripts/tests/cleanup.ts',
+      'scripts/lib/cleanup.ts',
       'scripts/lib/command.ts',
     ]) {
       await copyFile(join(import.meta.dir, '../..', path), join(source, path));
