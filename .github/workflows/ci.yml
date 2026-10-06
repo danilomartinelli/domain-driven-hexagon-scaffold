@@ -55,7 +55,8 @@ jobs:
     if: always()
     # Pinned so runner image upgrades are deliberate.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Keep time for component/distribution checks after the serial live suites.
+    timeout-minutes: 45
     steps:
       - name: Require both image architectures
         if: needs.images.result != 'success'
