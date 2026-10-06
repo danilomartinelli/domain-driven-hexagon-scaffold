@@ -7,10 +7,10 @@ or `dist/wallet` directory to a machine with the same OS/architecture and Bun
 
 [Generated applications](library-generators.md#application-capabilities) use the
 same `<name>:distribution` target. Packaging reads `app/application.json`: an
-application without declared persistence receives only `start` and no database
+application without declared persistence receives `start` and `preflight` and no database
 migration interface; a persistent one additionally receives the scoped migration
-tooling described below. Packaging rejects `database/` content without declared
-persistence instead of silently omitting its migration configuration. Generated
+tooling described below. Disabled persistence keeps owned SQL in the checkout but
+omits migrations and their interface from the artifact. Generated
 app artifacts include their own README with environment and transport instructions.
 
 Each artifact contains `app/` TypeScript, its `application.json` declaration and
@@ -63,6 +63,21 @@ credentials and databases for the two services.
 Packaging copies the installed dependency closure, retaining nested versions and
 materializing private workspace packages. Packaging is deliberately uncached;
 execution and migration targets are also uncached and always run live.
+
+Generated source `distribution.json` separates unconditional `dependencies` from
+`integrations`. Each prepared integration lists its `dependencies` and application
+relative `paths`. Packaging includes its dependency roots only when selected in
+`application.json` and excludes its paths when disabled. The installed transitive
+dependencies of selected roots remain included. Development images use the same
+selection. The older array of unconditional dependencies remains supported.
+Keep shared source outside capability-specific paths, and load optional adapters
+inside their selected composition factories. Do not put required functionality in
+an excluded path: register its requirements so preflight rejects incompatibility.
+
+After a declaration change, rebuild the distribution or image from the retained
+source. Delivered artifacts contain the selected composition's files and are not
+an authoring checkout for preparing or reactivating omitted integrations. See the
+[transition workflow](application-compatibility.md#disable-and-reactivate-prepared-integrations).
 
 ## Verification
 

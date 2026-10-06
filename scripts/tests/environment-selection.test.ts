@@ -6,6 +6,91 @@ import { join } from 'node:path';
 import { appWorkspace, generate, run } from './app-generator-fixture';
 import { withCleanup } from './cleanup';
 
+test('declaration transitions of one prepared application preserve owned data and queued work through public commands', async () => {
+  const workspace = await appWorkspace();
+  const select = ['--environment=development', '--run=capability-transition'];
+  const execute = (...args: string[]) =>
+    run(workspace, ['bun', 'run', 'env:exec', ...select, '--', ...args], {
+      timeout: 300_000,
+    });
+  await withCleanup(async () => {
+    await run(workspace, generate('transition', '--persistence=true'));
+    const app = join(workspace.root, 'src/apps/transition');
+    const migration = join(
+      app,
+      'database/migrations/1790900000000_transition-marker.sql',
+    );
+    const sql =
+      '-- Up Migration\nCREATE TABLE transition_marker (id text PRIMARY KEY);\nGRANT SELECT, INSERT ON transition_marker TO transition_runtime;\n-- Down Migration\nDROP TABLE transition_marker;\n';
+    await writeFile(migration, sql);
+    const composition = await readFile(
+      join(app, 'composition/app.module.ts'),
+      'utf8',
+    );
+    let initial = true;
+    for (const [persistence, messaging, exposure] of [
+      [true, true, true],
+      [false, true, false],
+      [false, false, false],
+      [true, false, true],
+      [true, true, true],
+    ]) {
+      await writeFile(
+        join(app, 'application.json'),
+        JSON.stringify({
+          name: 'transition',
+          persistence,
+          messaging,
+          exposure,
+          routes: [
+            {
+              name: 'graphql',
+              paths: ['~/transition/graphql$'],
+              stripPath: true,
+              upstreamPath: '/graphql',
+            },
+          ],
+        }),
+      );
+      await run(
+        workspace,
+        ['bun', 'run', 'env:prepare', ...select, '--app=transition'],
+        { timeout: 180_000 },
+      );
+      if (persistence)
+        await execute(
+          'env',
+          'DATABASE_APP=transition',
+          'bun',
+          'run',
+          'migration:up',
+        );
+      await execute(
+        'bun',
+        'scripts/tests/fixtures/capability-transition.ts',
+        initial ? 'initial' : 'retained',
+      );
+      expect(await readFile(migration, 'utf8')).toBe(sql);
+      expect(
+        await readFile(join(app, 'composition/app.module.ts'), 'utf8'),
+      ).toBe(composition);
+      initial = false;
+      console.log(
+        `Capability transition verified: persistence=${String(persistence)} messaging=${String(messaging)} exposure=${String(exposure)}`,
+      );
+    }
+  }, [
+    () =>
+      withCleanup(
+        () =>
+          run(workspace, ['bun', 'run', 'env:down', ...select], {
+            timeout: 120_000,
+          }),
+        [workspace.cleanup],
+      ),
+  ]);
+}, 1_200_000);
+
 test('preparing an existing development environment preserves credentials and resource ownership', async () => {
   const workspace = await appWorkspace();
   const prepare = [

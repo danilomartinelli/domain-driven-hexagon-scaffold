@@ -1,6 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { z } from 'zod';
 import { environmentPrefix } from '@starter/capabilities/declaration';
 import { selectedApplications } from '../../database/topology';
 import {
@@ -13,6 +12,7 @@ import {
 import { buildImage } from './image';
 import { commandSession } from './session';
 import { verifyEnvironmentOwnership } from './ownership';
+import { distributionSelection } from './distribution-selection';
 
 export function applicationDebugPort(name: string, offset = 0): number {
   const port =
@@ -83,16 +83,10 @@ export function applicationContainer(
         `amqp://${encodeURIComponent(manifest.broker.username)}:${encodeURIComponent(manifest.broker.password)}@rabbitmq:5672/${encodeURIComponent(manifest.broker.vhost)}`;
     delete env.RABBITMQ_MANAGEMENT_URL;
   }
-  const dependencies = z
-    .array(z.string())
-    .parse(
-      JSON.parse(
-        readFileSync(
-          join(workspaceRoot, 'src/apps', name, 'distribution.json'),
-          'utf8',
-        ),
-      ),
-    );
+  const { dependencies } = distributionSelection(
+    join(workspaceRoot, 'src/apps', name),
+    app,
+  );
   const workspacePackages = dependencies.filter(
     (dependency) =>
       dependency.startsWith('@starter/') &&

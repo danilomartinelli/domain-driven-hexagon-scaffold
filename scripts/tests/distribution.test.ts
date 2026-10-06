@@ -13,8 +13,115 @@ import { runCommand } from '../lib/command';
 import { createWorkspace } from './workspace-fixture';
 import { tcpGate } from './tcp-gate';
 import { withCleanup } from './cleanup';
+import { appWorkspace, generate, run } from './app-generator-fixture';
+import { withApp } from './app-runtime-fixture';
 
 const root = new URL('../../', import.meta.url).pathname;
+
+test('disabled prepared integrations retain source but deliver no inactive adapters or migration interface', async () => {
+  const workspace = await appWorkspace();
+  const delivery = mkdtempSync(join(tmpdir(), 'starter-disabled-'));
+  const sentinel = await tcpGate();
+  await withCleanup(async () => {
+    await run(workspace, generate('telemetry', '--persistence=true'));
+    const app = join(workspace.root, 'src/apps/telemetry');
+    const migration = join(
+      app,
+      'database/migrations/1790900000000_retained.sql',
+    );
+    writeFileSync(
+      migration,
+      '-- Up Migration\nSELECT 1;\n-- Down Migration\nSELECT 1;\n',
+    );
+    writeFileSync(
+      join(app, 'application.json'),
+      JSON.stringify({
+        name: 'telemetry',
+        persistence: false,
+        messaging: false,
+        exposure: false,
+      }),
+    );
+    const check = async ({ url }: { url: string }) => {
+      expect((await fetch(`${url}/health/ready`)).status).toBe(200);
+      for (const component of ['database', 'consumer', 'publisher'])
+        expect(
+          await (await fetch(`${url}/health/ready/${component}`)).json(),
+        ).toMatchObject({ status: 'not_applicable' });
+      expect((await fetch(`${url}/graphql`)).status).toBe(404);
+    };
+    await withApp(
+      {
+        cwd: workspace.root,
+        command: ['src/apps/telemetry/main.ts'],
+        settings: {},
+      },
+      check,
+    );
+    await run(workspace, ['bun', 'run', 'nx', 'run', 'telemetry:distribution']);
+    const artifact = join(delivery, 'telemetry');
+    cpSync(join(workspace.root, 'dist/telemetry'), artifact, {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+    expect(existsSync(migration)).toBe(true);
+    for (const path of [
+      'database',
+      'app/database',
+      'app/adapters/rabbitmq.transport.ts',
+      'app/adapters/status.resolver.ts',
+    ])
+      expect(existsSync(join(artifact, path)), path).toBe(false);
+    const manifest = JSON.parse(
+      readFileSync(join(artifact, 'package.json'), 'utf8'),
+    ) as {
+      scripts: Record<string, string>;
+      dependencies: Record<string, string>;
+    };
+    expect(Object.keys(manifest.scripts).sort()).toEqual([
+      'preflight',
+      'start',
+    ]);
+    for (const dependency of [
+      'slonik',
+      '@starter/rabbitmq',
+      'amqplib',
+      '@nestjs/apollo',
+    ])
+      expect(manifest.dependencies[dependency], dependency).toBeUndefined();
+    await workspace.cleanup();
+    await withApp(
+      { cwd: artifact, command: ['run', 'start'], settings: {} },
+      check,
+    );
+    await withApp(
+      {
+        cwd: artifact,
+        command: ['run', 'start'],
+        settings: {
+          TELEMETRY_DB_HOST: '127.0.0.1',
+          TELEMETRY_DB_PORT: sentinel.port,
+          TELEMETRY_DB_NAME: 'sentinel',
+          TELEMETRY_DB_USERNAME: 'sentinel',
+          TELEMETRY_DB_PASSWORD: 'sentinel',
+          TELEMETRY_RABBITMQ_URL: `amqp://sentinel:sentinel@127.0.0.1:${sentinel.port}`,
+        },
+      },
+      async (running) => {
+        await check(running);
+        await Bun.sleep(1500);
+        expect(sentinel.attempts()).toBe(0);
+        expect(running.logs()).not.toContain('consumer.unavailable');
+      },
+    );
+  }, [
+    workspace.cleanup,
+    () => sentinel.close(),
+    () => {
+      rmSync(delivery, { recursive: true, force: true });
+    },
+  ]);
+}, 120_000);
 
 test('source startup rejects incompatible User functionality before contacting dependencies', async () => {
   const workspace = await createWorkspace();

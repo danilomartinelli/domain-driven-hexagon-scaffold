@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { preflightApplication } from '@starter/capabilities/composition';
 import { applications } from '../../database/applications';
+import { distributionSelection } from './distribution-selection';
 import {
   containsPath,
   installedPackage,
@@ -64,7 +65,11 @@ function migrationPackages(): string[] {
   ];
 }
 
-function copySource(from: string, to: string): void {
+function copySource(
+  from: string,
+  to: string,
+  excludedPaths: string[] = [],
+): void {
   cpSync(from, to, {
     recursive: true,
     dereference: true,
@@ -77,7 +82,10 @@ function copySource(from: string, to: string): void {
         'tsconfig.json',
         'AGENTS.md',
         'distribution.json',
-      ].includes(basename(path)),
+      ].includes(basename(path)) &&
+      !excludedPaths.some((excluded) =>
+        containsPath(join(from, excluded), path),
+      ),
   });
 }
 
@@ -98,10 +106,6 @@ export function distribute(name: string, output?: string): string {
   if (declaration.name !== name)
     throw new Error(`application.json must declare name "${name}"`);
   const app = applications.find((entry) => entry.name === name);
-  if (!declaration.persistence && existsSync(join(appSource, 'database')))
-    throw new Error(
-      'Declare persistence in application.json before distributing database content',
-    );
   const migrations = app
     ? relative(appSource, fileURLToPath(app.migrations))
     : undefined;
@@ -117,16 +121,11 @@ export function distribute(name: string, output?: string): string {
   const destination = output ? resolve(output) : join(root, 'dist', name);
   if (output && existsSync(destination))
     throw new Error('Output directory must not exist');
+  const selection = distributionSelection(appSource, declaration);
   const dependencies = [
     ...new Set([
       '@starter/capabilities',
-      ...z
-        .array(z.string())
-        .parse(
-          JSON.parse(
-            readFileSync(join(appSource, 'distribution.json'), 'utf8'),
-          ),
-        ),
+      ...selection.dependencies,
       ...(app ? migrationPackages() : []),
     ]),
   ];
@@ -206,7 +205,7 @@ export function distribute(name: string, output?: string): string {
       if (!installed) throw new Error(`Missing ${dependency}`);
       direct[dependency] = readManifest(installed).version;
     }
-    copySource(appSource, join(temporary, 'app'));
+    copySource(appSource, join(temporary, 'app'), selection.excludedPaths);
     if (app) {
       mkdirSync(join(temporary, 'database'));
       for (const file of migrationTooling)

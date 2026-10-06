@@ -100,9 +100,12 @@ applications from their declarations instead of a central name list. User and
 Wallet declare all three capabilities and keep their contracts. A live matrix
 generates, checks and executes every combination against real PostgreSQL and
 RabbitMQ, with absent and never-contacted dependencies for disabled capabilities.
-Full disablement and reactivation of retained integrations remains incomplete;
-for example, distribution still rejects retained database source when persistence
-is disabled. The fresh-generation matrix does not establish those transitions.
+Prepared generated integrations support declaration-only disablement and
+reactivation (#72). Selected factories defer adapter loading; distribution inputs
+follow the declaration, omitting inactive adapters and migration interfaces while
+retaining owned source and SQL in the checkout. Separate transition regressions
+exercise public development commands with retained data and broker work and
+independent Linux artifacts. See the [author workflow](../application-compatibility.md#disable-and-reactivate-prepared-integrations).
 
 Functionality-group requirements and preflight compatibility validation are
 implemented (#71); see the [author/operator contract](../application-compatibility.md).

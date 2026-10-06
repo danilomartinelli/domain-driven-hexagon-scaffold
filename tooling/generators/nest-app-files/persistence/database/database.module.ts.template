@@ -7,9 +7,10 @@ import {
 import { createPool, type DatabasePool } from 'slonik';
 import { resultParser } from '@starter/nest-support/persistence';
 import { databaseUri } from '../configs/environment';
+import { DATABASE_POOL } from '../configs/tokens';
 
 /** Inject this pool into application-owned persistence adapters. */
-export const DATABASE_POOL = Symbol('__PREFIX___DATABASE_POOL');
+export { DATABASE_POOL } from '../configs/tokens';
 
 /** Owns the restricted runtime pool; startup neither connects eagerly nor migrates. */
 @Global()

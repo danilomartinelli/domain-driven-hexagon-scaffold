@@ -184,7 +184,27 @@ export default async function nestApp(
       exclude: ['node_modules'],
     }),
     // Packaging adds the migration tooling's own dependencies for persistence.
-    'distribution.json': JSON.stringify(imported),
+    'distribution.json': JSON.stringify({
+      dependencies: runtimeDependencies.base,
+      integrations: Object.fromEntries(
+        capabilities
+          .filter((capability) => enabled[capability])
+          .map((capability) => [
+            capability,
+            {
+              dependencies: runtimeDependencies[capability],
+              paths: {
+                persistence: ['database'],
+                messaging: [
+                  'adapters/rabbitmq.transport.ts',
+                  'application/message-handler.ts',
+                ],
+                exposure: ['adapters/status.resolver.ts'],
+              }[capability],
+            },
+          ]),
+      ),
+    }),
     'bunfig.toml': '[test]\nroot = "./tests/unit"\n',
   };
   const templates = fileURLToPath(
@@ -205,7 +225,7 @@ export default async function nestApp(
       );
       if (destination in files)
         throw new Error(`Duplicate template output ${destination}`);
-      files[destination] = render(
+      const rendered = render(
         readFileSync(source, 'utf8'),
         enabled,
         relative(templates, source),
@@ -213,6 +233,8 @@ export default async function nestApp(
         .replaceAll('__name__', name)
         .replaceAll('__PREFIX__', prefix)
         .replaceAll('__role__', `${name.replaceAll('-', '_')}_runtime`);
+      // A wholly disabled template contributes no empty, orphaned module.
+      if (rendered.trim()) files[destination] = rendered;
     }
   }
   const config = await resolveConfig(`${tree.root}/prettier.config.mjs`);
