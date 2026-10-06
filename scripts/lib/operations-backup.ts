@@ -15,7 +15,7 @@ import {
   readJson,
   writeJson,
   type Artifact,
-  type DeploymentState,
+  type InstallationState,
 } from './operations-config';
 
 type Compose = (
@@ -51,22 +51,41 @@ function ownerCommand(app: string, command: string): string[] {
   ];
 }
 
-export async function migrationHistory(
+const historyQuery =
+  "psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT name FROM public.pgmigrations ORDER BY id'";
+
+async function readHistory(
+  app: string,
+  compose: Compose,
+  command: string,
+): Promise<string[]> {
+  const output = await compose(ownerCommand(app, command));
+  return output ? output.split('\n') : [];
+}
+
+/** Applied migration names in order; fails when the database has no migration history. */
+export function migrationHistory(
   app: string,
   compose: Compose,
 ): Promise<string[]> {
-  const output = await compose(
-    ownerCommand(
-      app,
-      "psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT name FROM public.pgmigrations ORDER BY id'",
-    ),
+  return readHistory(app, compose, historyQuery);
+}
+
+/** Planning reads a database that was never migrated as having no applied migrations. */
+export function appliedMigrations(
+  app: string,
+  compose: Compose,
+): Promise<string[]> {
+  return readHistory(
+    app,
+    compose,
+    `if [ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.pgmigrations') IS NOT NULL")" = t ]; then ${historyQuery}; fi`,
   );
-  return output ? output.split('\n') : [];
 }
 
 /** Stream the custom archive through Docker cp, avoiding captured binary output and size limits. */
 export async function backupApplication(
-  state: DeploymentState,
+  state: InstallationState,
   app: Artifact,
   output: string,
   compose: Compose,
@@ -113,13 +132,18 @@ export async function backupApplication(
   ]);
 }
 
-/** Restore only this owning database, with applications stopped; broker state is never changed. */
-export async function restoreApplication(
-  state: DeploymentState,
+export interface VerifiedArchive {
+  path: string;
+  metadata: z.infer<typeof metadataSchema>;
+}
+
+/** Refuse a foreign or altered archive, or running applications, before any change. */
+export async function verifyArchive(
+  state: InstallationState,
   app: Artifact,
   input: string,
   compose: Compose,
-): Promise<void> {
+): Promise<VerifiedArchive> {
   const path = resolve(input);
   const metadata = metadataSchema.parse(readJson(`${path}.json`));
   if (
@@ -133,13 +157,25 @@ export async function restoreApplication(
     '--status',
     'running',
     '--quiet',
-    ...state.artifacts.map((entry) => `app-${entry.declaration.name}`),
+    ...state.applied.applications.map(
+      (entry) => `app-${entry.declaration.name}`,
+    ),
   ]);
   if (running)
     throw new Error(
       'Stop all applications before restoring; retained messages must be assessed before traffic resumes',
     );
-  if (state.artifacts.some((entry) => entry.declaration.exposure))
+  return { path, metadata };
+}
+
+/** Restore a verified archive into only its owning database; broker state is never changed. */
+export async function restoreApplication(
+  state: InstallationState,
+  app: Artifact,
+  { path, metadata }: VerifiedArchive,
+  compose: Compose,
+): Promise<void> {
+  if (state.applied.applications.some((entry) => entry.declaration.exposure))
     await compose(['stop', '--timeout', '20', 'gateway']);
   const remote = `/tmp/operations-${randomUUID()}.dump`;
   // Keep every unresolved application gated, including failed/interrupted restores.

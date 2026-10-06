@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Changed
 
+- Compose operations treat `deployment.json` as the desired selection for an
+  installation's lifetime. `state.json` (version 2) records applied images with
+  separate migration and startup outcomes and the retained owned resources; version 1
+  inventories are adopted with their identities. Image updates record their
+  candidate as desired, and inspection and shutdown use the applied inventory.
+
 - Selected environments derive services, startup, ports, credentials, explicit Kong
   routes and applicable migrations from application declarations. Development
   reconciliation retains database and broker state across addition, disablement,
@@ -31,6 +37,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Added
 
+- `ops plan` previews a desired Compose selection against the applied installation:
+  services to add, stop or recreate, retained resources, applicable migrations and
+  expected interruptions, without changing it. Rejected images are explained first.
 - `make dev`, `make test`, `make check` and `make down`, delegating to package
   scripts and uncached Nx targets. `bun run dev` prepares development
   infrastructure, migrates every application and watches both services.

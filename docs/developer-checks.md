@@ -74,7 +74,7 @@ requirement to the suites that exercise it.
 - **Linux images** (`bun run test:images`): Builds and executes AMD64/ARM64 images using the existing distribution contracts, generated capability matrix and container shutdown tests; `--platform=linux/arm64` selects focused feedback.
 - **Distributions** (`bun run test:distribution`): Packages each service, runs it from an external directory, migrates only its owned database and verifies independent HTTP/GraphQL and messaging
 - **Runner lifecycle** (`bun run test:tooling`): Real Docker: named environments, the `make dev`/`make down` workflow, development/sibling preservation, target guards, failure status, signals and cleanup
-- **Compose operations** (`bun run test:operations`): Real digest-selected bootstrap, scoped secrets, HTTPS, update/rollback, replay, private diagnostics and per-application backup/restore
+- **Compose operations** (`bun run test:operations`): Real digest-selected bootstrap, desired-selection planning, scoped secrets, HTTPS, update/rollback, replay, private diagnostics and per-application backup/restore
 - **Documentation** (`bun run check:docs`): All tracked and unignored Markdown sources; local files, images and anchors, including inbound links from unchanged documents
 - **Dependencies** (`bun run audit:changed`): Complete locked tree; no advisory ignores
 

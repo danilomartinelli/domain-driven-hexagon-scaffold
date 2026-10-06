@@ -12,9 +12,10 @@ from CI. Image publication is a separate action.
 
 Keep one stable, untracked directory per installation. Do not copy its inventory
 to a different path or remove it while retaining Docker resources. The directory
-and name determine its Compose project; a random owner label fences its containers,
-networks and volumes. Commands refuse foreign ownership and concurrent operators.
-`down` never deletes volumes. Retain the directory and backups securely outside Git.
+and name determine its Compose project at bootstrap; a random owner label fences its
+containers, networks and volumes. Commands refuse foreign ownership and concurrent
+operators. `down` never deletes volumes. Retain the directory and backups securely
+outside Git.
 
 ```sh
 ops_dir="$PWD/.secrets/compose-reference"
@@ -35,12 +36,15 @@ with its independently selected, available registry digest:
 }
 ```
 
-There is no default tag. Preparation reads `application.json` from each selected
-image and verifies its application name. Persistence adds one private database
-and an owner-only migration command; messaging adds a shared private broker;
-exposure adds Kong with the image's explicitly declared routes. An all-disabled
-application needs no secrets, certificates, database identities or migrations,
-and retains private operational HTTP. Omit `https` when no image enables exposure.
+`deployment.json` remains the
+[desired selection](#desired-applied-and-retained-state) for the installation's
+lifetime. There is no default tag. Preparation reads `application.json` from each
+selected image and verifies its application name. Persistence adds one private
+database and an owner-only migration command; messaging adds a shared private
+broker; exposure adds Kong with the image's explicitly declared routes. An
+all-disabled application needs no secrets, certificates, database identities or
+migrations, and retains private operational HTTP. Omit `https` when no image
+enables exposure.
 
 Supply these files in `secrets/`, only for enabled capabilities:
 
@@ -96,9 +100,9 @@ database and non-superuser owner/runtime identities, grants connection permissio
 and verifies supplied credentials. Repeat `prepare` to verify reuse: it never
 generates or rotates passwords, migrates, seeds or deletes data. Changing a secret
 file against retained database/broker credentials fails; perform intentional
-credential rotation separately. Preserve the original `deployment.json` as the
-bootstrap selection; `state.json` records the currently selected images after updates.
-Direct inventory edits are unsupported.
+credential rotation separately. Repeated preparation operates the applied
+installation and reports a differing desired selection without applying it. Direct
+`state.json` edits are unsupported.
 
 Both migration and server use the same application's exact image. Only migration
 receives the owner password. The owner can create owned schema objects; runtime
@@ -126,6 +130,68 @@ bun run ops --directory="$ops_dir" down
 bun run ops --directory="$ops_dir" prepare
 bun run ops --directory="$ops_dir" start
 ```
+
+## Desired, applied and retained state
+
+`deployment.json` holds the desired applications, exact image digests and HTTPS
+ingress. Editing it changes only that request. `state.json` separately records:
+
+- **Applied state:** the images and capabilities the managed Compose project
+  operates. Each application keeps its last migration outcome (`committed`,
+  `restored`, `failed` or `interrupted`, with the image and operation) and its
+  last startup verification (`verified`, `failed` or `interrupted`, with `http` or
+  `full` readiness). A selected digest or committed migration is not a verified
+  startup.
+- **Retained resources:** each persistent application's database volume, database,
+  owner/runtime roles and credential files, and the broker volume, vhost and
+  credential file. They are recorded when first applied and never removed by
+  these commands.
+
+`status`, `probe`, `inspect`, `replay`, `backup`, `restore`, `migrate`, `start`,
+`stop` and `down` use the applied inventory even when the desired selection adds or
+removes applications or is invalid. Ownership checks still refuse resources
+labelled for another installation. The installation name is part of its recorded
+identity; planning and image updates refuse a renamed `deployment.json`.
+
+`update` and `rollback` record their candidate in `deployment.json` before changing
+the installation and keep other desired edits. They refuse an invalid selection or
+one without that application, and they reject changed capabilities or routes.
+`prepare`, `start` and the other commands never add, remove or reconfigure
+applications to match the desired selection.
+
+Inventories with `"version": 1` are adopted by the next command other than `plan`.
+Adoption keeps the project, owner label, credentials, volumes, applied images and
+`deployment.json`. Outcomes before adoption are `unrecorded`. Such a
+`deployment.json` still holds the bootstrap selection, so `plan` reports any image
+updated since bootstrap as a requested change back to its bootstrap digest; select
+the applied digest in `deployment.json` to keep it.
+
+### Plan desired changes
+
+```sh
+bun run ops --directory="$ops_dir" plan
+```
+
+Planning verifies ownership, then inspects every desired image with the isolated
+compatibility preflight and lists its packaged migrations. It reads migration
+history only from running owned databases. The JSON preview contains:
+
+| Field           | Content                                                                                 |
+| --------------- | --------------------------------------------------------------------------------------- |
+| `applied`       | Current images, capabilities and recorded migration/startup outcomes                    |
+| `desired`       | The complete desired selection                                                          |
+| `changes`       | Requested additions, removals, image, capability/route and ingress changes              |
+| `services`      | Long-running services to add, stop, recreate or leave unchanged                         |
+| `resources`     | Retained resources active/inactive before and after, new identities and missing secrets |
+| `migrations`    | Applicable owned migrations; `unavailable` when the database is not running             |
+| `interruptions` | Expected maintenance effects, including application restarts and gateway reloads        |
+
+An unreadable history is never reported as empty. A rejected selection exits
+nonzero and explains each application: incompatible composition, an image declaring
+another application, an unavailable image or exposure without HTTPS. Planning does
+not start, stop or recreate services, migrate, change credentials, queues,
+`state.json` or `deployment.json`; it writes diagnostics under `logs/` and holds the
+operation lock while it runs.
 
 ## Interrupted operations and stale locks
 
@@ -168,21 +234,25 @@ candidate='ghcr.io/your-organization/user@sha256:<candidate digest>'
 bun run ops --directory="$ops_dir" update user --image="$candidate"
 ```
 
-The command writes `transition-<id>.json` with the previous and candidate digests,
-checks candidate migration status, stops the selected application, creates an owned
-backup under `backups/`, runs applicable migrations, selects the candidate, starts
-it and verifies private readiness. Gateway reload briefly interrupts ingress.
-Sibling application containers and images are preserved. Nonpersistent images skip
-database steps. Changed capabilities/routes require a separately planned resource
-transition; this bounded updater rejects them instead of silently discarding state.
+The command selects the candidate in `deployment.json`, writes
+`transition-<id>.json` with the previous and candidate digests, checks candidate
+migration status, stops the selected application, creates an owned backup under
+`backups/`, runs applicable migrations, selects the candidate, starts it and
+verifies private readiness. Gateway reload briefly interrupts ingress. Sibling
+application containers and images are preserved. Nonpersistent images skip database
+steps. Changed capabilities/routes appear in `plan`; this bounded updater rejects
+them instead of silently discarding state.
 
-A failed migration exits nonzero, records a failed transition and leaves the prior
-image selected with its server stopped. It never promotes the candidate or runs
-migration down. Inspect the transition, `status` and owned database before deciding
+A failed migration exits nonzero, records a failed transition and migration outcome
+and leaves the prior image applied with its server stopped. It never promotes the
+candidate or runs migration down. `deployment.json` keeps the requested candidate,
+so `plan` reports the outstanding image change; restore the applied digest there to
+withdraw it. Inspect the transition, `status` and owned database before deciding
 whether to restart the prior image or retry a corrected candidate. If migration
-succeeds but startup fails, state records the attempted candidate, the transition
-still fails, and the previous digest remains available in that record. Do not
-interpret an image pull or a migration success as a verified update.
+succeeds but startup fails, the applied state selects the candidate with its
+committed migration and failed startup, the transition still fails, and the
+previous digest remains available in that record. Do not interpret an image pull or
+a migration success as a verified update.
 
 ## Compatible image rollback
 
@@ -334,7 +404,11 @@ The operational regression executes these commands with real Docker, a disposabl
 loopback-only registry, exact digests, supplied test certificates, PostgreSQL,
 RabbitMQ and Kong. It covers bootstrap/reuse, private secrets and listeners,
 owner/runtime separation, update failure, compatible rollback, both application
-backups/restores, correlated replay and unavailable backlog. It retains owned
+backups/restores, correlated replay and unavailable backlog. Planning coverage
+adopts a version 1 inventory, edits the desired selection, previews it, rejects
+incompatible, misidentified and invalid selections, inspects and shuts down the
+applied installation, refuses a foreign owner, restarts with stable identities and
+data and preserves a sibling installation. It retains owned
 volumes and inventory under `.context/test-runs/operations-<id>/`; command logs
 and results are included in the existing CI diagnostics collection. Use `down` on that exact
 directory for cleanup. No command deletes volumes. Local-registry fixtures are

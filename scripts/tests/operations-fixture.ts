@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { availablePort } from '../lib/environments';
 import { buildImage } from '../lib/image';
 import { runCommand, type CommandResult } from '../lib/command';
-import { stateSchema, type DeploymentState } from '../lib/operations-config';
+import { stateSchema, type InstallationState } from '../lib/operations-config';
 import { removeOwnedContainer } from './owned-container';
 import { withCleanup } from './cleanup';
 
@@ -24,11 +24,12 @@ interface OperationsFixture {
   execute: (args: string[], timeout?: number) => Promise<string>;
   ops: (action: string, ...args: string[]) => Promise<string>;
   opsResult: (action: string, ...args: string[]) => Promise<CommandResult>;
-  state: () => DeploymentState;
+  state: () => InstallationState;
   compose: (args: string[]) => Promise<string>;
   digest: (tag: string) => Promise<string>;
   variant: (
-    kind: 'compatible' | 'failure' | 'interrupted' | 'incompatible',
+    kind:
+      'compatible' | 'failure' | 'interrupted' | 'incompatible' | 'addition',
   ) => Promise<string>;
   cleanup: () => Promise<void>;
   request: (
@@ -214,6 +215,26 @@ export async function operationsFixture(): Promise<OperationsFixture> {
       variant: async (kind) => {
         const context = join(directory, kind);
         mkdirSync(context);
+        if (kind === 'addition') {
+          // A separately named persistent messaging worker for planning additions.
+          writeFileSync(
+            join(context, 'application.json'),
+            JSON.stringify({
+              name: 'ledger',
+              persistence: true,
+              messaging: true,
+              exposure: false,
+            }),
+          );
+          writeFileSync(
+            join(context, 'Dockerfile'),
+            `FROM ${images.wallet}\nCOPY --chown=bun:bun application.json /app/app/application.json\n`,
+          );
+          const tag = `127.0.0.1:${String(registryPort)}/ledger:addition`;
+          await execute(['docker', 'build', '-t', tag, context]);
+          tags.push(tag);
+          return digest(tag);
+        }
         if (kind === 'incompatible') {
           writeFileSync(
             join(context, 'application.json'),

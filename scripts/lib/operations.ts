@@ -1,26 +1,51 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { applicationDeclarationSchema } from '@starter/capabilities/declaration';
-import { runCommand } from './command';
+import { runCommand, type CommandResult } from './command';
 import { withCleanup } from './cleanup';
 import { operationsDiagnostics } from './operations-diagnostics';
 import { verifyEnvironmentOwnership } from './ownership';
 import { operationsCompose, provisionDatabase } from './operations-compose';
 import {
+  appliedMigrations,
   assessRecovery,
   backupApplication,
   migrationHistory,
   restoreApplication,
+  verifyArchive,
 } from './operations-backup';
 import {
+  desiredDivergence,
+  desiredSelection,
   imageDigest,
-  readDeployment,
+  newInstallation,
+  readInstallation,
   readJson,
+  selectDesiredImage,
   writeJson,
+  type AppliedApplication,
   type Artifact,
 } from './operations-config';
+import { deploymentPlan, type PlannedArtifact } from './operations-plan';
+
+const actions = [
+  'plan',
+  'prepare',
+  'migrate',
+  'status',
+  'start',
+  'stop',
+  'down',
+  'probe',
+  'inspect',
+  'replay',
+  'update',
+  'rollback',
+  'backup',
+  'restore',
+];
 
 /** Operator commands own one inventory and never accept ambient Compose or application settings. */
 export async function runOperations(args: string[]): Promise<void> {
@@ -45,31 +70,18 @@ export async function runOperations(args: string[]): Promise<void> {
     !requestedDirectory ||
     extra.length ||
     !action ||
-    ![
-      'prepare',
-      'migrate',
-      'status',
-      'start',
-      'stop',
-      'down',
-      'probe',
-      'inspect',
-      'replay',
-      'update',
-      'rollback',
-      'backup',
-      'restore',
-    ].includes(action)
+    !actions.includes(action)
   )
     throw new Error(
-      'Usage: bun run ops --directory=<directory> prepare|migrate|status|start|stop|down|probe|inspect|replay|update|rollback|backup|restore [application]',
+      `Usage: bun run ops --directory=<directory> ${actions.join('|')} [application]`,
     );
-  if (action === 'prepare' && name)
+  if ((action === 'prepare' || action === 'plan') && name)
     throw new Error(
-      'prepare applies to the complete installation; omit the application argument',
+      `${action} applies to the complete installation; omit the application argument`,
     );
-  const deployment = readDeployment(requestedDirectory);
-  const directory = deployment.directory;
+  // Recorded inventory, not the desired selection, identifies what commands operate.
+  const installation = readInstallation(requestedDirectory);
+  const directory = installation.directory;
   const diagnostics = operationsDiagnostics(directory, action);
   const lock = join(directory, '.operation-lock');
   try {
@@ -125,6 +137,23 @@ export async function runOperations(args: string[]): Promise<void> {
       );
     return result.stdout.trim();
   };
+  const composePath = join(directory, 'compose.json');
+  const composeProject =
+    (project: string) =>
+    (command: string[], timeout?: number, cleanup = false) =>
+      execute(
+        [
+          'docker',
+          'compose',
+          '--project-name',
+          project,
+          '--file',
+          composePath,
+          ...command,
+        ],
+        timeout,
+        cleanup,
+      );
   const removeTransient = async (
     container: string,
     owner: string,
@@ -145,10 +174,15 @@ export async function runOperations(args: string[]): Promise<void> {
     if (ids)
       await execute(['docker', 'rm', '-f', ...ids.split(/\s+/)], 30_000, true);
   };
-  const artifact = async (app: string, image: string): Promise<Artifact> => {
-    imageDigest.parse(image);
+  /** Run packaged image code without network, secrets, environment or a writable filesystem. */
+  const isolated = async (
+    app: string,
+    image: string,
+    purpose: string,
+    command: string[],
+  ): Promise<CommandResult> => {
     if (controller.signal.aborted)
-      throw new Error('Operation interrupted before image preflight');
+      throw new Error(`Operation interrupted before image ${purpose}`);
     const owner = randomUUID();
     const container = `ddh-preflight-${owner}`;
     return withCleanup(async () => {
@@ -169,8 +203,7 @@ export async function runOperations(args: string[]): Promise<void> {
           '--entrypoint=bun',
           image,
           '--no-env-file',
-          '/app/node_modules/@starter/capabilities/preflight.ts',
-          '/app/app',
+          ...command,
         ],
         {
           cwd: directory,
@@ -182,10 +215,12 @@ export async function runOperations(args: string[]): Promise<void> {
       diagnostics.record(created, false);
       if (created.code !== 0)
         throw new Error(
-          `Image preflight creation failed for ${app}; diagnostic: ${diagnostics.logPath}`,
+          `Image ${purpose} creation failed for ${app}; diagnostic: ${diagnostics.logPath}`,
         );
       if (controller.signal.aborted)
-        throw new Error('Operation interrupted before image preflight startup');
+        throw new Error(
+          `Operation interrupted before image ${purpose} startup`,
+        );
       const result = await runCommand(
         ['docker', 'start', '--attach', container],
         {
@@ -197,42 +232,159 @@ export async function runOperations(args: string[]): Promise<void> {
         },
       );
       diagnostics.record(result, false);
-      if (result.code !== 0) {
-        // Forward only the contract's identifier-only diagnostic; image output
-        // must never echo operator secrets or arbitrary application data.
-        const reason =
-          /Application [a-z][a-z0-9-]*: (?:group [a-z][a-z0-9-]* requires (?:persistence|messaging|exposure)|(?:persistence|messaging|exposure) integration is not prepared)/.exec(
-            result.stderr,
-          )?.[0];
-        throw new Error(
-          `Image preflight failed for ${app}: ${reason ?? 'invalid or unavailable compatibility contract'}; prepare a compatible composition. Diagnostic: ${diagnostics.logPath}`,
+      return result;
+    }, [() => removeTransient(container, owner)]);
+  };
+  const artifact = async (app: string, image: string): Promise<Artifact> => {
+    imageDigest.parse(image);
+    const result = await isolated(app, image, 'preflight', [
+      '/app/node_modules/@starter/capabilities/preflight.ts',
+      '/app/app',
+    ]);
+    if (result.code !== 0) {
+      // Forward only the contract's identifier-only diagnostic; image output
+      // must never echo operator secrets or arbitrary application data.
+      const reason =
+        /Application [a-z][a-z0-9-]*: (?:group [a-z][a-z0-9-]* requires (?:persistence|messaging|exposure)|(?:persistence|messaging|exposure) integration is not prepared)/.exec(
+          result.stderr,
+        )?.[0];
+      throw new Error(
+        `Image preflight failed for ${app}: ${reason ?? 'invalid or unavailable compatibility contract'}; prepare a compatible composition. Diagnostic: ${diagnostics.logPath}`,
+      );
+    }
+    const declaration = applicationDeclarationSchema.parse(
+      JSON.parse(result.stdout),
+    );
+    if (declaration.name !== app)
+      throw new Error(
+        `Image does not own the selected application; it declares ${declaration.name}`,
+      );
+    return { image, declaration };
+  };
+  /** Packaged migration names, read from the artifact without database access. */
+  const packagedMigrations = async (
+    app: string,
+    image: string,
+  ): Promise<string[]> => {
+    const result = await isolated(app, image, 'migration inventory', [
+      '-e',
+      "const { readdirSync } = await import('node:fs'); const { database } = await Bun.file('/app/distribution.json').json(); console.log(JSON.stringify(database ? readdirSync(`/app/${database.migrations}`).filter((file) => file.endsWith('.sql')).sort().map((file) => file.slice(0, -4)) : []));",
+    ]);
+    if (result.code !== 0)
+      throw new Error(
+        `Image migration inventory failed for ${app}; diagnostic: ${diagnostics.logPath}`,
+      );
+    return z.array(z.string()).parse(JSON.parse(result.stdout));
+  };
+  /** Planning reads only running databases; it never starts a service to answer. */
+  const appliedHistory = async (
+    project: string,
+    app: string,
+  ): Promise<string[] | undefined> => {
+    if (!existsSync(composePath)) return undefined;
+    const compose = composeProject(project);
+    try {
+      if (
+        !(await compose([
+          'ps',
+          '--status',
+          'running',
+          '--quiet',
+          `postgres-${app}`,
+        ]))
+      )
+        return undefined;
+      return await appliedMigrations(app, compose);
+    } catch (error) {
+      // The diagnostic log retains the failure; the plan reports it as unavailable.
+      if (controller.signal.aborted) throw error;
+      return undefined;
+    }
+  };
+  const plan = async (): Promise<void> => {
+    const { config } = desiredSelection(installation);
+    const existing = installation.state;
+    if (installation.adopted)
+      console.error(
+        'Planning against the version 1 inventory adopted in memory; the next other operator command records it.',
+      );
+    const state = existing ?? newInstallation(config.name, directory, []);
+    await verifyEnvironmentOwnership(state, execute, Boolean(existing));
+    const desired: PlannedArtifact[] = [];
+    const rejected: string[] = [];
+    for (const [app, image] of Object.entries(config.images)) {
+      try {
+        const inspected = await artifact(app, image);
+        desired.push({
+          ...inspected,
+          migrations: inspected.declaration.persistence
+            ? await packagedMigrations(app, image)
+            : [],
+        });
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        rejected.push(
+          `${app}: ${error instanceof Error ? error.message : 'image inspection failed'}`,
         );
       }
-      const declaration = applicationDeclarationSchema.parse(
-        JSON.parse(result.stdout),
+    }
+    if (
+      !config.https &&
+      desired.some(({ declaration }) => declaration.exposure)
+    )
+      rejected.push(
+        'https: exposed applications require an HTTPS bind/port and certificate files',
       );
-      if (declaration.name !== app)
-        throw new Error('Image does not own the selected application');
-      return { image, declaration };
-    }, [() => removeTransient(container, owner)]);
+    if (rejected.length)
+      throw new Error(
+        `Desired selection rejected; nothing was changed:\n- ${rejected.join('\n- ')}`,
+      );
+    const histories: Record<string, string[] | undefined> = {};
+    for (const { application } of state.retained.databases)
+      if (
+        desired.some(
+          ({ declaration }) =>
+            declaration.name === application && declaration.persistence,
+        )
+      )
+        histories[application] = await appliedHistory(
+          state.project,
+          application,
+        );
+    const secrets = join(directory, 'secrets');
+    console.log(
+      JSON.stringify(
+        deploymentPlan({
+          state,
+          existing: Boolean(existing),
+          desired: {
+            ...(config.https ? { https: config.https } : {}),
+            applications: desired,
+          },
+          histories,
+          secretFiles: existsSync(secrets) ? readdirSync(secrets) : [],
+        }),
+        null,
+        2,
+      ),
+    );
   };
   let completed = false;
   await withCleanup(async () => {
-    let state = deployment.state;
+    if (action === 'plan') {
+      await plan();
+      completed = true;
+      return;
+    }
+    let state = installation.state;
     const newlyPrepared = !state;
     if (!state) {
       if (action !== 'prepare') throw new Error('Prepare the deployment first');
+      const { config } = desiredSelection(installation);
       const artifacts: Artifact[] = [];
-      for (const [app, image] of Object.entries(deployment.config.images))
+      for (const [app, image] of Object.entries(config.images))
         artifacts.push(await artifact(app, image));
-      state = {
-        version: 1,
-        project: `ddh-ops-${deployment.config.name}-${createHash('sha256').update(directory).digest('hex').slice(0, 8)}`,
-        owner: randomUUID(),
-        directory,
-        config: deployment.config,
-        artifacts,
-      };
+      state = newInstallation(config.name, directory, artifacts, config.https);
     }
     // Validate selected immutable artifacts before rewriting Compose/state,
     // supplying credentials to containers, stopping services or running migrations.
@@ -241,22 +393,25 @@ export async function runOperations(args: string[]): Promise<void> {
       const image = options.get('image');
       if (
         !name ||
-        !state.artifacts.some((entry) => entry.declaration.name === name)
+        !state.applied.applications.some(
+          (entry) => entry.declaration.name === name,
+        )
       )
         throw new Error('Select a prepared application');
       if (!image) throw new Error('Supply --image=<repository@sha256:digest>');
+      desiredSelection(installation, name);
       validatedCandidate = await artifact(name, image);
     } else if (
       !newlyPrepared &&
       ['prepare', 'start', 'migrate', 'replay', 'restore'].includes(action)
     ) {
-      for (const entry of state.artifacts)
+      for (const entry of state.applied.applications)
         if (!name || name === entry.declaration.name)
           await artifact(entry.declaration.name, entry.image);
     }
     const current = state;
     await verifyEnvironmentOwnership(current, execute, !newlyPrepared);
-    const composePath = join(directory, 'compose.json');
+    const statePath = join(directory, 'state.json');
     const saveCompose = (value = current) => {
       writeJson(
         composePath,
@@ -264,21 +419,27 @@ export async function runOperations(args: string[]): Promise<void> {
       );
     };
     saveCompose();
-    writeJson(join(directory, 'state.json'), current);
-    const compose = (command: string[], timeout?: number, cleanup = false) =>
-      execute(
-        [
-          'docker',
-          'compose',
-          '--project-name',
-          current.project,
-          '--file',
-          composePath,
-          ...command,
-        ],
-        timeout,
-        cleanup,
+    writeJson(statePath, current);
+    if (installation.adopted)
+      console.error(
+        'Recorded the existing inventory as applied and retained state; identities, credentials, volumes and deployment.json are unchanged.',
       );
+    const compose = composeProject(current.project);
+    const now = () => new Date().toISOString();
+    const failure = () =>
+      controller.signal.aborted
+        ? ('interrupted' as const)
+        : ('failed' as const);
+    const recordOutcome = (
+      application: string,
+      outcome: Partial<Pick<AppliedApplication, 'migration' | 'startup'>>,
+    ) => {
+      const entry = current.applied.applications.find(
+        (candidate) => candidate.declaration.name === application,
+      );
+      if (entry) Object.assign(entry, outcome);
+      writeJson(statePath, current);
+    };
     const oneShot = async (
       service: string,
       command: string[],
@@ -299,7 +460,9 @@ export async function runOperations(args: string[]): Promise<void> {
       );
     };
     const app = name
-      ? current.artifacts.find((entry) => entry.declaration.name === name)
+      ? current.applied.applications.find(
+          (entry) => entry.declaration.name === name,
+        )
       : undefined;
     if (name && !app) throw new Error('Application is not selected');
     const requiredApp = (): Artifact => {
@@ -327,6 +490,39 @@ export async function runOperations(args: string[]): Promise<void> {
         `migration:${command}`,
       ]);
     };
+    /** Record a step's outcome on its application whether it succeeds, fails or is interrupted. */
+    const recordedStep = async <T>(
+      application: string,
+      step: () => Promise<T>,
+      outcome: (
+        result: 'succeeded' | 'failed' | 'interrupted',
+        at: string,
+      ) => Partial<Pick<AppliedApplication, 'migration' | 'startup'>>,
+    ): Promise<T> => {
+      let value: T;
+      try {
+        value = await step();
+      } catch (error) {
+        recordOutcome(application, outcome(failure(), now()));
+        throw error;
+      }
+      recordOutcome(application, outcome('succeeded', now()));
+      return value;
+    };
+    /** Commit migrations, recording their outcome separately from startup. */
+    const migrateUp = (selected: Artifact, operation: 'migrate' | 'update') =>
+      recordedStep(
+        selected.declaration.name,
+        () => migrate(selected, 'up'),
+        (result, at) => ({
+          migration: {
+            operation,
+            image: selected.image,
+            result: result === 'succeeded' ? 'committed' : result,
+            at,
+          },
+        }),
+      );
     const probe = async (
       selected: Artifact,
       wait = false,
@@ -353,20 +549,43 @@ export async function runOperations(args: string[]): Promise<void> {
         process.exit(${wait ? 'response.ok ? 0 : 1' : '0'});
       `,
       ]);
-    const startApplication = async (selected: Artifact, verifyAll = false) => {
-      await compose([
-        'up',
-        '-d',
-        '--no-deps',
-        '--wait',
-        '--wait-timeout',
-        '60',
-        `app-${selected.declaration.name}`,
-      ]);
-      console.log(await probe(selected, true, verifyAll ? 'all' : 'http'));
+    /** Start one selected server; `start` verifies HTTP and image changes full readiness. */
+    const startApplication = (
+      selected: Artifact,
+      operation: 'start' | 'update' | 'rollback',
+    ) => {
+      const readiness = operation === 'start' ? 'http' : 'full';
+      return recordedStep(
+        selected.declaration.name,
+        async () => {
+          await compose([
+            'up',
+            '-d',
+            '--no-deps',
+            '--wait',
+            '--wait-timeout',
+            '60',
+            `app-${selected.declaration.name}`,
+          ]);
+          console.log(
+            await probe(selected, true, readiness === 'full' ? 'all' : 'http'),
+          );
+        },
+        (result, at) => ({
+          startup: {
+            operation,
+            image: selected.image,
+            readiness,
+            result: result === 'succeeded' ? 'verified' : result,
+            at,
+          },
+        }),
+      );
     };
     const refreshGateway = async () => {
-      if (current.artifacts.some((entry) => entry.declaration.exposure))
+      if (
+        current.applied.applications.some((entry) => entry.declaration.exposure)
+      )
         await compose([
           'up',
           '-d',
@@ -379,10 +598,14 @@ export async function runOperations(args: string[]): Promise<void> {
         ]);
     };
     if (action === 'prepare') {
-      const infra = current.artifacts
+      const infra = current.applied.applications
         .filter((entry) => entry.declaration.persistence)
         .map((entry) => `postgres-${entry.declaration.name}`);
-      if (current.artifacts.some((entry) => entry.declaration.messaging))
+      if (
+        current.applied.applications.some(
+          (entry) => entry.declaration.messaging,
+        )
+      )
         infra.push('rabbitmq');
       try {
         if (infra.length)
@@ -394,7 +617,7 @@ export async function runOperations(args: string[]): Promise<void> {
             '60',
             ...infra,
           ]);
-        for (const entry of current.artifacts.filter(
+        for (const entry of current.applied.applications.filter(
           (entry) => entry.declaration.persistence,
         ))
           await compose([
@@ -405,7 +628,7 @@ export async function runOperations(args: string[]): Promise<void> {
             '-ec',
             provisionDatabase(entry.declaration.name),
           ]);
-        const messenger = current.artifacts.find(
+        const messenger = current.applied.applications.find(
           (entry) => entry.declaration.messaging,
         );
         if (messenger)
@@ -444,14 +667,18 @@ export async function runOperations(args: string[]): Promise<void> {
       console.log(
         `Prepared ${current.project}; identities and data retained. Run owned migrations explicitly.`,
       );
-    } else if (action === 'status' || action === 'migrate') {
-      persistent();
-      console.log(
-        await migrate(requiredApp(), action === 'status' ? 'status' : 'up'),
-      );
+      const divergence = desiredDivergence(installation);
+      if (divergence)
+        console.log(
+          `${divergence} Preparation does not apply topology changes.`,
+        );
+    } else if (action === 'status') {
+      console.log(await migrate(persistent(), 'status'));
+    } else if (action === 'migrate') {
+      console.log(await migrateUp(persistent(), 'migrate'));
     } else if (action === 'start') {
       assessRecovery(directory, options.get('assessment'));
-      const selected = app ? [app] : current.artifacts;
+      const selected = app ? [app] : current.applied.applications;
       for (const entry of selected.filter(
         (entry) => entry.declaration.persistence,
       )) {
@@ -459,7 +686,7 @@ export async function runOperations(args: string[]): Promise<void> {
         if (/^pending\t/m.test(status))
           throw new Error('Run pending owned migrations before startup');
       }
-      for (const entry of selected) await startApplication(entry);
+      for (const entry of selected) await startApplication(entry, 'start');
       await refreshGateway();
       rmSync(join(directory, 'recovery.json'), { force: true });
     } else if (action === 'stop') {
@@ -467,7 +694,7 @@ export async function runOperations(args: string[]): Promise<void> {
         'stop',
         '--timeout',
         '20',
-        ...(app ? [app] : current.artifacts).map(
+        ...(app ? [app] : current.applied.applications).map(
           (entry) => `app-${entry.declaration.name}`,
         ),
       ]);
@@ -527,7 +754,21 @@ export async function runOperations(args: string[]): Promise<void> {
     } else if (action === 'restore') {
       const input = options.get('input');
       if (!input) throw new Error('Supply --input=<verified archive path>');
-      await restoreApplication(current, persistent(), input, compose);
+      const selected = persistent();
+      // A refused archive leaves the database and its recorded outcome unchanged.
+      const archive = await verifyArchive(current, selected, input, compose);
+      await recordedStep(
+        selected.declaration.name,
+        () => restoreApplication(current, selected, archive, compose),
+        (result, at) => ({
+          migration: {
+            operation: 'restore',
+            image: archive.metadata.image,
+            result: result === 'succeeded' ? 'restored' : result,
+            at,
+          },
+        }),
+      );
       console.log(
         'Database restored. RabbitMQ is unchanged; review recovery.json and supply a data/messaging assessment before start.',
       );
@@ -542,7 +783,7 @@ export async function runOperations(args: string[]): Promise<void> {
         JSON.stringify(previous.declaration)
       )
         throw new Error(
-          'Capability/route changes require a separately planned resource transition; image updates preserve the prepared topology',
+          'Capability/route changes require a separately planned resource transition; review them with plan. Image updates preserve the applied topology',
         );
       let compatibilityReview: unknown = null;
       if (action === 'rollback') {
@@ -570,9 +811,16 @@ export async function runOperations(args: string[]): Promise<void> {
             'Database migration history changed since the compatibility review',
           );
       }
+      // The request becomes desired before the environment changes; the applied
+      // outcomes below, not this selection, record whether it succeeded.
+      selectDesiredImage(
+        installation,
+        previous.declaration.name,
+        candidate.image,
+      );
       const id = randomUUID();
-      const recordPath = join(directory, `transition-${id}.json`);
-      const record = {
+      const transitionPath = join(directory, `transition-${id}.json`);
+      const transition = {
         action,
         application: previous.declaration.name,
         previousImage: previous.image,
@@ -584,18 +832,21 @@ export async function runOperations(args: string[]): Promise<void> {
         error: '',
         diagnostic: diagnostics.logPath,
       };
-      writeJson(recordPath, record);
-      const candidateState = {
-        ...current,
-        artifacts: current.artifacts.map((entry) =>
-          entry === previous ? candidate : entry,
-        ),
-      };
+      writeJson(transitionPath, transition);
+      const promoted = () =>
+        current.applied.applications.map((entry) =>
+          entry.declaration.name === previous.declaration.name
+            ? { ...entry, ...candidate }
+            : entry,
+        );
       await withCleanup(async () => {
         try {
-          saveCompose(candidateState);
+          saveCompose({
+            ...current,
+            applied: { ...current.applied, applications: promoted() },
+          });
           if (candidate.declaration.persistence)
-            record.migrationStatus = await migrate(candidate, 'status');
+            transition.migrationStatus = await migrate(candidate, 'status');
           // A short per-application maintenance window prevents writes during schema transition.
           await compose([
             'stop',
@@ -604,7 +855,7 @@ export async function runOperations(args: string[]): Promise<void> {
             `app-${previous.declaration.name}`,
           ]);
           if (candidate.declaration.persistence) {
-            record.backup = await backupApplication(
+            transition.backup = await backupApplication(
               current,
               previous,
               join(
@@ -614,31 +865,31 @@ export async function runOperations(args: string[]): Promise<void> {
               ),
               compose,
             );
-            record.status =
+            transition.status =
               action === 'update' ? 'migrating' : 'compatibility-reviewed';
-            writeJson(recordPath, record);
-            if (action === 'update') await migrate(candidate, 'up');
+            writeJson(transitionPath, transition);
+            if (action === 'update') await migrateUp(candidate, 'update');
           }
-          record.status = 'promoting';
-          writeJson(recordPath, record);
+          transition.status = 'promoting';
+          writeJson(transitionPath, transition);
           // Only successful migrations can select the candidate for application startup.
-          current.artifacts = candidateState.artifacts;
-          writeJson(join(directory, 'state.json'), current);
-          await startApplication(candidate, true);
+          current.applied.applications = promoted();
+          writeJson(statePath, current);
+          await startApplication(candidate, action);
           await refreshGateway();
-          record.status = 'verified';
+          transition.status = 'verified';
           console.log(
             `${action} verified: ${candidate.declaration.name} ${candidate.image}`,
           );
         } catch (error) {
-          record.status = 'failed';
-          record.error =
+          transition.status = 'failed';
+          transition.error =
             'No automatic database reversal. Inspect status and retained transition evidence before recovery.';
           throw error;
         }
       }, [
         () => {
-          writeJson(recordPath, record);
+          writeJson(transitionPath, transition);
         },
         () => {
           saveCompose();
