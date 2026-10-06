@@ -78,5 +78,12 @@ allows 20 seconds for the existing 15-second application shutdown contract.
 Local image execution covers ARM64 natively and AMD64 through emulation; see
 [distribution verification](../distribution.md#linux-oci-images).
 
-Pending: the Compose reference operations (#63) and GHCR publication
-(#64). No registry publication or deployment is established by this ADR.
+Manual GHCR publication tooling is implemented (#64): discovered one/all
+selection, exact-image execution and transfer on both architectures, public
+package preflight, commit tags and immutable digest output. See
+[publication](../publication.md) for setup and the explicit trigger. Actual
+registry publication and package visibility remain unverified until an
+authorized dispatch executes.
+
+Pending: the Compose reference operations (#63). No actual registry publication
+or deployment is established by this ADR.

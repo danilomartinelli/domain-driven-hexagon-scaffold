@@ -9,6 +9,80 @@ import { isolatedEnvironment } from './workspace-fixture';
 
 const root = join(import.meta.dir, '../..');
 
+test('GHCR publication is manual and waits for both architecture validations without deploying', async () => {
+  const step = z.object({
+    run: z.string().optional(),
+    uses: z.string().optional(),
+    if: z.string().optional(),
+  });
+  const job = z.object({
+    needs: z.string().optional(),
+    if: z.string().optional(),
+    permissions: z.record(z.string(), z.string()).optional(),
+    steps: z.array(step),
+    strategy: z
+      .object({
+        matrix: z.object({
+          include: z.array(
+            z.object({ platform: z.string(), runner: z.string() }),
+          ),
+        }),
+      })
+      .optional(),
+  });
+  const workflow = z
+    .object({
+      on: z.record(z.string(), z.unknown()),
+      permissions: z.record(z.string(), z.string()),
+      jobs: z.record(z.string(), job),
+    })
+    .parse(
+      Bun.YAML.parse(
+        await Bun.file(
+          join(root, '.github/workflows/publish-images.yml'),
+        ).text(),
+      ),
+    );
+  expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
+  expect(workflow.permissions).toEqual({ contents: 'read' });
+  expect(Object.keys(workflow.jobs)).toEqual(['validate', 'publish']);
+  const { validate, publish } = workflow.jobs;
+  expect(validate.strategy?.matrix.include).toEqual(
+    [
+      {
+        platform: 'linux/amd64',
+        runner: 'ubuntu-24.04',
+        artifact: 'linux-amd64',
+      },
+      {
+        platform: 'linux/arm64',
+        runner: 'ubuntu-24.04-arm',
+        artifact: 'linux-arm64',
+      },
+    ].map(({ platform, runner }) => ({ platform, runner })),
+  );
+  expect(validate.permissions?.packages).toBeUndefined();
+  expect(publish.needs).toBe('validate');
+  expect(publish.if).toBeUndefined();
+  expect(publish.permissions?.packages).toBe('write');
+  const prepareIndex = validate.steps.findIndex(({ run }) =>
+    run?.includes('publication.ts prepare "$APPLICATION"'),
+  );
+  const archiveIndex = validate.steps.findIndex(({ uses }) =>
+    uses?.startsWith('actions/upload-artifact@'),
+  );
+  expect(prepareIndex).toBeGreaterThan(-1);
+  expect(archiveIndex).toBeGreaterThan(prepareIndex);
+  expect(validate.steps[archiveIndex].if).toBeUndefined();
+  const commands = Object.values(workflow.jobs)
+    .flatMap(({ steps }) => steps.flatMap(({ run }) => run ?? ''))
+    .join('\n');
+  expect(commands).not.toMatch(
+    /docker compose|migration:|\bssh\b|kubectl|terraform|:latest/,
+  );
+  expect(commands).toContain('publication.ts publish "$APPLICATION"');
+});
+
 const manifestSchema = z.object({ scripts: z.record(z.string(), z.string()) });
 
 async function readPackageScripts(): Promise<Record<string, string>> {

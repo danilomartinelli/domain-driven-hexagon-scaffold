@@ -1,0 +1,112 @@
+name: Publish application images
+
+on:
+  workflow_dispatch:
+    inputs:
+      application:
+        description: Declared application name, or all discovered applications
+        required: true
+        type: string
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-images-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            artifact: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install tools and frozen dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ripgrep
+          bun install --frozen-lockfile
+      - name: Build and execute the selected artifacts
+        env:
+          APPLICATION: ${{ inputs.application }}
+          PLATFORM: ${{ matrix.platform }}
+          OUTPUT: .context/publication/${{ matrix.artifact }}
+        run: bun --no-env-file scripts/publication.ts prepare "$APPLICATION" --repository="$GITHUB_REPOSITORY" --revision="$GITHUB_SHA" --platform="$PLATFORM" --output="$OUTPUT"
+      - name: Transfer only validated artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            .context/publication/${{ matrix.artifact }}/*.tar
+            .context/publication/${{ matrix.artifact }}/validated.json
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Preserve execution diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-${{ matrix.artifact }}
+          path: .context/publication/${{ matrix.artifact }}/*.log
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+  publish:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: linux-*
+          path: .context/publication
+      - name: Authenticate the publication job
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Require public packages and publish the exact validated images
+        env:
+          APPLICATION: ${{ inputs.application }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_HOST: github.com
+        run: bun --no-env-file scripts/publication.ts publish "$APPLICATION" --repository="$GITHUB_REPOSITORY" --revision="$GITHUB_SHA" --output=.context/publication
+      - name: Preserve immutable release selection
+        uses: actions/upload-artifact@v7
+        with:
+          name: published-images
+          path: .context/publication/published.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove registry credentials
+        if: always()
+        run: docker logout ghcr.io

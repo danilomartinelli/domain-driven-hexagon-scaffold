@@ -125,6 +125,10 @@ roles cannot run migrations, and another `DATABASE_APP` is rejected. Owner files
 belong only to the one-shot migration process. Local builds produce images only; registry publication and deployment are separate
 actions.
 
+For manual one/all GHCR publication of these exact validated artifacts, see
+[explicit public image publication](publication.md). It records commit identity
+and immutable digests without deploying an environment.
+
 ```sh
 bun run test:images                         # execute both supported architectures
 bun run test:images --platform=linux/arm64   # one target for focused feedback

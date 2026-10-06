@@ -154,8 +154,11 @@ test('outbox failure rolls back User and leaves the command unacknowledged for r
 
 test('consumer reconnects after unavailable startup and disconnect while HTTP and GraphQL remain usable', async () => {
   await withCommands(async (channel, replies) => {
-    const expectCreatedReply = async (phase: string): Promise<void> => {
-      const reply = await receive(channel, replies);
+    const expectCreatedReply = async (
+      phase: string,
+      queue: string,
+    ): Promise<void> => {
+      const reply = await receive(channel, queue);
       const body = reply.content.toString();
       const diagnostic = JSON.stringify({
         phase,
@@ -191,15 +194,24 @@ test('consumer reconnects after unavailable startup and disconnect while HTTP an
       await until(() => userOutput().includes('User commands reconnect in'));
       expect(await channel.get(replies, { noAck: true })).toBe(false);
       gate.allow();
-      await expectCreatedReply('startup recovery');
+      await expectCreatedReply('startup recovery', replies);
+      // A reply can arrive before the command ACK; leave a duplicate response
+      // pending so the next phase cannot accidentally consume the earlier reply.
+      await send(channel, replies, baseline);
+      await until(() =>
+        userOutput().includes('User command rejected by business rules.'),
+      );
+      const { queue: reconnectReplies } = await channel.assertQueue('', {
+        exclusive: true,
+      });
       gate.block();
       await getHttpServer().get('/v1/users').expect(200);
-      await send(channel, replies, {
+      await send(channel, reconnectReplies, {
         ...baseline,
         data: { ...baseline.data, email: 'reconnected@example.com' },
       });
       gate.allow();
-      await expectCreatedReply('disconnect recovery');
+      await expectCreatedReply('disconnect recovery', reconnectReplies);
       expect(
         (await ownerDatabase().query('SELECT * FROM users')).rowCount,
       ).toBe(2);
