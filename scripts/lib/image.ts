@@ -18,6 +18,7 @@ export async function buildImage(
   options: {
     platform?: string;
     tag?: string;
+    labels?: Record<string, string>;
     execute?: (
       args: string[],
     ) => Promise<{ code: number; stdout: string; stderr: string }>;
@@ -85,6 +86,10 @@ export async function buildImage(
       platform,
       '--tag',
       tag,
+      ...Object.entries(options.labels ?? {}).flatMap(([key, value]) => [
+        '--label',
+        `${key}=${value}`,
+      ]),
       '--file',
       join(context, 'docker/application.Dockerfile'),
       '--build-arg',

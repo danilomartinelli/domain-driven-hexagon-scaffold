@@ -141,6 +141,12 @@ edits. Re-run after changing dependencies or capabilities to rebuild and reconci
 the selected environment. Stopping the foreground command stops its application
 containers and retains the ready infrastructure until `make down`.
 
+Development image builds carry the environment's project and owner labels.
+`env:down` removes their development tags and superseded untagged builds after
+removing containers, while preserving named volumes, unrelated image aliases and
+sibling environments. A foreign image owner or an image still used by a container
+fails cleanup. Older images without ownership labels remain untouched.
+
 Request debugging explicitly; inspectors alone are mapped to loopback:
 
 ```sh

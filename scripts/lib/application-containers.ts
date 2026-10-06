@@ -35,14 +35,26 @@ export function applicationContainer(
   const app = manifest.topology?.find((entry) => entry.name === name);
   if (!app) throw new Error(`Application is not selected: ${name}`);
   const prefix = environmentPrefix(name);
-  const defaults = environmentVariables(manifest, {});
+  const applicationPrefixes = (manifest.topology ?? [])
+    .map((entry) => environmentPrefix(entry.name))
+    .sort((left, right) => right.length - left.length);
+  // Resolve declared runtime keys before using prefixes for custom settings.
+  const declared = environmentVariables(manifest, {});
+  const defaults = environmentVariables({ ...manifest, topology: [app] }, {});
   const settings = environmentVariables(manifest);
   const env: Record<string, string> = {
     NODE_ENV: process.env.NODE_ENV ?? 'development',
   };
   for (const [key, value] of Object.entries(settings)) {
+    const ownerPrefix = applicationPrefixes.find((candidate) =>
+      key.startsWith(`${candidate}_`),
+    );
+    const owned = Object.hasOwn(declared, key)
+      ? Object.hasOwn(defaults, key)
+      : ownerPrefix === undefined || ownerPrefix === prefix;
     if (
       value !== undefined &&
+      owned &&
       (key.startsWith(`${prefix}_`) ||
         (app.messaging && key.startsWith('RABBITMQ_'))) &&
       !key.includes('_MIGRATION_')
@@ -183,6 +195,10 @@ export async function runApplicationContainers(
         );
       await buildImage(name, {
         tag: `${manifest.project}-${name}:development`,
+        labels: {
+          'dev.starter.owner': manifest.owner,
+          'dev.starter.project': manifest.project,
+        },
         execute: (args) =>
           session.execute(args, {
             capture: true,

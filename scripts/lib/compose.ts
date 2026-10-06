@@ -19,6 +19,7 @@ function runtimeRoleScript(role: { username: string; password: string }) {
 /** Compose's JSON form keeps every app on the same lifecycle implementation. */
 export function composeConfiguration(
   manifest: EnvironmentManifest,
+  { shutdown = false }: { shutdown?: boolean } = {},
 ): Record<string, unknown> {
   const labels = { 'dev.starter.owner': manifest.owner };
   const services: Record<string, unknown> = {};
@@ -131,7 +132,14 @@ export function composeConfiguration(
   }
   if (manifest.environment === 'development') {
     for (const app of manifest.topology ?? [])
-      services[`app-${app.name}`] = applicationContainer(manifest, app.name);
+      // Shutdown uses retained identities even when source or dependencies disappeared.
+      services[`app-${app.name}`] = shutdown
+        ? {
+            image: `${manifest.project}-${app.name}:development`,
+            profiles: ['applications'],
+            labels,
+          }
+        : applicationContainer(manifest, app.name);
   }
   return { services, networks: { default: { labels } }, volumes, configs };
 }

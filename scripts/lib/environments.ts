@@ -28,6 +28,7 @@ import {
   needsMessaging,
 } from '../../database/environment';
 import { composeConfiguration } from './compose';
+import { removeDevelopmentImages } from './development-images';
 import { failureExcerpt } from './failure-excerpt';
 import { commandSession } from './session';
 import { verifyEnvironmentOwnership } from './ownership';
@@ -291,10 +292,24 @@ export async function operateEnvironment(
       echo: showLogs,
     });
     const result = await session.execute(
-      [...compose, 'down', '--remove-orphans', '--timeout', '20'],
+      [
+        ...compose,
+        '--profile',
+        'applications',
+        'down',
+        '--remove-orphans',
+        '--timeout',
+        '20',
+      ],
       { timeout: 30_000 },
     );
     if (result.code === 0) {
+      try {
+        await removeDevelopmentImages(manifest, requireSuccess);
+      } catch (error) {
+        session.log(String(error));
+        return 1;
+      }
       manifest.status = 'stopped';
       save();
     }
@@ -343,7 +358,11 @@ export async function operateEnvironment(
     }
     writeFileSync(
       composePath,
-      JSON.stringify(composeConfiguration(manifest), null, 2),
+      JSON.stringify(
+        composeConfiguration(manifest, { shutdown: action === 'down' }),
+        null,
+        2,
+      ),
       { mode: 0o600 },
     );
     if (creating) {

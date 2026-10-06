@@ -12,6 +12,35 @@ import { until, stopStartup } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
 import { availablePort } from '../lib/environments';
 
+test('development image cleanup preserves sibling images and aliases and rejects a foreign owner', async () => {
+  const workspace = await appWorkspace();
+  await withCleanup(
+    () =>
+      run(workspace, [
+        'bun',
+        'scripts/tests/fixtures/development-image-ownership.ts',
+      ]),
+    [workspace.cleanup],
+  );
+}, 120_000);
+
+test.each(['running', 'stopped', 'missing-source', 'credentials'])(
+  'development regression: %s',
+  async (scenario) => {
+    const workspace = await appWorkspace();
+    await withCleanup(
+      () =>
+        run(workspace, [
+          'bun',
+          'scripts/tests/fixtures/development-cleanup.ts',
+          scenario,
+        ]),
+      [workspace.cleanup],
+    );
+  },
+  120_000,
+);
+
 test('private development watches a real source edit and exposes only an explicitly requested loopback debugger', async () => {
   const workspace = await appWorkspace();
   const execute = [
@@ -209,9 +238,7 @@ test('private development watches a real source edit and exposes only an explici
           });
           await until(
             () =>
-              Promise.resolve(
-                output.includes('Application containers attached'),
-              ),
+              Promise.resolve(output.includes('Attaching to app-watcher-1')),
             30_000,
             'Supervisor attachment',
           );
@@ -239,6 +266,26 @@ test('private development watches a real source edit and exposes only an explici
         throw new Error(`${String(error)}\n${output}`);
       });
     }
+    await run(workspace, [
+      'bun',
+      'run',
+      'env:down',
+      '--environment=development',
+      '--run=watch',
+    ]);
+    expect(
+      (
+        await run(workspace, [
+          'docker',
+          'image',
+          'ls',
+          '--quiet',
+          '--filter',
+          `label=dev.starter.project=${ports.project}`,
+        ])
+      ).trim(),
+      'down must remove current and superseded development images',
+    ).toBe('');
   }, [
     async () => {
       await withCleanup(
@@ -295,7 +342,7 @@ test('start:debug preserves simultaneous User and Wallet inspectors while busine
         () => {
           if (child.exitCode !== null) throw new Error(output);
           return Promise.resolve(
-            output.includes('Application containers attached'),
+            output.includes('Attaching to app-user-1, app-wallet-1'),
           );
         },
         120_000,
@@ -336,6 +383,29 @@ test('start:debug preserves simultaneous User and Wallet inspectors while busine
       `,
       ]);
       expect(probe).toContain('both-private');
+      await run(workspace, ['bun', 'run', 'env:down', ...selection]);
+      await until(
+        () => Promise.resolve(child.exitCode !== null),
+        30_000,
+        'Down stops the active application supervisor',
+      );
+      await run(workspace, [
+        'bun',
+        '-e',
+        `
+        import { readEnvironment } from './database/environment';
+        const manifest = readEnvironment('development', 'debug-both', { complete: false });
+        for (const args of [
+          ['ps', '-aq', '--filter', 'label=com.docker.compose.project=' + manifest.project],
+          ['network', 'ls', '-q', '--filter', 'label=com.docker.compose.project=' + manifest.project],
+          ['image', 'ls', '-q', '--filter', 'label=dev.starter.project=' + manifest.project],
+        ]) {
+          const child = Bun.spawn(['docker', ...args]);
+          if ((await new Response(child.stdout).text()).trim() || await child.exited)
+            throw new Error('Down left application resources behind');
+        }
+        `,
+      ]);
     }, [() => stopStartup(child, logs)]);
   }, [
     async () => {
