@@ -13,7 +13,6 @@ import {
 //#if exposure
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
-import { exposedAdapters } from '@starter/capabilities/declaration';
 //#endif
 //#if persistence
 import { sql, type DatabasePool } from 'slonik';
@@ -66,9 +65,7 @@ const handlers = parts.flatMap((part) => part.handlers ?? []);
   imports: parts.flatMap((part) => part.imports ?? []),
   controllers: [
     HealthController,
-//#if exposure
-    ...exposedAdapters(declaration, parts.flatMap((part) => part.controllers ?? [])),
-//#endif
+    ...parts.flatMap((part) => part.controllers ?? []),
   ],
   providers: [
     ...parts.flatMap((part) => part.providers ?? []),
