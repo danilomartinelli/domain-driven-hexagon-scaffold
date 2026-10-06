@@ -143,9 +143,11 @@ export async function runCommand(
       code: cancellation?.signal.aborted
         ? interruptedCode()
         : options.signal?.aborted
-          ? options.signal.reason === 143
-            ? 143
-            : 130
+          ? options.signal.reason === 129
+            ? 129
+            : options.signal.reason === 143
+              ? 143
+              : 130
           : termination.timedOut
             ? 124
             : termination.outputOverflow

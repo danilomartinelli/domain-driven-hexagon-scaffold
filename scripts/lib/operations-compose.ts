@@ -1,10 +1,11 @@
-import { accessSync, constants, statSync } from 'node:fs';
+import { isUtf8 } from 'node:buffer';
+import { accessSync, constants, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { environmentPrefix } from '@starter/capabilities/declaration';
 import type { DeploymentState } from './operations-config';
 import { gatewayConfiguration } from './gateway';
 
-/** Every secret is an operator file; rendering never reads or generates credentials. */
+/** Validate operator files without changing credentials or embedding them in Compose. */
 export function operationsCompose(
   state: DeploymentState,
   verifySecrets = true,
@@ -22,6 +23,20 @@ export function operationsCompose(
       if (!statSync(file).isFile())
         throw new Error(`Supply secret file: ${key}`);
       accessSync(file, constants.R_OK);
+      if (key.endsWith('-password')) {
+        const bytes = readFileSync(file);
+        const content = bytes.toString('utf8');
+        if (
+          !isUtf8(bytes) ||
+          !content.replace(/\n$/, '') ||
+          content.includes('\r') ||
+          content.includes('\0') ||
+          content.endsWith('\n\n')
+        )
+          throw new Error(
+            `Invalid password file: ${key}; use nonempty UTF-8 without CR or NUL and at most one trailing LF`,
+          );
+      }
     }
     secrets[key] = { file: file.replaceAll('$', () => '$$') };
     return key;

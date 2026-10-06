@@ -165,7 +165,11 @@ export async function restoreApplication(
     await compose(
       ownerCommand(
         app.declaration.name,
-        `pg_restore --dbname="${app.declaration.name.replaceAll('-', '_')}" --clean --if-exists --no-owner --single-transaction --exit-on-error ${remote}`,
+        // Materialize SQL first: a failed archive decode must not commit schema cleanup.
+        // DROP OWNED also removes objects introduced after the backup, including FKs.
+        // initdb's public schema is assumed to exist in its first archive; later
+        // archives may recreate it through --clean after a previous restoration.
+        `umask 077; pg_restore --clean --if-exists --no-owner --file=${remote}.sql ${remote}; psql -X --single-transaction -v ON_ERROR_STOP=1 -c 'DROP OWNED BY CURRENT_USER; CREATE SCHEMA public AUTHORIZATION CURRENT_USER; GRANT USAGE ON SCHEMA public TO PUBLIC;' -f ${remote}.sql`,
       ),
       300_000,
     );
@@ -174,7 +178,15 @@ export async function restoreApplication(
   }, [
     () =>
       compose(
-        ['exec', '-T', `postgres-${app.declaration.name}`, 'rm', '-f', remote],
+        [
+          'exec',
+          '-T',
+          `postgres-${app.declaration.name}`,
+          'rm',
+          '-f',
+          remote,
+          `${remote}.sql`,
+        ],
         30_000,
         true,
       ),

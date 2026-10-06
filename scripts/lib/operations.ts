@@ -93,8 +93,13 @@ export async function runOperations(args: string[]): Promise<void> {
     controller.abort(143);
     process.exitCode = 143;
   };
+  const hangup = () => {
+    controller.abort(129);
+    process.exitCode = 129;
+  };
   process.on('SIGINT', interrupt);
   process.on('SIGTERM', terminate);
+  process.on('SIGHUP', hangup);
   const execute = async (
     command: string[],
     timeout = 90_000,
@@ -582,6 +587,7 @@ export async function runOperations(args: string[]): Promise<void> {
     () => {
       process.off('SIGINT', interrupt);
       process.off('SIGTERM', terminate);
+      process.off('SIGHUP', hangup);
       rmSync(lock, { recursive: true });
     },
   ]);

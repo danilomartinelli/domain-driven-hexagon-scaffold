@@ -1,12 +1,148 @@
 import { expect, test } from 'bun:test';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { operationsFixture } from './operations-fixture';
 import { withCleanup } from './cleanup';
 import { until } from './app-runtime-fixture';
 import { z } from 'zod';
 import { appWorkspace, generate, run } from './app-generator-fixture';
+import { operationsDatabaseFixture } from './operations-database-fixture';
+import {
+  backupApplication,
+  restoreApplication,
+  migrationHistory,
+} from '../lib/operations-backup';
+
+for (const foreignKey of [false, true]) {
+  test(`restore removes post-backup schema changes (foreign key: ${String(foreignKey)})`, async () => {
+    const fixture = await operationsDatabaseFixture();
+    await withCleanup(async () => {
+      const backup = join(fixture.directory, 'user.dump');
+      await backupApplication(
+        fixture.state,
+        fixture.app,
+        backup,
+        fixture.compose,
+      );
+      const migration = `CREATE TABLE operations_marker (id integer${foreignKey ? ' REFERENCES users(id)' : ''}); INSERT INTO operations_marker VALUES (1); INSERT INTO pgmigrations VALUES (2, 'later');`;
+      await fixture.sql(migration);
+      await fixture.sql('INSERT INTO users VALUES (2)');
+      await restoreApplication(
+        fixture.state,
+        fixture.app,
+        backup,
+        fixture.compose,
+      );
+      expect(
+        await fixture.sql(
+          "SELECT to_regclass('public.operations_marker') IS NULL",
+        ),
+      ).toBe('t');
+      expect(await fixture.sql('SELECT id FROM users ORDER BY id')).toBe('1');
+      expect(await migrationHistory('user', fixture.compose)).toEqual([
+        'baseline',
+      ]);
+      expect(
+        await fixture.sql(
+          "SELECT has_table_privilege('user_runtime', 'users', 'SELECT')",
+        ),
+      ).toBe('t');
+      expect(
+        await fixture.sql(
+          "SELECT has_schema_privilege('user_runtime', 'public', 'USAGE')",
+        ),
+      ).toBe('t');
+      await fixture.sql(migration);
+      expect(await migrationHistory('user', fixture.compose)).toEqual([
+        'baseline',
+        'later',
+      ]);
+      const repeated = join(fixture.directory, 'repeated.dump');
+      await backupApplication(
+        fixture.state,
+        fixture.app,
+        repeated,
+        fixture.compose,
+      );
+      await restoreApplication(
+        fixture.state,
+        fixture.app,
+        repeated,
+        fixture.compose,
+      );
+      expect(await migrationHistory('user', fixture.compose)).toEqual([
+        'baseline',
+        'later',
+      ]);
+    }, [fixture.cleanup]);
+  }, 60_000);
+}
+
+test('restore rolls back schema cleanup and data when archive SQL fails', async () => {
+  const fixture = await operationsDatabaseFixture();
+  await withCleanup(async () => {
+    const backup = join(fixture.directory, 'user.dump');
+    await backupApplication(
+      fixture.state,
+      fixture.app,
+      backup,
+      fixture.compose,
+    );
+    await fixture.sql(
+      'CREATE TABLE operations_marker (id integer); INSERT INTO operations_marker VALUES (9); INSERT INTO users VALUES (2);',
+    );
+    // Make the archive ACL fail after tables and data have been restored.
+    await fixture.compose([
+      'exec',
+      '-T',
+      'postgres-user',
+      'psql',
+      '-X',
+      '-U',
+      'postgres',
+      '-d',
+      'user',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      'DROP OWNED BY user_runtime; DROP ROLE user_runtime;',
+    ]);
+    const failure = await restoreApplication(
+      fixture.state,
+      fixture.app,
+      backup,
+      fixture.compose,
+    ).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error))
+      throw new Error('Expected archive SQL failure');
+    expect(failure.message).toContain('user_runtime');
+    expect(await fixture.sql('SELECT id FROM users ORDER BY id')).toBe('1\n2');
+    expect(await fixture.sql('SELECT id FROM operations_marker')).toBe('9');
+    expect(
+      JSON.parse(
+        readFileSync(join(fixture.directory, 'recovery.json'), 'utf8'),
+      ),
+    ).toMatchObject({ applications: { user: { status: 'restoring' } } });
+    expect(
+      await fixture.compose([
+        'exec',
+        '-T',
+        'postgres-user',
+        'sh',
+        '-ec',
+        'find /tmp -name "operations-*"',
+      ]),
+    ).toBe('');
+  }, [fixture.cleanup]);
+}, 60_000);
 
 test('operators can start HTTP service while the broker is unavailable', async () => {
   const fixture = await operationsFixture();
@@ -46,6 +182,29 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
         '-c',
         query,
       ]);
+    for (const key of [
+      'user-admin-password',
+      'user-owner-password',
+      'user-runtime-password',
+      'broker-password',
+    ]) {
+      const file = join(fixture.directory, 'secrets', key);
+      const original = readFileSync(file, 'utf8');
+      chmodSync(file, 0o644);
+      try {
+        for (const ending of ['\r\n', '\n\n']) {
+          writeFileSync(file, original.trimEnd() + ending);
+          const refused = await fixture.opsResult('prepare');
+          expect(refused.code).not.toBe(0);
+          expect(refused.stderr).toContain(`Invalid password file: ${key}`);
+          expect(refused.stderr).not.toContain(original.trimEnd());
+          expect(existsSync(join(fixture.directory, 'state.json'))).toBe(false);
+        }
+      } finally {
+        writeFileSync(file, original);
+        chmodSync(file, 0o444);
+      }
+    }
     await fixture.ops('prepare');
     expect(await fixture.ops('status', 'user')).toContain('pending');
     expect((await fixture.opsResult('start')).code).not.toBe(0);
@@ -389,44 +548,51 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
       ).code,
     ).not.toBe(0);
     const interruptedImage = await fixture.variant('interrupted');
-    const updater = Bun.spawn(
-      [
-        'bun',
-        '--no-env-file',
-        'scripts/operations.ts',
-        `--directory=${fixture.directory}`,
-        'update',
-        'user',
-        `--image=${interruptedImage}`,
-      ],
-      { stdout: 'pipe', stderr: 'pipe' },
-    );
-    const output = Promise.all([
-      new Response(updater.stdout).text(),
-      new Response(updater.stderr).text(),
-    ]);
-    try {
-      await until(
-        async () =>
-          (await sql(
-            'user',
-            "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND wait_event = 'PgSleep'",
-          )) === '1',
+    for (const [signal, code] of [
+      ['SIGINT', 130],
+      ['SIGTERM', 143],
+      ['SIGHUP', 129],
+    ] as const) {
+      const updater = Bun.spawn(
+        [
+          'bun',
+          '--no-env-file',
+          'scripts/operations.ts',
+          `--directory=${fixture.directory}`,
+          'update',
+          'user',
+          `--image=${interruptedImage}`,
+        ],
+        { stdout: 'pipe', stderr: 'pipe' },
       );
-      updater.kill('SIGTERM');
-      expect(await updater.exited).toBe(143);
-      expect(
-        await fixture.compose(['ps', '--all', '--format', '{{.Name}}']),
-      ).not.toContain('-command-');
-      expect(
-        fixture
-          .state()
-          .artifacts.find((entry) => entry.declaration.name === 'user')?.image,
-      ).toBe(compatible);
-    } finally {
-      if (updater.exitCode === null) updater.kill('SIGTERM');
-      await updater.exited;
-      await output;
+      const output = Promise.all([
+        new Response(updater.stdout).text(),
+        new Response(updater.stderr).text(),
+      ]);
+      try {
+        await until(
+          async () =>
+            (await sql(
+              'user',
+              "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND wait_event = 'PgSleep'",
+            )) === '1',
+        );
+        updater.kill(signal);
+        expect(await updater.exited).toBe(code);
+        expect(
+          await fixture.compose(['ps', '--all', '--format', '{{.Name}}']),
+        ).not.toContain('-command-');
+        expect(
+          fixture
+            .state()
+            .artifacts.find((entry) => entry.declaration.name === 'user')
+            ?.image,
+        ).toBe(compatible);
+      } finally {
+        if (updater.exitCode === null) updater.kill('SIGTERM');
+        await updater.exited;
+        await output;
+      }
     }
     const receipt = join(fixture.directory, 'compatibility.json');
     const history = (

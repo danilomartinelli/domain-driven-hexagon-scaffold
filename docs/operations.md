@@ -52,9 +52,12 @@ Supply these files in `secrets/`, only for enabled capabilities:
 | `broker-password`        | RabbitMQ and messaging-enabled applications                 |
 | `tls.crt`, `tls.key`     | Kong only                                                   |
 
-The passwords are operator-supplied, nonempty UTF-8 text; one trailing newline is
-removed. User and Wallet servers and artifact migrations support `<SETTING>_FILE`
-instead of `<SETTING>`. Supplying both fails without logging their values. Generated
+The passwords are operator-supplied, nonempty UTF-8 text with no CR or NUL and at
+most one trailing LF. Compose rendering rejects CRLF and repeated trailing newlines
+before provisioning: shell entrypoints and application readers would otherwise
+interpret different passwords. One optional trailing LF is removed by both.
+PEM certificate/key files retain their multiline format. User and Wallet servers
+and artifact migrations support `<SETTING>_FILE` instead of `<SETTING>`. Supplying both fails without logging their values. Generated
 messaging applications accept their original `<PREFIX>_RABBITMQ_URL[_FILE]` or
 the structured `RABBITMQ_*` settings used here.
 
@@ -116,6 +119,38 @@ bun run ops --directory="$ops_dir" down
 bun run ops --directory="$ops_dir" prepare
 bun run ops --directory="$ops_dir" start
 ```
+
+## Interrupted operations and stale locks
+
+`SIGINT`, `SIGTERM` and SSH-session hangup (`SIGHUP`) cancel the active command,
+attempt cleanup of owned one-shot containers, release `.operation-lock`, and
+return 130, 143 and 129 respectively. Database and broker volumes remain intact.
+Check the command and cleanup results under `logs/` before retrying.
+
+`SIGKILL`, host failure or reboot cannot run cleanup and may leave a stale lock.
+Before removing it, confirm that no operator process for this directory remains,
+including processes in other SSH sessions. Inspect this installation's containers:
+
+```sh
+project=$(bun --no-env-file -e 'console.log((await Bun.file(process.argv[1]).json()).project)' "$ops_dir/state.json")
+docker ps -a --filter "label=com.docker.compose.project=$project" --format '{{.ID}} {{.Names}} {{.Status}}'
+```
+
+An interrupted migration may leave a running `<project>-command-*` container.
+Verify its `dev.starter.owner` label against `state.json` and stop/remove only that
+owned one-shot container before proceeding. Inspect the last operation's logs and
+database migration status; a disconnected operator does not prove its migration
+stopped. Once there is no active operator or one-shot command, remove the empty
+lock directory and use `status` to assess the retained migration history:
+
+```sh
+rmdir "$ops_dir/.operation-lock"
+bun run ops --directory="$ops_dir" status user
+```
+
+If preparation failed before `state.json` was created, use the process and log
+checks; no managed Compose service has been started yet. Never remove a live
+operator's lock to bypass concurrency protection.
 
 ## Update one application
 
@@ -238,9 +273,15 @@ unacknowledged deliveries, and independently restored peer state. Never purge th
 broker to make a database restore appear consistent.
 
 Stop every application before restoring either database. The command also stops
-Kong, verifies archive identity/checksum and uses `pg_restore --single-transaction`
-with error checking, preserving transactional failure behavior. Restore is scoped
-to the same installation and owning database; cross-installation recovery requires
+Kong and verifies archive identity/checksum. It decodes the archive with `pg_restore`
+before changing the database, then runs `DROP OWNED BY CURRENT_USER` and the restore
+SQL through `psql --single-transaction` with `ON_ERROR_STOP`. This removes objects
+introduced by later migrations, including dependent foreign keys, and restores the
+backup's data, migration history and grants together. A decode or SQL failure
+preserves the pre-restore database; the recovery gate remains unresolved. Temporary
+archive and SQL files are removed during cleanup. The owner role and database are
+retained; database identities and connection grants remain provisioned separately.
+Restore is scoped to the same installation and owning database; cross-installation recovery requires
 a separately reviewed procedure. See [pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html).
 
 ```sh
