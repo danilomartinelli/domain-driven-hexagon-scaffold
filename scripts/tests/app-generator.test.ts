@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import {
   cp,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -14,10 +15,109 @@ import {
   appWorkspace,
   expectRendered,
   generate,
+  replaceOnce,
   run,
 } from './app-generator-fixture';
 import { withApp } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
+
+test.each([true, false])(
+  'generated group controllers follow runtime exposure with initial exposure=%s',
+  async (initialExposure) => {
+    const workspace = await appWorkspace();
+    try {
+      await run(
+        workspace,
+        generate(
+          'telemetry',
+          '--persistence=false',
+          '--messaging=false',
+          `--exposure=${String(initialExposure)}`,
+        ),
+      );
+      const app = join(workspace.root, 'src/apps/telemetry');
+      await mkdir(join(app, 'adapters'), { recursive: true });
+      await writeFile(
+        join(app, 'adapters/probe.controller.ts'),
+        `import { Controller, Get } from '@nestjs/common';
+        @Controller('admin')
+        export class AdminController {
+          @Get() read(): string { return 'private operational HTTP'; }
+        }
+        @Controller('public')
+        export class PublicController {
+          @Get() read(): string { return 'exposed HTTP'; }
+        }
+        `,
+      );
+      const registration = join(app, 'composition.json');
+      const composition = JSON.parse(await readFile(registration, 'utf8')) as {
+        integrations: string[];
+        groups: unknown[];
+      };
+      composition.groups.push(
+        { name: 'admin', requires: [] },
+        { name: 'public', requires: [], exposure: true },
+      );
+      const module = join(app, 'composition/app.module.ts');
+      let source = await readFile(module, 'utf8');
+      if (!initialExposure) {
+        // Prepare REST exposure after generation through the documented
+        // integration/group extension points, without rewriting Nest metadata.
+        composition.integrations.push('exposure');
+        source = replaceOnce(
+          source,
+          'integrations: {},',
+          'integrations: { exposure: () => ({}) },',
+        );
+      }
+      await writeFile(registration, JSON.stringify(composition));
+      await writeFile(
+        module,
+        replaceOnce(
+          source,
+          'const functionality: Record<string, () => Functionality> = {};',
+          `const functionality: Record<string, () => Functionality> = {
+            admin: () => ({ controllers: [AdminController] }),
+            public: () => ({ controllers: [PublicController] }),
+          };`,
+        ) +
+          "\nimport { AdminController, PublicController } from '../adapters/probe.controller';\n",
+      );
+      for (const exposure of [true, false, true]) {
+        await writeFile(
+          join(app, 'application.json'),
+          JSON.stringify({
+            name: 'telemetry',
+            persistence: false,
+            messaging: false,
+            exposure,
+          }),
+        );
+        await withApp(
+          {
+            cwd: workspace.root,
+            command: ['src/apps/telemetry/main.ts'],
+            settings: {},
+          },
+          async ({ url }) => {
+            expect((await fetch(`${url}/health/ready/http`)).status).toBe(200);
+            const admin = await fetch(`${url}/admin`);
+            expect(admin.status).toBe(200);
+            expect(await admin.text()).toBe('private operational HTTP');
+            const publicResponse = await fetch(`${url}/public`);
+            expect(publicResponse.status).toBe(exposure ? 200 : 404);
+            if (exposure)
+              expect(await publicResponse.text()).toBe('exposed HTTP');
+          },
+        );
+      }
+    } finally {
+      await workspace.cleanup();
+    }
+  },
+  60_000,
+);
 
 test('nest-app generates an independent checked project without persistent dry-run output or overwriting collisions', async () => {
   const workspace = await appWorkspace();
@@ -154,7 +254,7 @@ test('nest-app generates an independent checked project without persistent dry-r
     ]);
     expect(mismatch.code).not.toBe(0);
     expect(mismatch.stdout + mismatch.stderr).toContain(
-      'supply a database probe exactly when persistence is enabled',
+      'persistence integration is not prepared',
     );
   } finally {
     await workspace.cleanup();
@@ -177,6 +277,8 @@ test('generated distribution owns its source and needs no database registry or s
     ).json()) as { scripts: Record<string, string> };
     expect(manifest.scripts).toEqual({
       start: 'bun --no-env-file app/main.ts',
+      preflight:
+        'bun --no-env-file node_modules/@starter/capabilities/preflight.ts app',
     });
     expect(
       await Bun.file(join(artifact, 'database/migrate.mjs')).exists(),

@@ -126,6 +126,44 @@ test('an all-disabled generated application prepares without infrastructure or d
       }
       `,
     ]);
+    // A new business requirement must also guard commands in a prepared run.
+    await writeFile(
+      join(workspace.root, 'src/apps/quiet-worker/composition.json'),
+      JSON.stringify({
+        integrations: [],
+        groups: [{ name: 'reports', requires: ['persistence'] }],
+      }),
+    );
+    const rejected = await workspace.run([
+      'bun',
+      'run',
+      'env:exec',
+      '--environment=test',
+      '--run=quiet',
+      '--',
+      'bun',
+      '-e',
+      "await Bun.write('.context/rejected-command', 'unexpected')",
+    ]);
+    expect(rejected.code).not.toBe(0);
+    expect(rejected.stdout + rejected.stderr).toContain(
+      'reports requires persistence',
+    );
+    expect(
+      await Bun.file(
+        join(workspace.root, '.context/rejected-command'),
+      ).exists(),
+    ).toBe(false);
+    // Inspect and the finally-block shutdown remain usable with incompatible source.
+    expect(
+      await run(workspace, [
+        'bun',
+        'run',
+        'env:inspect',
+        '--environment=test',
+        '--run=quiet',
+      ]),
+    ).toContain('"status":"ready"');
   }, [
     async () => {
       await withCleanup(
@@ -292,7 +330,7 @@ test('public generator and isolated environments execute every capability union 
   }, [workspace.cleanup]);
 }, 1_500_000);
 
-test('add disable remove and reactivate retain database credentials and accepted work while producers remain active', async () => {
+test('incompatible changes fail before mutation while removal and reactivation retain credentials and accepted work', async () => {
   const workspace = await appWorkspace();
   const command = (action: string, ...args: string[]) => [
     'bun',
@@ -356,6 +394,14 @@ test('add disable remove and reactivate retain database credentials and accepted
       await db.connect(); await db.query('SELECT 1'); await db.end();
     `,
     );
+    const manifestOutput = await execute(
+      'bun',
+      '-e',
+      "console.log('MANIFEST_PATH=' + process.env.DDH_ENVIRONMENT_FILE)",
+    );
+    const manifestPath = /^MANIFEST_PATH=(.+)$/m.exec(manifestOutput)?.[1];
+    if (!manifestPath) throw new Error('Missing environment path');
+    const beforeRejection = await readFile(manifestPath, 'utf8');
     await writeFile(
       walletPath,
       JSON.stringify({
@@ -365,9 +411,33 @@ test('add disable remove and reactivate retain database credentials and accepted
         exposure: false,
       }),
     );
-    await prepare();
-    await probe('inactive');
-    await probe('produce');
+    const rejected = await workspace.run(command('prepare'), {
+      timeout: 30_000,
+    });
+    expect(rejected.code).not.toBe(0);
+    expect(rejected.stdout + rejected.stderr).toContain(
+      'wallet-creation requires persistence',
+    );
+    const replay = await workspace.run(
+      [
+        'bun',
+        'run',
+        'nx',
+        'run',
+        'wallet:failures-replay',
+        '--environment=development',
+        '--run=retained',
+        '--message=uncontacted',
+      ],
+      { timeout: 30_000 },
+    );
+    expect(replay.code).not.toBe(0);
+    expect(replay.stdout + replay.stderr).toContain(
+      'wallet-creation requires persistence',
+    );
+    expect(await readFile(manifestPath, 'utf8')).toBe(beforeRejection);
+    await writeFile(walletPath, wallet);
+    await probe('backlog');
     await rm(walletPath);
     await prepare();
     await probe('inactive');

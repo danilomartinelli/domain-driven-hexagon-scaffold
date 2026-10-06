@@ -1,7 +1,8 @@
 import {
-  exposedAdapters,
-  readApplicationDeclaration,
-} from '@starter/capabilities/declaration';
+  composeApplication,
+  preflightApplication,
+  readApplicationComposition,
+} from '@starter/capabilities/composition';
 import {
   HealthController,
   ServiceHealth,
@@ -13,6 +14,7 @@ import {
   Inject,
   type MiddlewareConsumer,
   type NestModule,
+  type ModuleMetadata,
   type OnApplicationBootstrap,
   type BeforeApplicationShutdown,
 } from '@nestjs/common';
@@ -36,28 +38,67 @@ import { SlonikWalletReadAdapter } from './database/wallet-read.adapter';
 import { FindWalletByUserGraphqlResolver } from './queries/find-wallet-by-user/find-wallet-by-user.graphql-resolver';
 import { FindWalletByUserHttpController } from './queries/find-wallet-by-user/find-wallet-by-user.http.controller';
 
-// The declaration selects the applicable readiness probes and whether the
-// business REST/GraphQL adapters are composed.
-const declaration = readApplicationDeclaration(
-  new URL('./application.json', import.meta.url),
+const directory = new URL('./', import.meta.url);
+const declaration = preflightApplication(directory);
+const parts = composeApplication<ModuleMetadata>(
+  declaration,
+  readApplicationComposition(directory),
+  {
+    integrations: {
+      persistence: () => ({ imports: [DatabaseModule] }),
+      messaging: () => ({}),
+      exposure: () => ({
+        imports: [
+          GraphQLModule.forRoot<ApolloDriverConfig>({
+            driver: ApolloDriver,
+            autoSchemaFile: true,
+          }),
+        ],
+      }),
+    },
+    groups: {
+      'wallet-creation': () => ({
+        providers: [
+          {
+            provide: RabbitWalletConsumer,
+            useFactory: (pool: DatabasePool) =>
+              new RabbitWalletConsumer(
+                walletRabbitMqOptions(),
+                new CreateWallet(new SlonikWalletCreationTransaction(pool)),
+                new Logger('WalletMessaging'),
+              ),
+            inject: [DATABASE_POOL],
+          },
+        ],
+      }),
+      'wallet-lookup': () => ({
+        controllers: [FindWalletByUserHttpController],
+        providers: [
+          FindWalletByUserGraphqlResolver,
+          SlonikWalletReadAdapter,
+          {
+            provide: FindWalletByUser,
+            useFactory: (reads: SlonikWalletReadAdapter) =>
+              new FindWalletByUser(reads),
+            inject: [SlonikWalletReadAdapter],
+          },
+        ],
+      }),
+    },
+  },
 );
 
 /** Wallet's composition root: its database and independently recovering messaging. */
 @Module({
-  imports: [
-    DatabaseModule,
-    ...exposedAdapters(declaration, [
-      GraphQLModule.forRoot<ApolloDriverConfig>({
-        driver: ApolloDriver,
-        autoSchemaFile: true,
-      }),
-    ]),
-  ],
+  imports: parts.flatMap((part) => part.imports ?? []),
   controllers: [
     HealthController,
-    ...exposedAdapters(declaration, [FindWalletByUserHttpController]),
+    ...parts.flatMap((part) => part.controllers ?? []),
   ],
   providers: [
+    ...parts.flatMap((part) => part.providers ?? []),
+    { provide: APP_INTERCEPTOR, useClass: ContextInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: ExceptionInterceptor },
     {
       provide: ServiceHealth,
       useFactory: (pool: DatabasePool, consumer: RabbitWalletConsumer) =>
@@ -69,27 +110,6 @@ const declaration = readApplicationDeclaration(
         }),
       inject: [DATABASE_POOL, RabbitWalletConsumer],
     },
-
-    {
-      provide: RabbitWalletConsumer,
-      useFactory: (pool: DatabasePool) =>
-        new RabbitWalletConsumer(
-          walletRabbitMqOptions(),
-          new CreateWallet(new SlonikWalletCreationTransaction(pool)),
-          new Logger('WalletMessaging'),
-        ),
-      inject: [DATABASE_POOL],
-    },
-    { provide: APP_INTERCEPTOR, useClass: ContextInterceptor },
-    { provide: APP_INTERCEPTOR, useClass: ExceptionInterceptor },
-    SlonikWalletReadAdapter,
-    {
-      provide: FindWalletByUser,
-      useFactory: (reads: SlonikWalletReadAdapter) =>
-        new FindWalletByUser(reads),
-      inject: [SlonikWalletReadAdapter],
-    },
-    ...exposedAdapters(declaration, [FindWalletByUserGraphqlResolver]),
   ],
 })
 export class AppModule

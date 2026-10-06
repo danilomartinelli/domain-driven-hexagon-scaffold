@@ -66,19 +66,22 @@ POST `{ "query": "{ httpReady }" }` to `/graphql` for HTTP readiness.
 
 ## Extend
 
-Register application-owned providers in `composition/app.module.ts`
-(`applicationProviders`). Use explicit `@Inject(Token)`, factory `inject` lists,
+Declare functionality groups and required capabilities in `composition.json`,
+then bind each group name to a factory in `composition/app.module.ts`
+(`functionality`). Factories return module metadata; the same registrations drive
+preflight and runtime composition. An unmet requirement fails before adapters
+or environment changes. The generated group list starts empty. Use explicit `@Inject(Token)`, factory `inject` lists,
 GraphQL type functions and explicit validation; Bun does not emit design metadata.
 <!--#if exposure-->
 
-Add business REST controllers to `businessControllers` and GraphQL resolvers to
-`businessResolvers`. Only registered adapters are served; nothing is exposed
+Return business REST controllers as `controllers` and GraphQL resolvers as
+`providers` from an exposure group factory (`"exposure": true` in its registration). Only registered adapters are served; nothing is exposed
 automatically. Client routes are configured separately in the gateway.
 <!--#else-->
 
 Exposure is disabled: there are no business REST or GraphQL adapters, and no
-client routes. Enable exposure by generating a new application with
-`--exposure` rather than registering business adapters here.
+client routes. Before enabling exposure, implement and register its integration in the composition;
+changing the selection alone fails preflight.
 <!--#endif-->
 <!--#if persistence-->
 
@@ -90,8 +93,9 @@ environment; startup never migrates.
 <!--#endif-->
 <!--#if messaging-->
 
-Register message handlers as providers in `applicationProviders`, then add their
-injection tokens to `handlers`. Each AMQP message uses a JSON
+Register message handlers in a group factory's `providers`, then return their
+injection tokens in that factory's `handlers`. Declare `messaging` and any other
+required capability in the group registration. Each AMQP message uses a JSON
 `{ "pattern": "your.versioned.pattern", "data": ... }` envelope and nonempty AMQP
 `messageId` and `correlationId` properties. The adapter passes those identities
 explicitly to the handler. Resolve `undefined` after committing effects. Return
@@ -141,9 +145,10 @@ Unit tests use `tests/unit/` without preload or infrastructure. Live tests use
 and cleanup. Neither directory contains generated tests, so each test command
 reports no tests and exits nonzero until meaningful tests are added.
 
-Copy `dist/__name__/` outside the workspace and run `bun run start` there with
+Copy `dist/__name__/` outside the workspace, run `bun run preflight` without
+credentials, then run `bun run start` there with
 the same environment. The artifact includes Bun TypeScript sources, its
-declaration and its installed runtime dependencies; no workspace or install is
+declaration, composition registrations and installed runtime dependencies; no workspace or install is
 needed. Build for the deployment OS/architecture using the pinned Bun version.
 <!--#if persistence-->
 The artifact also provides `migration:up`, `migration:status` and

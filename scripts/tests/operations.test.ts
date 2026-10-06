@@ -90,7 +90,46 @@ for (const key of [
   });
 }
 
-test('SIGHUP during preparation stops the child and releases the operation lock', async () => {
+test('prepare refuses an application argument before contacting Docker or changing inventory', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ddh-prepare-scope-'));
+  try {
+    writeFileSync(
+      join(directory, 'deployment.json'),
+      JSON.stringify(secretState(directory).config),
+    );
+    const marker = join(directory, 'docker-contacted');
+    writeFileSync(
+      join(directory, 'docker'),
+      `#!/usr/bin/env bun\nawait Bun.write(${JSON.stringify(marker)}, 'contacted');\nprocess.exit(91);\n`,
+      { mode: 0o700 },
+    );
+    const result = await runCommand(
+      [
+        'bun',
+        '--no-env-file',
+        'scripts/operations.ts',
+        `--directory=${directory}`,
+        'prepare',
+        'user',
+      ],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ''}` },
+      },
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain(
+      'prepare applies to the complete installation; omit the application argument',
+    );
+    expect(existsSync(marker)).toBe(false);
+    expect(existsSync(join(directory, 'state.json'))).toBe(false);
+    expect(existsSync(join(directory, 'compose.json'))).toBe(false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('SIGHUP during image creation waits for owned cleanup and releases the operation lock', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'ddh-operations-hangup-'));
   const marker = join(directory, 'child.pid');
   writeFileSync(
@@ -99,7 +138,15 @@ test('SIGHUP during preparation stops the child and releases the operation lock'
   );
   writeFileSync(
     join(directory, 'docker'),
-    `#!/usr/bin/env bun\nawait Bun.write(${JSON.stringify(marker)}, String(process.pid));\nawait Bun.sleep(30000);\n`,
+    `#!/usr/bin/env bun
+if (process.argv[2] === 'create') {
+  await Bun.write(${JSON.stringify(marker)}, String(process.pid));
+  await Bun.sleep(500);
+  console.log('owned-preflight-id');
+} else if (process.argv[2] === 'ps') console.log('owned-preflight-id');
+else if (process.argv[2] === 'rm') await Bun.write(${JSON.stringify(join(directory, 'removed'))}, 'removed');
+else if (process.argv[2] === 'start') await Bun.write(${JSON.stringify(join(directory, 'started'))}, 'started');
+`,
     { mode: 0o700 },
   );
   const child = Bun.spawn(
@@ -125,6 +172,8 @@ test('SIGHUP during preparation stops the child and releases the operation lock'
     child.kill('SIGHUP');
     expect(await child.exited).toBe(129);
     expect(existsSync(join(directory, '.operation-lock'))).toBe(false);
+    expect(existsSync(join(directory, 'removed'))).toBe(true);
+    expect(existsSync(join(directory, 'started'))).toBe(false);
     expect(() =>
       process.kill(Number(readFileSync(marker, 'utf8')), 0),
     ).toThrow();

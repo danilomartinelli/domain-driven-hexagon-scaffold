@@ -10,6 +10,8 @@ import {
 import { join } from 'node:path';
 import { operationsFixture } from './operations-fixture';
 import { withCleanup } from './cleanup';
+import { runCommand } from '../lib/command';
+import { removeOwnedContainer } from './owned-container';
 import { until } from './app-runtime-fixture';
 import { z } from 'zod';
 import { appWorkspace, generate, run } from './app-generator-fixture';
@@ -182,6 +184,47 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
         '-c',
         query,
       ]);
+    const incompatible = await fixture.variant('incompatible');
+    const rejectedContainer = {
+      name: `ddh-incompatible-${randomUUID()}`,
+      owner: randomUUID(),
+    };
+    await withCleanup(async () => {
+      const startup = await runCommand(
+        [
+          'docker',
+          'run',
+          '--rm',
+          '--network=none',
+          '--read-only',
+          `--name=${rejectedContainer.name}`,
+          `--label=dev.starter.owner=${rejectedContainer.owner}`,
+          '--entrypoint=bun',
+          incompatible,
+          '--no-env-file',
+          'run',
+          'start',
+        ],
+        { cwd: fixture.directory, timeout: 30_000 },
+      );
+      expect(startup.code).not.toBe(0);
+      expect(startup.stderr).toContain('user-profile requires persistence');
+    }, [() => removeOwnedContainer(rejectedContainer)]);
+    const deploymentPath = join(fixture.directory, 'deployment.json');
+    const originalDeployment = readFileSync(deploymentPath, 'utf8');
+    const desired = JSON.parse(originalDeployment) as {
+      images: Record<string, string>;
+    };
+    desired.images.user = incompatible;
+    writeFileSync(deploymentPath, JSON.stringify(desired));
+    const rejectedPreparation = await fixture.opsResult('prepare');
+    expect(rejectedPreparation.code).not.toBe(0);
+    expect(rejectedPreparation.stderr).toContain(
+      'user-profile requires persistence',
+    );
+    expect(existsSync(join(fixture.directory, 'state.json'))).toBe(false);
+    expect(existsSync(join(fixture.directory, 'compose.json'))).toBe(false);
+    writeFileSync(deploymentPath, originalDeployment);
     for (const key of [
       'user-admin-password',
       'user-owner-password',
@@ -307,6 +350,58 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
       join(fixture.directory, 'secrets/user-owner-password'),
       'utf8',
     );
+    const inventoryPath = join(fixture.directory, 'state.json');
+    const composePath = join(fixture.directory, 'compose.json');
+    const inventoryBefore = readFileSync(inventoryPath, 'utf8');
+    const composeBefore = readFileSync(composePath, 'utf8');
+    const containersBefore = await fixture.compose(['ps', '-q']);
+    await until(
+      async () =>
+        (await sql(
+          'user',
+          'SELECT count(*) FROM user_outbox WHERE published_at IS NULL',
+        )) === '0',
+    );
+    const outboxBefore = await sql(
+      'user',
+      'SELECT row_to_json(user_outbox) FROM user_outbox ORDER BY event_id',
+    );
+    const queueCommand = [
+      'exec',
+      '-T',
+      'rabbitmq',
+      'rabbitmqctl',
+      'list_queues',
+      '--quiet',
+      'name',
+      'messages',
+      '--formatter',
+      'json',
+    ];
+    const queuesBefore = await fixture.compose(queueCommand);
+    const rejectedUpdate = await fixture.opsResult(
+      'update',
+      'user',
+      `--image=${incompatible}`,
+    );
+    expect(rejectedUpdate.code).not.toBe(0);
+    expect(rejectedUpdate.stderr).toContain(
+      'user-profile requires persistence',
+    );
+    expect(rejectedUpdate.stderr).not.toContain(owner.trim());
+    expect(readFileSync(inventoryPath, 'utf8')).toBe(inventoryBefore);
+    expect(readFileSync(composePath, 'utf8')).toBe(composeBefore);
+    expect(await fixture.compose(['ps', '-q'])).toBe(containersBefore);
+    expect(
+      await sql('user', 'SELECT row_to_json(users) FROM users ORDER BY id'),
+    ).toBe(userRows);
+    expect(
+      await sql(
+        'user',
+        'SELECT row_to_json(user_outbox) FROM user_outbox ORDER BY event_id',
+      ),
+    ).toBe(outboxBefore);
+    expect(await fixture.compose(queueCommand)).toBe(queuesBefore);
     await fixture.ops('prepare');
     expect(
       readFileSync(

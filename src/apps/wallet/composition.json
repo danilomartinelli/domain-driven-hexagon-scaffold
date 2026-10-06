@@ -1,0 +1,7 @@
+{
+  "integrations": ["persistence", "messaging", "exposure"],
+  "groups": [
+    { "name": "wallet-creation", "requires": ["persistence", "messaging"] },
+    { "name": "wallet-lookup", "requires": ["persistence"], "exposure": true }
+  ]
+}

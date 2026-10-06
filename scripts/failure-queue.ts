@@ -1,5 +1,9 @@
 import { existsSync } from 'node:fs';
 import { discoverApplications } from '@starter/capabilities/declaration';
+import {
+  ApplicationCompatibilityError,
+  preflightApplication,
+} from '@starter/capabilities/composition';
 import { environmentVariables, readEnvironment } from '../database/environment';
 import { operateEnvironment } from './lib/environments';
 
@@ -10,7 +14,6 @@ function recoverable(app: string | undefined): app is string {
   return discoverApplications(apps).some(
     (declaration) =>
       declaration.name === app &&
-      declaration.messaging &&
       existsSync(new URL(`${app}/messaging/failures.ts`, apps)),
   );
 }
@@ -19,6 +22,8 @@ async function main(): Promise<number> {
   const [app, action, ...args] = process.argv.slice(2);
   if (!recoverable(app) || (action !== 'inspect' && action !== 'replay'))
     throw new Error('Invalid destination or action');
+  if (!preflightApplication(new URL(`${app}/`, apps)).messaging)
+    throw new Error('Recovery requires messaging');
   const options = new Map<string, string>();
   const forward: string[] = [];
   for (const arg of args) {
@@ -56,9 +61,11 @@ async function main(): Promise<number> {
 
 try {
   process.exitCode = await main();
-} catch {
+} catch (error) {
   console.error(
-    'Failure-queue command requires an owned, ready environment and matching broker settings. Use --environment=test|development --run=<id>; select inspect or replay on a messaging application with a failure-queue command.',
+    error instanceof ApplicationCompatibilityError
+      ? error.message
+      : 'Failure-queue command requires an owned, ready environment and matching broker settings. Use --environment=test|development --run=<id>; select inspect or replay on a messaging application with a failure-queue command.',
   );
   process.exitCode = 1;
 }

@@ -1,0 +1,8 @@
+{
+  "integrations": ["persistence", "messaging", "exposure"],
+  "groups": [
+    { "name": "user-profile", "requires": ["persistence"] },
+    { "name": "user-delivery", "requires": ["persistence", "messaging"] },
+    { "name": "user-api", "requires": ["persistence"], "exposure": true }
+  ]
+}

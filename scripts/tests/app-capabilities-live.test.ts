@@ -150,23 +150,22 @@ DROP TABLE probe_records;
     );
   }
   const module = join(app, 'composition/app.module.ts');
-  let source = replaceOnce(
+  const requires = [
+    ...(persistence ? ['persistence'] : []),
+    ...(messaging ? ['messaging'] : []),
+  ];
+  const registration = join(app, 'composition.json');
+  const composition = JSON.parse(await readFile(registration, 'utf8')) as {
+    integrations: string[];
+    groups: unknown[];
+  };
+  composition.groups.push({ name: 'probe', requires });
+  await writeFile(registration, JSON.stringify(composition));
+  const source = replaceOnce(
     await readFile(module, 'utf8'),
-    'const applicationProviders: Provider[] = [];',
-    `const applicationProviders: Provider[] = [${providers.join(', ')}];`,
+    'const functionality: Record<string, () => Functionality> = {};',
+    `const functionality: Record<string, () => Functionality> = { probe: () => ({ providers: [${providers.join(', ')}], ${messaging ? 'handlers: [ProbeHandler],' : ''} ${exposure ? 'controllers: [ProbeController],' : ''} }) };`,
   );
-  if (messaging)
-    source = replaceOnce(
-      source,
-      'const handlers: InjectionToken<MessageHandler>[] = [];',
-      'const handlers: InjectionToken<MessageHandler>[] = [ProbeHandler];',
-    );
-  if (exposure)
-    source = replaceOnce(
-      source,
-      'const businessControllers: Type[] = [];',
-      'const businessControllers: Type[] = [ProbeController];',
-    );
   await writeFile(module, `${imports.join('\n')}\n${source}`);
 }
 
@@ -444,8 +443,14 @@ async function checkCombination(
     .parse(await Bun.file(join(artifact, 'package.json')).json()).scripts;
   expect(Object.keys(scripts).sort()).toEqual(
     persistence
-      ? ['migration:down', 'migration:status', 'migration:up', 'start']
-      : ['start'],
+      ? [
+          'migration:down',
+          'migration:status',
+          'migration:up',
+          'preflight',
+          'start',
+        ]
+      : ['preflight', 'start'],
   );
   if (persistence) {
     const migrated = await runCommand(

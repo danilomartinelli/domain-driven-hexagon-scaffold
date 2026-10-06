@@ -131,6 +131,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@nx/devkit": "23.2.1",
+        "@starter/capabilities": "workspace:*",
         "prettier": "3.9.9",
         "typescript": "6.0.3",
       },

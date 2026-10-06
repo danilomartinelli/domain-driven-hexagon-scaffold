@@ -17,6 +17,12 @@ own Nx project. Read [the Wallet guide](../../docs/wallet.md) before changing
   exposure, and tooling discovers applications from it; a disabled
   capability has no configuration, adapters or readiness dependency. Never add
   a central list of application names.
+- `composition.json` registers prepared integrations and each functionality
+  group's capability requirements. Bind those same names through
+  `composeApplication` at the composition boundary and run preflight before
+  adapters or environment changes. Only explicitly exposed groups withdraw with
+  exposure; unmet business requirements must fail. See
+  [application compatibility](../../docs/application-compatibility.md).
 - Configuration comes from the application's own environment variables; do
   not load dotenv files. With persistence declared, migrations and seeds live in
   the application's `database/` folder and are discovered from the declaration.

@@ -64,6 +64,10 @@ export async function runOperations(args: string[]): Promise<void> {
     throw new Error(
       'Usage: bun run ops --directory=<directory> prepare|migrate|status|start|stop|down|probe|inspect|replay|update|rollback|backup|restore [application]',
     );
+  if (action === 'prepare' && name)
+    throw new Error(
+      'prepare applies to the complete installation; omit the application argument',
+    );
   const deployment = readDeployment(requestedDirectory);
   const directory = deployment.directory;
   const diagnostics = operationsDiagnostics(directory, action);
@@ -121,14 +125,43 @@ export async function runOperations(args: string[]): Promise<void> {
       );
     return result.stdout.trim();
   };
+  const removeTransient = async (
+    container: string,
+    owner: string,
+  ): Promise<void> => {
+    const ids = await execute(
+      [
+        'docker',
+        'ps',
+        '-aq',
+        '--filter',
+        `name=^/${container}$`,
+        '--filter',
+        `label=dev.starter.owner=${owner}`,
+      ],
+      15_000,
+      true,
+    );
+    if (ids)
+      await execute(['docker', 'rm', '-f', ...ids.split(/\s+/)], 30_000, true);
+  };
   const artifact = async (app: string, image: string): Promise<Artifact> => {
     imageDigest.parse(image);
-    const declaration = applicationDeclarationSchema.parse(
-      JSON.parse(
-        await execute([
+    if (controller.signal.aborted)
+      throw new Error('Operation interrupted before image preflight');
+    const owner = randomUUID();
+    const container = `ddh-preflight-${owner}`;
+    return withCleanup(async () => {
+      // Docker may finish creating a container after its client is killed. Wait
+      // for this bounded creation request before honoring cancellation, so the
+      // named resource exists before cleanup inspects it.
+      const created = await runCommand(
+        [
           'docker',
-          'run',
+          'create',
           '--rm',
+          `--name=${container}`,
+          `--label=dev.starter.owner=${owner}`,
           '--network=none',
           '--read-only',
           '--cap-drop=ALL',
@@ -136,14 +169,52 @@ export async function runOperations(args: string[]): Promise<void> {
           '--entrypoint=bun',
           image,
           '--no-env-file',
-          '-e',
-          "console.log(await Bun.file('/app/app/application.json').text())",
-        ]),
-      ),
-    );
-    if (declaration.name !== app)
-      throw new Error('Image does not own the selected application');
-    return { image, declaration };
+          '/app/node_modules/@starter/capabilities/preflight.ts',
+          '/app/app',
+        ],
+        {
+          cwd: directory,
+          env,
+          timeout: 90_000,
+          maxOutput: 2_000_000,
+        },
+      );
+      diagnostics.record(created, false);
+      if (created.code !== 0)
+        throw new Error(
+          `Image preflight creation failed for ${app}; diagnostic: ${diagnostics.logPath}`,
+        );
+      if (controller.signal.aborted)
+        throw new Error('Operation interrupted before image preflight startup');
+      const result = await runCommand(
+        ['docker', 'start', '--attach', container],
+        {
+          cwd: directory,
+          env,
+          timeout: 90_000,
+          maxOutput: 2_000_000,
+          signal: controller.signal,
+        },
+      );
+      diagnostics.record(result, false);
+      if (result.code !== 0) {
+        // Forward only the contract's identifier-only diagnostic; image output
+        // must never echo operator secrets or arbitrary application data.
+        const reason =
+          /Application [a-z][a-z0-9-]*: (?:group [a-z][a-z0-9-]* requires (?:persistence|messaging|exposure)|(?:persistence|messaging|exposure) integration is not prepared)/.exec(
+            result.stderr,
+          )?.[0];
+        throw new Error(
+          `Image preflight failed for ${app}: ${reason ?? 'invalid or unavailable compatibility contract'}; prepare a compatible composition. Diagnostic: ${diagnostics.logPath}`,
+        );
+      }
+      const declaration = applicationDeclarationSchema.parse(
+        JSON.parse(result.stdout),
+      );
+      if (declaration.name !== app)
+        throw new Error('Image does not own the selected application');
+      return { image, declaration };
+    }, [() => removeTransient(container, owner)]);
   };
   let completed = false;
   await withCleanup(async () => {
@@ -162,6 +233,26 @@ export async function runOperations(args: string[]): Promise<void> {
         config: deployment.config,
         artifacts,
       };
+    }
+    // Validate selected immutable artifacts before rewriting Compose/state,
+    // supplying credentials to containers, stopping services or running migrations.
+    let validatedCandidate: Artifact | undefined;
+    if (action === 'update' || action === 'rollback') {
+      const image = options.get('image');
+      if (
+        !name ||
+        !state.artifacts.some((entry) => entry.declaration.name === name)
+      )
+        throw new Error('Select a prepared application');
+      if (!image) throw new Error('Supply --image=<repository@sha256:digest>');
+      validatedCandidate = await artifact(name, image);
+    } else if (
+      !newlyPrepared &&
+      ['prepare', 'start', 'migrate', 'replay', 'restore'].includes(action)
+    ) {
+      for (const entry of state.artifacts)
+        if (!name || name === entry.declaration.name)
+          await artifact(entry.declaration.name, entry.image);
     }
     const current = state;
     await verifyEnvironmentOwnership(current, execute, !newlyPrepared);
@@ -204,29 +295,7 @@ export async function runOperations(args: string[]): Promise<void> {
             service,
             ...command,
           ]),
-        [
-          async () => {
-            const ids = await execute(
-              [
-                'docker',
-                'ps',
-                '-aq',
-                '--filter',
-                `name=^/${container}$`,
-                '--filter',
-                `label=dev.starter.owner=${current.owner}`,
-              ],
-              15_000,
-              true,
-            );
-            if (ids)
-              await execute(
-                ['docker', 'rm', '-f', ...ids.split(/\s+/)],
-                30_000,
-                true,
-              );
-          },
-        ],
+        [() => removeTransient(container, current.owner)],
       );
     };
     const app = name
@@ -466,9 +535,8 @@ export async function runOperations(args: string[]): Promise<void> {
       if (existsSync(join(directory, 'recovery.json')))
         throw new Error('Complete restore assessment before changing images');
       const previous = requiredApp();
-      const image = options.get('image');
-      if (!image) throw new Error('Supply --image=<repository@sha256:digest>');
-      const candidate = await artifact(previous.declaration.name, image);
+      const candidate = validatedCandidate;
+      if (!candidate) throw new Error('Candidate preflight is required');
       if (
         JSON.stringify(candidate.declaration) !==
         JSON.stringify(previous.declaration)

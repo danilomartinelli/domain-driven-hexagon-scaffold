@@ -37,14 +37,55 @@ independent operation and identity-preserving recovery remain required.
   Image rollback requires schema/contract compatibility and never implies automatic
   database reversal or an atomic rollback of the distributed system.
 
+## Transition decisions approved on 2026-10-06
+
+An existing application's declaration selects a compatible composition prepared
+by its author. A capability flag does not generate missing integration code or
+silently remove business functionality that still depends on that capability.
+Reject incompatible combinations before changing the environment. Disabling and
+reactivating an existing integration must retain its source and durable resources
+without imposing disabled runtime dependencies. This preserves application
+ownership while making capability changes effective beyond initial generation.
+Application-owned functionality groups declare capability requirements in the
+same registrations used for composition and preflight validation. This makes
+compatibility explicit without deriving business requirements from framework
+bootstrap side effects; real execution tests still establish the behavior.
+
+Deployment configuration is the desired selection throughout an installation's
+lifetime, with applied state and retained resources recorded separately. Updating
+the desired selection cannot strand inspection or shutdown. Plan topology changes
+without changing the running environment, then apply them explicitly; that
+operation may coordinate provisioning, separate owning migrations and startup.
+This replaces the fixed-bootstrap restriction for the required deployment
+reconciliation behavior.
+
+Retain confirmed progress if a later application's transition fails, record its
+result, stop further promotions and allow explicit continuation. Do not simulate
+an atomic deployment by automatically returning every image or reversing durable
+state; rollback retains its schema and event-contract compatibility requirements.
+
+After successful migration, a candidate with ready HTTP and unavailable messaging
+keeps running and serving usable HTTP, with verification pending and further
+promotions stopped. Explicit continuation verifies recovery without repeating
+completed migrations. If the process or HTTP fails verification past its deadline,
+stop the candidate with the existing bounded shutdown contract and retain migrated
+state for explicit recovery or compatibility-reviewed image rollback. This
+distinguishes candidate verification from ordinary dependency-outage recovery and
+does not equate an applied schema or selected image with a verified transition.
+
+The [delivery design](../scaffold-design.md#deployment-configuration-and-reconciliation)
+records the seven approved decisions and their acceptance evidence. These are
+accepted design clarifications, not a claim that the transition gaps are fixed.
+
 ## Implementation status
 
 The identity and MIT metadata standardization and bounded rename command from
 [issue #59](https://github.com/danilomartinelli/vibecoding-starter-js/issues/59)
 are implemented; see the [adoption guide](../adoption.md).
 
-Application capabilities are implemented (#60). Each application declares its
-name and independent `persistence`, `messaging` and `exposure` choices in
+Fresh application generation and capability-aware probes are implemented (#60).
+Each application declares its name and independent `persistence`, `messaging` and
+`exposure` choices in
 `src/apps/<name>/application.json`, parsed by the private `@starter/capabilities`
 package. The single `nest-app` generator emits all eight combinations, with
 configuration readers, adapters and dependencies for the enabled capabilities
@@ -59,6 +100,19 @@ applications from their declarations instead of a central name list. User and
 Wallet declare all three capabilities and keep their contracts. A live matrix
 generates, checks and executes every combination against real PostgreSQL and
 RabbitMQ, with absent and never-contacted dependencies for disabled capabilities.
+Full disablement and reactivation of retained integrations remains incomplete;
+for example, distribution still rejects retained database source when persistence
+is disabled. The fresh-generation matrix does not establish those transitions.
+
+Functionality-group requirements and preflight compatibility validation are
+implemented (#71); see the [author/operator contract](../application-compatibility.md).
+Application-owned registrations drive composition and reject missing capabilities
+before adapter construction or environment mutation. Independent artifacts carry
+the same contract, and operators validate selected images in isolation before
+changing the installation. Source, artifact and live environment/operator tests
+verify rejection and preservation of existing state. The full local Docker gate
+and remote CI passed for this implementation; registry publication and deployment
+remain separate.
 
 Selected development and test environments derive startup, infrastructure, ports,
 configuration and explicit Kong routes from declarations (#61). Development
@@ -88,5 +142,11 @@ authorized dispatch executes.
 The [Compose reference operations](../operations.md) are implemented (#63):
 independent image digests, file secrets, private services and HTTPS, separated
 owner migrations, verified updates/rollback and manual per-application recovery.
+The shipped reference keeps a fixed deployment selection and rejects changed
+capabilities/routes. The desired/applied/retained separation and deployment
+reconciliation described above remain to be implemented and verified.
+Candidate verification failures currently leave the selected candidate in its
+reached process state; the explicit degraded-verification state and bounded stop
+on process/HTTP verification failure described above are not yet implemented.
 
 No actual registry publication or deployment is established by this ADR.

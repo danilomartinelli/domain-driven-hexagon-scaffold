@@ -27,7 +27,9 @@ interface OperationsFixture {
   state: () => DeploymentState;
   compose: (args: string[]) => Promise<string>;
   digest: (tag: string) => Promise<string>;
-  variant: (kind: 'compatible' | 'failure' | 'interrupted') => Promise<string>;
+  variant: (
+    kind: 'compatible' | 'failure' | 'interrupted' | 'incompatible',
+  ) => Promise<string>;
   cleanup: () => Promise<void>;
   request: (
     path: string,
@@ -212,6 +214,25 @@ export async function operationsFixture(): Promise<OperationsFixture> {
       variant: async (kind) => {
         const context = join(directory, kind);
         mkdirSync(context);
+        if (kind === 'incompatible') {
+          writeFileSync(
+            join(context, 'application.json'),
+            JSON.stringify({
+              name: 'user',
+              persistence: false,
+              messaging: true,
+              exposure: true,
+            }),
+          );
+          writeFileSync(
+            join(context, 'Dockerfile'),
+            `FROM ${images.user}\nCOPY --chown=bun:bun application.json /app/app/application.json\n`,
+          );
+          const tag = `127.0.0.1:${String(registryPort)}/user:incompatible`;
+          await execute(['docker', 'build', '-t', tag, context]);
+          tags.push(tag);
+          return digest(tag);
+        }
         const sql =
           kind === 'compatible'
             ? 'CREATE TABLE operations_marker (id integer);'

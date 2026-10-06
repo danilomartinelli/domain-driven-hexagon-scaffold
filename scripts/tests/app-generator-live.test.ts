@@ -82,22 +82,18 @@ async function checkScenario(scenario: Scenario): Promise<void> {
     `,
     );
     const module = join(app, 'composition/app.module.ts');
-    let composition = await readFile(module, 'utf8');
-    for (const [from, to] of [
-      [
-        'const applicationProviders: Provider[] = [];',
-        "const applicationProviders: Provider[] = [{ provide: 'probe', useValue: probe }];",
-      ],
-      [
-        'const handlers: InjectionToken<MessageHandler>[] = [];',
-        "const handlers: InjectionToken<MessageHandler>[] = ['probe'];",
-      ],
-      [
-        'const businessControllers: Type[] = [];',
-        'const businessControllers: Type[] = [ProbeController];',
-      ],
-    ])
-      composition = replaceOnce(composition, from, to);
+    const registration = join(app, 'composition.json');
+    const registered = JSON.parse(await readFile(registration, 'utf8')) as {
+      integrations: string[];
+      groups: unknown[];
+    };
+    registered.groups.push({ name: 'probe', requires: ['messaging'] });
+    await writeFile(registration, JSON.stringify(registered));
+    const composition = replaceOnce(
+      await readFile(module, 'utf8'),
+      'const functionality: Record<string, () => Functionality> = {};',
+      "const functionality: Record<string, () => Functionality> = { probe: () => ({ providers: [{ provide: 'probe', useValue: probe }], handlers: ['probe'], controllers: [ProbeController] }) };",
+    );
     await writeFile(
       module,
       composition +
