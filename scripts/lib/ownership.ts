@@ -2,7 +2,7 @@ import type { EnvironmentManifest } from '../../database/environment';
 
 /** Inspect the whole retained inventory before adopting, changing or stopping a run. */
 export async function verifyEnvironmentOwnership(
-  manifest: EnvironmentManifest,
+  manifest: Pick<EnvironmentManifest, 'project' | 'owner'>,
   inspect: (args: string[]) => Promise<string>,
   allowExisting: boolean,
 ): Promise<void> {

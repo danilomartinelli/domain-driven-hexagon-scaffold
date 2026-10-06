@@ -10,7 +10,8 @@
     "./events": "./events.ts",
     "./persistence": "./persistence.ts",
     "./http": "./http.ts",
-    "./graphql": "./graphql.ts"
+    "./graphql": "./graphql.ts",
+    "./configuration": "./configuration.ts"
   },
   "dependencies": {
     "@starter/capabilities": "workspace:*",

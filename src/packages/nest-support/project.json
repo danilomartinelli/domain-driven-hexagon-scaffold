@@ -26,6 +26,14 @@
         "command": "bun --bun eslint src/packages/nest-support --max-warnings 0 --fix",
         "cwd": "."
       }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun --no-env-file test ./src/packages/nest-support/tests",
+        "cwd": "."
+      }
     }
   }
 }

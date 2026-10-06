@@ -85,5 +85,8 @@ package preflight, commit tags and immutable digest output. See
 registry publication and package visibility remain unverified until an
 authorized dispatch executes.
 
-Pending: the Compose reference operations (#63). No actual registry publication
-or deployment is established by this ADR.
+The [Compose reference operations](../operations.md) are implemented (#63):
+independent image digests, file secrets, private services and HTTPS, separated
+owner migrations, verified updates/rollback and manual per-application recovery.
+
+No actual registry publication or deployment is established by this ADR.

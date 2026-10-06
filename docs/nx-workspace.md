@@ -25,7 +25,7 @@ part of that design.
 | `rabbitmq`              | `src/packages/rabbitmq`              | Technical failure-queue inspection/replay transport. Application component suites cover its real broker behavior; lint and typecheck targets are local.                                                                                               |
 | `integration-contracts` | `src/packages/integration-contracts` | Versioned serializable integration envelopes and independent baseline fixtures; infrastructure-free contract tests                                                                                                                                    |
 | `core`                  | `src/packages/core`                  | Plain TypeScript DDD primitives, errors, guards, serialization, decorators and technical types; generic error/command tests                                                                                                                           |
-| `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication and SQL repository support; exercised through application E2E, no standalone unit suite                                                                                                |
+| `nest-support`          | `src/packages/nest-support`          | Nest transport DTO helpers, request context, event publication, SQL repository support and file configuration; application E2E plus standalone configuration tests                                                                                    |
 | `example`               | `src/packages/example`               | Existing deep-module search-term example and its real unit test; optional starter template                                                                                                                                                            |
 | `config`                | `tooling/config`                     | Shared strict ESLint, Prettier and TypeScript settings; checked as JavaScript tooling, no runtime suite                                                                                                                                               |
 | `generators`            | `tooling/generators`                 | Local `nest-app`/`ts-lib`/`nest-lib` plugin; uncached CLI and distribution validation in owned scratch workspaces, plus a separate live broker component probe                                                                                        |
@@ -73,6 +73,7 @@ graph TD
   test-runner --> infrastructure
   test-runner --> capabilities
   database --> capabilities
+  database --> nest-support
   generators --> test-runner
   type-fixtures --> core
   nest-support --> core
@@ -218,28 +219,29 @@ bun run check
 bun run check:full
 ```
 
-| Package command                                                          | Nx target(s)                                                                             |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `lint`, `typecheck`, `lint:fix`                                          | All applicable project `lint` / `typecheck` / `lint-fix` targets                         |
-| `test`, `test:unit`                                                      | Every project's `test` target                                                            |
-| `start`, `start:dev`, `start:debug`, `start:prod`                        | Selected declarations: `serve`, `watch`, `debug`; production sets `NODE_ENV`             |
-| `start:user`, `start:user:dev`, `start:user:debug`                       | `user:serve`, `watch`, `debug`                                                           |
-| `test:user:component`                                                    | `user:test-component`                                                                    |
-| `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                                         |
-| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets                         |
-| `test:debug`                                                             | `user:test-debug`; run another project's `test-debug` target for its suite               |
-| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                            |
-| `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                                  |
-| `test:images`                                                            | `test-runner:test-images`; execute the independent Linux artifacts on both architectures |
-| `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)                        |
-| `test:tooling`                                                           | `test-runner:test-live`                                                                  |
-| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                                   |
-| `seed:up`                                                                | `database:seed`                                                                          |
-| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                              |
-| `env:prepare`, `env:exec`, `env:down`, `env:inspect`                     | `infrastructure:prepare`, `exec`, `down`, `inspect`                                      |
-| `dev`, `dev:down`                                                        | `infrastructure:dev`, `down` for a development run (`default` unless `--run`)            |
-| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                            |
-| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                                         |
+| Package command                                                          | Nx target(s)                                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `lint`, `typecheck`, `lint:fix`                                          | All applicable project `lint` / `typecheck` / `lint-fix` targets                           |
+| `test`, `test:unit`                                                      | Every project's `test` target                                                              |
+| `start`, `start:dev`, `start:debug`, `start:prod`                        | Selected declarations: `serve`, `watch`, `debug`; production sets `NODE_ENV`               |
+| `start:user`, `start:user:dev`, `start:user:debug`                       | `user:serve`, `watch`, `debug`                                                             |
+| `test:user:component`                                                    | `user:test-component`                                                                      |
+| `start:wallet`, `start:wallet:dev`, `start:wallet:debug`                 | `wallet:serve`, `watch`, `debug`                                                           |
+| `test:watch`, `test:cov`                                                 | All existing unit suites' `test-watch` / `test-coverage` targets                           |
+| `test:debug`                                                             | `user:test-debug`; run another project's `test-debug` target for its suite                 |
+| `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                              |
+| `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                                    |
+| `test:images`                                                            | `test-runner:test-images`; execute the independent Linux artifacts on both architectures   |
+| `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)                          |
+| `test:tooling`                                                           | `test-runner:test-live`                                                                    |
+| `test:operations`                                                        | `test-runner:test-operations`; disposable Compose bootstrap, update, rollback and recovery |
+| `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                                     |
+| `seed:up`                                                                | `database:seed`                                                                            |
+| `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                                |
+| `env:prepare`, `env:exec`, `env:down`, `env:inspect`                     | `infrastructure:prepare`, `exec`, `down`, `inspect`                                        |
+| `dev`, `dev:down`                                                        | `infrastructure:dev`, `down` for a development run (`default` unless `--run`)              |
+| `docker:env`, `docker:tests`                                             | `infrastructure:up`, `infrastructure:up-test`                                              |
+| `format:check`, `format`, `lint:boundaries`                              | `workspace:format-check`, `format`, `boundaries`                                           |
 
 The environment CLI carries its argument array into its uncached Nx target through
 a dedicated process variable, preserving the command after `--` without shell

@@ -98,6 +98,14 @@
         "command": "bun test ./scripts/tests/private-development.test.ts",
         "cwd": "."
       }
+    },
+    "test-operations": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests/operations.test.ts ./scripts/tests/operations-live.test.ts",
+        "cwd": "."
+      }
     }
   },
   "implicitDependencies": ["database", "infrastructure"]

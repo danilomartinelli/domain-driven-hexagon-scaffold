@@ -1,4 +1,5 @@
 import './load-env';
+import { configurationValue } from '@starter/nest-support/configuration';
 import { assertTestEnvironment } from './environment';
 import { selectApplication, type DatabaseApplication } from './applications';
 
@@ -19,7 +20,7 @@ export function databaseTarget(): {
   if (process.env.NODE_ENV === 'test') assertTestEnvironment();
   const app = selectApplication();
   const value = (suffix: string) => {
-    const setting = process.env[`${app.prefix}_${suffix}`];
+    const setting = configurationValue(`${app.prefix}_${suffix}`);
     if (!setting) throw new Error(`Missing ${app.prefix}_${suffix}`);
     return setting;
   };

@@ -93,6 +93,8 @@ jobs:
         run: bun run nx run test-runner:test-selection
       - name: Container watch and local debugging
         run: bun run nx run test-runner:test-private-development
+      - name: Compose reference operations
+        run: bun run nx run test-runner:test-operations
       - name: Distributed system tests
         run: bun run test:e2e
       # Keep component failures inside the existing required check status.

@@ -16,6 +16,8 @@ export async function runCommand(
     env?: NodeJS.ProcessEnv;
     /** Characters per stream; Infinity retains complete Git file inventories. */
     maxOutput?: number;
+    /** Cancel an operator subprocess while allowing its caller to clean owned containers. */
+    signal?: AbortSignal;
     /** Keep the first output for previews; diagnostics default to the tail. */
     outputRetention?: 'head' | 'tail';
     /** Identify long nested runs without echoing arguments or environment values. */
@@ -99,6 +101,11 @@ export async function runCommand(
   };
   cancellation?.signal.addEventListener('abort', interrupt, { once: true });
   if (cancellation?.signal.aborted) interrupt();
+  const abort = (): void => {
+    terminate();
+  };
+  options.signal?.addEventListener('abort', abort, { once: true });
+  if (options.signal?.aborted) abort();
   const capture = (current: string, data: string): string => {
     lastOutputAt = Date.now();
     if (current.length + data.length > maxOutput) {
@@ -135,11 +142,15 @@ export async function runCommand(
     return {
       code: cancellation?.signal.aborted
         ? interruptedCode()
-        : termination.timedOut
-          ? 124
-          : termination.outputOverflow
-            ? 125
-            : code,
+        : options.signal?.aborted
+          ? options.signal.reason === 143
+            ? 143
+            : 130
+          : termination.timedOut
+            ? 124
+            : termination.outputOverflow
+              ? 125
+              : code,
       stdout,
       stderr,
       timedOut: termination.timedOut,
@@ -149,5 +160,6 @@ export async function runCommand(
     clearInterval(heartbeat);
     clearTimeout(forceKill);
     cancellation?.signal.removeEventListener('abort', interrupt);
+    options.signal?.removeEventListener('abort', abort);
   }
 }

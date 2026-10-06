@@ -2,8 +2,12 @@ import type { EnvironmentManifest } from '../../database/environment';
 
 /** Only application-owned, explicitly declared business routes join the gateway. */
 export function gatewayConfiguration(
-  manifest: EnvironmentManifest,
+  manifest: Pick<
+    EnvironmentManifest,
+    'environment' | 'topology' | 'applicationPorts' | 'gateway'
+  >,
   privateApplications = manifest.environment === 'development',
+  protocols?: readonly string[],
 ): string {
   const applications = (manifest.topology ?? []).filter((app) => app.exposure);
   const upstreams = privateApplications
@@ -45,6 +49,7 @@ export function gatewayConfiguration(
             name: `${app.name}--${route.name}`,
             paths: route.paths,
             strip_path: route.stripPath,
+            ...(protocols ? { protocols } : {}),
             ...(route.methods ? { methods: route.methods } : {}),
           },
         ],

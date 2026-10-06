@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+import { configurationValue } from '@starter/nest-support/configuration';
 
 /** Artifact-local registry: there is no selectable sibling database or workspace manifest. */
 export function selectApplication(): {
@@ -44,7 +45,7 @@ export function databaseTarget(): {
 } {
   const app = selectApplication();
   const value = (suffix: string) => {
-    const setting = process.env[`${app.prefix}_${suffix}`];
+    const setting = configurationValue(`${app.prefix}_${suffix}`);
     if (!setting) throw new Error(`Missing ${app.prefix}_${suffix}`);
     return setting;
   };

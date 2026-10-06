@@ -1,4 +1,11 @@
 import { get } from 'env-var';
+import { configurationValue } from '@starter/nest-support/configuration';
+
+function required(name: string): string {
+  const value = configurationValue(name);
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+}
 
 /**
  * User reads only its own settings from the process environment and loads
@@ -11,7 +18,7 @@ export function userHttpPort(): number {
 
 export function userDatabaseUri(): string {
   const setting = (name: string) =>
-    encodeURIComponent(get(`USER_DB_${name}`).required().asString());
+    encodeURIComponent(required(`USER_DB_${name}`));
   const port = get('USER_DB_PORT').required().asPortNumber();
   return `postgres://${setting('USERNAME')}:${setting('PASSWORD')}@${setting('HOST')}:${String(port)}/${setting('NAME')}`;
 }
@@ -24,8 +31,7 @@ export function userRabbitMqOptions(): {
   vhost: string;
   heartbeat: number;
 } {
-  const setting = (name: string) =>
-    get(`RABBITMQ_${name}`).required().asString();
+  const setting = (name: string) => required(`RABBITMQ_${name}`);
   return {
     hostname: setting('HOST'),
     port: get('RABBITMQ_PORT').required().asPortNumber(),
