@@ -27,6 +27,12 @@ declare all three. The topology and OCI decisions are accepted but not yet
 implemented; the migration requirements and implementation record below describe
 the completed baseline.
 
+Amended on 2026-10-05: #62 implements the topology and OCI decisions recorded
+above. Development applications now run on private container listeners behind
+Kong; local Linux images reuse the independent distribution and migration
+contracts. See [ADR 0003's implementation status](0003-application-capabilities-and-oci-delivery.md#implementation-status).
+The earlier migration record remains historical evidence.
+
 The repository will adopt Nx with `user` and `wallet` as separate Nest
 applications. Wallet's current size does not determine its intended application
 boundary. Preserve Nest 12 and Bun as the application runtime, package manager

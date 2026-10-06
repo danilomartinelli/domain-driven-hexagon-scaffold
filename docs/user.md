@@ -20,14 +20,14 @@ bun run env:exec --environment=development --run=default -- bun run start:user:d
 ```
 
 `start:user` runs once; `start:user:debug` adds the Bun inspector to watch mode.
-The listener uses the allocated `USER_HTTP_PORT`. OpenAPI is at `/docs`.
+The unpublished container listener uses the allocated `USER_HTTP_PORT`. OpenAPI and health probes remain private; use the container operational workflow in the [database guide](database.md#container-watch-debugging-and-probes).
 Preparation provisions infrastructure; migrations and seeds remain explicit.
 Existing development manifests gain the new database on preparation, preserving
 their previous credentials and volumes. No old data is migrated or volume deleted.
 
 ```sh
-bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$USER_HTTP_PORT/v1/users"'
-bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$USER_HTTP_PORT/graphql" -H "Content-Type: application/json" -d "{\"query\":\"{ findUsers(options: \\\"\\\") { count data { id email } } }\"}"'
+bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$GATEWAY_PROXY_PORT/v1/users"'
+bun run env:exec --environment=development --run=default -- sh -c 'curl -s "http://127.0.0.1:$GATEWAY_PROXY_PORT/user/graphql" -H "Content-Type: application/json" -d "{\"query\":\"{ findUsers(options: \\\"\\\") { count data { id email } } }\"}"'
 bun run env:down --environment=development --run=default
 ```
 

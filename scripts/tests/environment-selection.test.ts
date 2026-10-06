@@ -303,7 +303,7 @@ test('add disable remove and reactivate retain database credentials and accepted
     ...args,
   ];
   const execute = (...args: string[]) =>
-    run(workspace, command('exec', '--', ...args), { timeout: 90000 });
+    run(workspace, command('exec', '--', ...args), { timeout: 180000 });
   const prepare = (...apps: string[]) =>
     run(workspace, command('prepare', ...apps.map((app) => `--app=${app}`)), {
       timeout: 120000,

@@ -159,9 +159,15 @@ export default async function nestApp(
         'test-component': target(
           `bun --no-env-file test --cwd ${root} ./tests/component`,
         ),
-        serve: target(`bun --no-env-file ${root}/main.ts`),
-        watch: target(`bun --no-env-file --watch ${root}/main.ts`),
-        debug: target(`bun --no-env-file --inspect ${root}/main.ts`),
+        serve: target(
+          `bun --no-env-file scripts/serve-application.ts ${name} serve`,
+        ),
+        watch: target(
+          `bun --no-env-file scripts/serve-application.ts ${name} watch`,
+        ),
+        debug: target(
+          `bun --no-env-file scripts/serve-application.ts ${name} debug`,
+        ),
         distribution: target(`bun --no-env-file scripts/distribute.ts ${name}`),
       },
     }),

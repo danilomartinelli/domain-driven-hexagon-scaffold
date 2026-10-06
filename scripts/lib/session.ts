@@ -9,11 +9,12 @@ interface Session {
       env?: NodeJS.ProcessEnv;
       /** null disables the deadline for long-lived development commands. */
       timeout?: number | null;
+      gracePeriod?: number;
       capture?: boolean;
       /** false keeps output in the run log only. */
       echo?: boolean;
     },
-  ): Promise<{ code: number; stdout: string }>;
+  ): Promise<{ code: number; stdout: string; stderr: string }>;
   log(message: string): void;
   readonly interrupted: number;
   startCleanup(): void;
@@ -67,11 +68,13 @@ export function commandSession(
     options: {
       env?: NodeJS.ProcessEnv;
       timeout?: number | null;
+      gracePeriod?: number;
       capture?: boolean;
       echo?: boolean;
     } = {},
-  ): Promise<{ code: number; stdout: string }> {
-    if (interrupted && !cleaning) return { code: interrupted, stdout: '' };
+  ): Promise<{ code: number; stdout: string; stderr: string }> {
+    if (interrupted && !cleaning)
+      return { code: interrupted, stdout: '', stderr: '' };
     log(`$ ${args.join(' ')}`);
     const child = spawn(args[0], args.slice(1), {
       cwd: root,
@@ -81,6 +84,7 @@ export function commandSession(
     });
     active = child;
     let stdout = '';
+    let stderr = '';
     let timedOut = false;
     let forceKill: ReturnType<typeof setTimeout> | undefined;
     const timeout =
@@ -91,13 +95,13 @@ export function commandSession(
             killGroup(child, 'SIGTERM');
             forceKill = setTimeout(() => {
               killGroup(child, 'SIGKILL');
-            }, 5_000);
+            }, options.gracePeriod ?? 5_000);
           }, options.timeout ?? 60_000);
     const cancelKill = (): void => {
       if (!cleaning)
         forceKill ??= setTimeout(() => {
           killGroup(child, 'SIGKILL');
-        }, 5_000);
+        }, options.gracePeriod ?? 5_000);
     };
     process.once('SIGINT', cancelKill);
     process.once('SIGTERM', cancelKill);
@@ -109,6 +113,7 @@ export function commandSession(
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
       if (options.echo !== false) process.stderr.write(chunk);
       appendFileSync(logPath, chunk);
+      if (options.capture) stderr += chunk;
     });
     try {
       const code = await new Promise<number>((resolve) => {
@@ -124,7 +129,7 @@ export function commandSession(
           );
         });
       });
-      return { code, stdout };
+      return { code, stdout, stderr };
     } finally {
       clearTimeout(timeout);
       clearTimeout(forceKill);

@@ -42,9 +42,8 @@ probes cannot accumulate database work. Observe recovery with a bounded polling 
 busy loop. A database outage after startup leaves liveness available. Initial
 application startup still requires its own database, and never waits for RabbitMQ.
 
-```sh
-bun run env:exec --environment=development --run=default -- sh -c 'for port in "$USER_HTTP_PORT" "$WALLET_HTTP_PORT"; do for path in live ready/http ready/database ready/consumer ready/publisher ready backlog; do curl -sS --max-time 20 -w "\nHTTP %{http_code}\n" "http://127.0.0.1:$port/health/$path"; done; done'
-```
+Use the [private container probe command](database.md#container-watch-debugging-and-probes)
+for each application; operational listeners are not published to the host.
 
 Consumer and User publisher states include `connected`, `failures`, `retries`,
 `retryDelayMs` and `lastFailureAt`. Counters describe failed/retried worker

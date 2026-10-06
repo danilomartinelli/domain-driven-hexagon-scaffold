@@ -71,6 +71,7 @@ function copySource(from: string, to: string): void {
     filter: (path) =>
       ![
         'tests',
+        'seeds',
         'node_modules',
         'project.json',
         'tsconfig.json',

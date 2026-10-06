@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun test ./scripts/tests/test-database-runner.test.ts ./scripts/tests/environment.test.ts ./scripts/tests/broker.test.ts ./scripts/tests/nx-runner.test.ts ./scripts/tests/environment-selection.test.ts",
+        "command": "bun test ./scripts/tests/test-database-runner.test.ts ./scripts/tests/environment.test.ts ./scripts/tests/broker.test.ts ./scripts/tests/nx-runner.test.ts ./scripts/tests/environment-selection.test.ts ./scripts/tests/private-development.test.ts",
         "cwd": "."
       }
     },
@@ -80,6 +80,22 @@
       "cache": false,
       "options": {
         "command": "bun test ./scripts/tests/environment-selection.test.ts",
+        "cwd": "."
+      }
+    },
+    "test-images": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/test-images.ts",
+        "cwd": "."
+      }
+    },
+    "test-private-development": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests/private-development.test.ts",
         "cwd": "."
       }
     }

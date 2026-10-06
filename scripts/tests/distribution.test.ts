@@ -86,7 +86,7 @@ test('distribution migration interface follows the application declaration', asy
       '--ignore-scripts',
     ]);
     expect(installed, installed.stderr).toMatchObject({ code: 0 });
-    mkdirSync(join(workspace.root, 'docs'));
+    mkdirSync(join(workspace.root, 'docs'), { recursive: true });
     cpSync(
       join(root, 'docs/distribution.md'),
       join(workspace.root, 'docs/distribution.md'),

@@ -13,13 +13,17 @@ make dev # or: bun run dev
 watches the selected applications; see the [database workflow](database.md#development).
 Inside a prepared environment (`env:exec`),
 `start` runs the selected independent application processes; `start:dev` watches them,
-`start:debug` opens their Bun inspectors, and `start:prod` sets `NODE_ENV=production`.
-The debug targets bind separate loopback endpoints: User uses `127.0.0.1:6499`
-and Wallet uses `127.0.0.1:6500`, including when started individually. Connect to
-each process's printed inspector URL; both ports must be available.
+`start:prod` sets `NODE_ENV=production`. Development runs these processes inside
+private containers; Kong exposes their declared REST/GraphQL routes on loopback.
+`start:debug` opens all selected inspectors; individual targets remain available.
+Default ports follow the discovered application order (User 6499 and Wallet 6500
+in the supplied scaffold). `DDH_DEBUG_PORT` selects the first port, with consecutive
+ports when debugging multiple applications. See the
+[container debugging workflow](database.md#container-watch-debugging-and-probes).
 Listeners use `USER_HTTP_PORT` and `WALLET_HTTP_PORT` allocated by the selected
-environment. Each exposes its own `/docs`, `/docs-json` and `/graphql`; User
-REST is `/v1/users`, Wallet lookup is `/v1/wallets/by-user/:userId`.
+environment, without publishing them. `/docs`, `/docs-json` and health endpoints
+remain private; Kong exposes `/user/graphql`, `/wallet/graphql`, User REST at
+`/v1/users` and Wallet lookup at `/v1/wallets/by-user/:userId`.
 Use `start:user` or `start:wallet` to run one service. Applications require only
 their own database credentials plus broker settings; HTTP startup never waits
 for broker availability. Running from source requires the workspace dependencies;
