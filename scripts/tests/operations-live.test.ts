@@ -4,6 +4,7 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
@@ -63,6 +64,340 @@ test('planning distinguishes an empty migration history from an unreadable runni
     }
   }, [fixture.cleanup]);
 }, 60_000);
+
+async function continueWithoutMigrations(
+  fixture: Awaited<ReturnType<typeof operationsFixture>>,
+  ...args: string[]
+): Promise<string> {
+  // Runtime verification must work when the migration-owner credentials are unusable.
+  const ownerSecret = join(fixture.directory, 'secrets', 'user-owner-password');
+  const password = readFileSync(ownerSecret);
+  chmodSync(ownerSecret, 0o644);
+  writeFileSync(ownerSecret, 'unusable-migration-owner-password\n');
+  return withCleanup(
+    () => fixture.ops('continue', 'user', ...args),
+    [
+      () => {
+        writeFileSync(ownerSecret, password);
+        chmodSync(ownerSecret, 0o444);
+      },
+    ],
+  );
+}
+
+for (const [failure, recovery] of [
+  ['process', 'continue'],
+  ['http', 'continue'],
+  ['process', 'rollback'],
+] as const) {
+  test(`candidate ${failure} failure stops only the candidate and recovers through ${recovery} without repeating migration`, async () => {
+    const fixture = await operationsFixture();
+    await withCleanup(async () => {
+      await fixture.ops('prepare');
+      await fixture.ops('migrate', 'user');
+      await fixture.ops('migrate', 'wallet');
+      await fixture.ops('start');
+      const sibling = await fixture.compose(['ps', '-q', 'app-wallet']);
+      const candidate = await fixture.variant(failure);
+      const updated = await fixture.opsResult(
+        'update',
+        'user',
+        `--image=${candidate}`,
+      );
+      expect(updated.code).not.toBe(0);
+      const recordPath = join(
+        fixture.directory,
+        readdirSync(fixture.directory).find((file) =>
+          file.startsWith('transition-'),
+        ) ?? 'missing',
+      );
+      const record = () =>
+        JSON.parse(readFileSync(recordPath, 'utf8')) as unknown;
+      expect(record()).toMatchObject({
+        candidateImage: candidate,
+        migration: { outcome: 'completed' },
+        status: 'verification-failed',
+        verification: { outcome: 'failed', reason: `${failure}-failed` },
+        runtime: { process: 'exited', image: candidate },
+      });
+      expect(fixture.state().applied.applications[0]).toMatchObject({
+        image: candidate,
+        migration: {
+          operation: 'update',
+          image: candidate,
+          result: 'committed',
+        },
+        startup: {
+          operation: 'update',
+          image: candidate,
+          readiness: 'full',
+          result: 'failed',
+        },
+      });
+      expect(
+        fixture
+          .state()
+          .applied.applications.find(
+            (entry) => entry.declaration.name === 'user',
+          )?.image,
+      ).toBe(candidate);
+      expect(await fixture.ops('probe', 'user')).toContain(
+        '"process":"exited"',
+      );
+      expect(await fixture.compose(['ps', '-q', 'app-user'])).toBe('');
+      expect(
+        await fixture.request('/v1/users').catch((error: unknown) => error),
+      ).toBeInstanceOf(Error);
+      expect(
+        await fixture.request('/wallet/graphql', {
+          method: 'POST',
+          data: { query: '{ __typename }' },
+        }),
+      ).toMatchObject({ data: { __typename: 'Query' } });
+      const history = await migrationHistory('user', fixture.compose);
+      expect(history).toContain('1990000000003_candidate');
+      const container = await fixture.compose([
+        'ps',
+        '--all',
+        '-q',
+        'app-user',
+      ]);
+      if (failure === 'http') {
+        expect(await fixture.compose(['logs', 'app-user'])).toContain(
+          'shutdown.completed',
+        );
+        expect(
+          await fixture.execute([
+            'docker',
+            'inspect',
+            '--format',
+            '{{.State.ExitCode}}',
+            container,
+          ]),
+        ).toBe('0');
+        expect(record()).toMatchObject({
+          attempts: [
+            {
+              runtime: { process: 'running', http: 'not_ready' },
+              outcome: 'failed',
+            },
+          ],
+        });
+      }
+      if (recovery === 'rollback') {
+        const receipt = join(fixture.directory, 'compatibility.json');
+        writeFileSync(
+          receipt,
+          JSON.stringify({
+            application: 'user',
+            currentImage: candidate,
+            targetImage: fixture.images.user,
+            migrationHistory: history,
+            schemaReview:
+              'The candidate only added an unused marker table; the original User reads and writes remain compatible.',
+            eventContractReview:
+              'User and Wallet still exchange the same user.created v1 envelope with unchanged decoders.',
+          }),
+        );
+        await fixture.ops(
+          'rollback',
+          'user',
+          `--image=${fixture.images.user}`,
+          `--compatibility=${receipt}`,
+        );
+        expect(fixture.state().pendingTransitions).toBeUndefined();
+        expect(
+          fixture
+            .state()
+            .applied.applications.find(
+              (entry) => entry.declaration.name === 'user',
+            )?.image,
+        ).toBe(fixture.images.user);
+      } else {
+        if (failure === 'http') {
+          await fixture.compose([
+            'exec',
+            '-T',
+            'postgres-user',
+            'psql',
+            '-U',
+            'postgres',
+            '-d',
+            'user',
+            '-v',
+            'ON_ERROR_STOP=1',
+            '-c',
+            'GRANT SELECT ON users TO user_runtime',
+          ]);
+        } else {
+          const marker = join(fixture.directory, 'operations-recover');
+          writeFileSync(marker, 'recover');
+          await fixture.execute([
+            'docker',
+            'cp',
+            marker,
+            `${container}:/tmp/operations-recover`,
+          ]);
+        }
+        const continuationOptions: string[] = [];
+        if (failure === 'process') {
+          const archive = join(
+            fixture.directory,
+            'wallet-before-recovery.dump',
+          );
+          await fixture.ops('backup', 'wallet', `--output=${archive}`);
+          await fixture.ops('stop');
+          await fixture.ops('restore', 'wallet', `--input=${archive}`);
+          const unassessed = await fixture.opsResult('continue', 'user');
+          expect(unassessed.code).not.toBe(0);
+          expect(unassessed.stderr).toContain('Restore requires --assessment');
+          expect(await fixture.compose(['ps', '-q', 'app-user'])).toBe('');
+          const restored = z
+            .object({
+              applications: z.record(z.string(), z.object({ id: z.string() })),
+            })
+            .parse(
+              JSON.parse(
+                readFileSync(join(fixture.directory, 'recovery.json'), 'utf8'),
+              ),
+            );
+          const assessment = join(fixture.directory, 'assessment.json');
+          writeFileSync(
+            assessment,
+            JSON.stringify({
+              recoveryIds: Object.values(restored.applications).map(
+                (entry) => entry.id,
+              ),
+              dataComparison:
+                'The empty Wallet database was restored from its own fresh archive and its migration history is unchanged.',
+              messagingReview:
+                'This disposable scenario has no pending or retained deliveries; both application contracts are unchanged.',
+            }),
+          );
+          continuationOptions.push(`--assessment=${assessment}`);
+        }
+        expect(
+          await continueWithoutMigrations(fixture, ...continuationOptions),
+        ).toContain('verified');
+        if (failure === 'process') {
+          expect(existsSync(join(fixture.directory, 'recovery.json'))).toBe(
+            false,
+          );
+          expect(await fixture.compose(['ps', '-q', 'app-wallet'])).toBe('');
+          await fixture.ops('start', 'wallet');
+        }
+        expect(record()).toMatchObject({
+          status: 'verified',
+          verification: { outcome: 'verified' },
+        });
+        expect(await fixture.compose(['ps', '-q', 'app-user'])).toBe(container);
+      }
+      expect(await migrationHistory('user', fixture.compose)).toEqual(history);
+      expect(fixture.state().applied.applications[0].startup).toMatchObject({
+        image: recovery === 'rollback' ? fixture.images.user : candidate,
+        readiness: 'full',
+        result: 'verified',
+      });
+      await until(() =>
+        fixture.request('/v1/users').then(
+          () => true,
+          () => false,
+        ),
+      );
+      expect(await fixture.request('/v1/users')).toMatchObject({ count: 0 });
+      expect(await fixture.compose(['ps', '-q', 'app-wallet'])).toBe(sibling);
+    }, [fixture.cleanup]);
+  }, 300_000);
+}
+
+test('candidate messaging degradation retains HTTP and requires explicit continuation without migrations', async () => {
+  const fixture = await operationsFixture();
+  await withCleanup(async () => {
+    await fixture.ops('prepare');
+    await fixture.ops('migrate', 'user');
+    await fixture.ops('migrate', 'wallet');
+    await fixture.ops('start');
+    const sibling = await fixture.compose(['ps', '-q', 'app-wallet']);
+    const candidate = await fixture.variant('compatible');
+    await fixture.compose(['stop', 'rabbitmq']);
+    const update = await fixture.opsResult(
+      'update',
+      'user',
+      `--image=${candidate}`,
+    );
+    expect(update.code).not.toBe(0);
+    const recordPath = join(
+      fixture.directory,
+      readdirSync(fixture.directory).find((file) =>
+        file.startsWith('transition-'),
+      ) ?? 'missing',
+    );
+    const record = () =>
+      JSON.parse(readFileSync(recordPath, 'utf8')) as unknown;
+    expect(record()).toMatchObject({
+      candidateImage: candidate,
+      migration: { outcome: 'completed' },
+      status: 'verification-pending',
+      verification: { outcome: 'pending', reason: 'messaging-degraded' },
+      runtime: { process: 'running', http: 'ready', messaging: 'not_ready' },
+    });
+    const planned = JSON.parse(await fixture.ops('plan')) as DeploymentPlan;
+    expect(planned.applied.applications[0]).toMatchObject({
+      application: 'user',
+      image: candidate,
+      migration: { operation: 'update', image: candidate, result: 'committed' },
+      startup: {
+        operation: 'update',
+        image: candidate,
+        readiness: 'full',
+        result: 'pending',
+      },
+    });
+    await until(() =>
+      fixture.request('/v1/users').then(
+        () => true,
+        () => false,
+      ),
+    );
+    expect(await fixture.request('/v1/users')).toMatchObject({ count: 0 });
+    expect(await fixture.ops('probe', 'user')).toContain(
+      'messaging_unavailable',
+    );
+    const container = await fixture.compose(['ps', '-q', 'app-user']);
+    const history = await migrationHistory('user', fixture.compose);
+    expect(history).toContain('1990000000000_operations-compatible');
+    const blocked = await fixture.opsResult(
+      'update',
+      'user',
+      `--image=${candidate}`,
+    );
+    expect(blocked.code).not.toBe(0);
+    expect(blocked.stderr).toContain('Continue or roll back');
+    await fixture.compose(['start', 'rabbitmq']);
+    await fixture.ops('update', 'wallet', `--image=${fixture.images.wallet}`);
+    expect(await fixture.compose(['ps', '-q', 'app-user'])).toBe(container);
+    // Automatic transport recovery must not silently finish the operator transition.
+    await until(
+      async () => !(await fixture.ops('probe', 'user')).includes('not_ready'),
+    );
+    expect(record()).toMatchObject({ status: 'verification-pending' });
+    const continued = await continueWithoutMigrations(fixture);
+    expect(continued).toContain('verified');
+    expect(fixture.state().applied.applications[0].startup).toMatchObject({
+      operation: 'update',
+      image: candidate,
+      readiness: 'full',
+      result: 'verified',
+    });
+    expect(record()).toMatchObject({
+      status: 'verified',
+      verification: { outcome: 'verified' },
+    });
+    expect(await migrationHistory('user', fixture.compose)).toEqual(history);
+    expect(await fixture.compose(['ps', '-q', 'app-user'])).toBe(container);
+    expect(await fixture.compose(['ps', '-q', 'app-wallet'])).toBe(sibling);
+  }, [fixture.cleanup]);
+}, 300_000);
 
 for (const foreignKey of [false, true]) {
   test(`restore removes post-backup schema changes (foreign key: ${String(foreignKey)})`, async () => {

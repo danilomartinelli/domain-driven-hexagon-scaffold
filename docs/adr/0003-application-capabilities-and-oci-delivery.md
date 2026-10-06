@@ -155,8 +155,13 @@ inventory after desired edits, and version 1 inventories are adopted with their
 identities. Image updates keep the desired selection coherent. Applying topology
 changes remains to be implemented; the updater still rejects changed
 capabilities/routes.
-Candidate verification failures currently leave the selected candidate in its
-reached process state; the explicit degraded-verification state and bounded stop
-on process/HTTP verification failure described above are not yet implemented.
+Candidate verification recovery is implemented (#74): migration outcomes, selected
+digests, runtime observations and verification results are recorded separately.
+HTTP-ready candidates keep serving during messaging degradation; process/HTTP
+verification failures stop only the candidate with the existing shutdown grace.
+Explicit continuation verifies recovery without rerunning completed migrations.
+Another promotion of the pending application waits for continuation or
+compatibility-reviewed rollback; independent application operations remain available.
+Continuation also enforces the existing data/messaging assessment after a restore.
 
 No actual registry publication or deployment is established by this ADR.

@@ -29,7 +29,13 @@ interface OperationsFixture {
   digest: (tag: string) => Promise<string>;
   variant: (
     kind:
-      'compatible' | 'failure' | 'interrupted' | 'incompatible' | 'addition',
+      | 'compatible'
+      | 'failure'
+      | 'interrupted'
+      | 'incompatible'
+      | 'process'
+      | 'http'
+      | 'addition',
   ) => Promise<string>;
   cleanup: () => Promise<void>;
   request: (
@@ -231,6 +237,29 @@ export async function operationsFixture(): Promise<OperationsFixture> {
             `FROM ${images.wallet}\nCOPY --chown=bun:bun application.json /app/app/application.json\n`,
           );
           const tag = `127.0.0.1:${String(registryPort)}/ledger:addition`;
+          await execute(['docker', 'build', '-t', tag, context]);
+          tags.push(tag);
+          return digest(tag);
+        }
+        if (kind === 'process' || kind === 'http') {
+          const main = readFileSync('src/apps/user/main.ts', 'utf8');
+          const fault =
+            kind === 'process'
+              ? "if (!existsSync('/tmp/operations-recover')) throw new Error('candidate startup fault');\n"
+              : '';
+          writeFileSync(
+            join(context, 'main.ts'),
+            "import { existsSync } from 'node:fs';\n" + fault + main,
+          );
+          writeFileSync(
+            join(context, 'migration.sql'),
+            `-- Up Migration\nCREATE TABLE candidate_marker (id integer);\n${kind === 'http' ? 'REVOKE SELECT ON users FROM user_runtime;\n' : ''}-- Down Migration\nDROP TABLE candidate_marker;\n`,
+          );
+          writeFileSync(
+            join(context, 'Dockerfile'),
+            `FROM ${images.user}\nCOPY --chown=bun:bun main.ts /app/app/main.ts\nCOPY --chown=bun:bun migration.sql /app/app/database/migrations/1990000000003_candidate.sql\n`,
+          );
+          const tag = `127.0.0.1:${String(registryPort)}/user:${kind}`;
           await execute(['docker', 'build', '-t', tag, context]);
           tags.push(tag);
           return digest(tag);
