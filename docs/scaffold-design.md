@@ -1,6 +1,8 @@
 # Domain-Driven Hexagon Scaffold delivery design
 
-Status: accepted design, approved on 2026-10-04.
+Status: accepted design, approved on 2026-10-04, with the transition decisions
+below approved on 2026-10-06. These decisions describe required behavior; their
+approval does not establish implementation or executable verification.
 [ADR 0003's implementation status](adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
 records the delivered slices and remaining work. This document preserves the
 agreed design and delivery boundaries. The [adoption guide](adoption.md),
@@ -70,6 +72,44 @@ public routes and meaningful application tests remain explicit and application-o
 Route registration comes from declared routes; generation must not expose arbitrary
 handlers automatically. User and Wallet retain their existing public contracts.
 
+### Changing an existing application's capabilities
+
+The declaration selects runtime requirements from a compatible application-owned
+composition. Enabling a capability that the application has never implemented
+requires the author to prepare that integration. Changing a boolean does not
+generate handlers, invent business behavior or rewrite application-owned code.
+Validate the compatibility before changing the environment.
+
+Disabling and later reactivating an existing integration must preserve its source
+and durable state. While disabled, it contributes no adapter instances, required
+credentials, connection attempts, applicable migrations or readiness dependency.
+An empty generated application must support this transition and retain private
+operational HTTP. Keeping source for later reactivation must not impose the
+disabled integration's runtime requirements.
+
+If registered business functionality still requires a disabled capability, reject
+the configuration before changing the environment and identify the incompatible
+dependency. The author explicitly defines the functionality available in each
+supported combination. Do not silently remove a business route or substitute a
+different behavior to make the combination start; preserve User/Wallet contracts.
+This restriction does not change the deliberate withdrawal of business adapters
+when exposure itself is disabled.
+
+Application-owned functionality groups declare their required capabilities
+explicitly at the composition boundary. The same registrations drive application
+composition and its preflight compatibility check. For example, a registered User
+creation group that requires persistence makes a declaration with persistence
+disabled invalid. The error identifies the group and its unmet requirement.
+Requirements belong with composition; domain entities and use cases remain
+framework-free.
+
+Validate registered groups before bootstrapping database or messaging adapters and
+before changing the environment. The selected artifact must expose the information
+needed for this check without requiring a source checkout or live database/broker.
+Explicit requirements do not by themselves prove correct wiring or behavior:
+executable tests must exercise supported combinations and rejected configurations
+through the real composition and public tooling boundaries.
+
 ## Environment topology and retained state
 
 The reference environment is a single Linux host running Docker Compose:
@@ -97,6 +137,69 @@ Active consumer count is not sufficient to decide that a queue is unused: produc
 can still publish while a consumer is disabled. Do not purge queues or infer that
 disabling a capability cancels previously accepted work. Destructive retirement
 is a separate explicit operation, outside this delivery's automatic reconciliation.
+
+### Deployment configuration and reconciliation
+
+`deployment.json` represents the desired application selection, exact image
+digests and ingress configuration throughout the installation's lifetime. It is
+not limited to the original bootstrap selection. Image-update commands must keep
+that desired configuration coherent with their requested changes.
+
+Keep three distinct concepts:
+
+- **Desired configuration:** the operator's requested applications, images and
+  ingress. An edit alone does not establish that the environment changed.
+- **Applied state:** the recorded outcome of operations against the installation,
+  including the results for individual applications. A desired digest is not
+  proof that its migration, startup or verification succeeded.
+- **Retained resources:** the owned identities and durable resources preserved
+  after an application or capability becomes inactive. Their management does not
+  depend on their continued presence in the desired selection.
+
+Changing the desired configuration must not prevent inspection or shutdown of the
+existing installation. Those actions use its recorded state and retained resource
+identities, while preserving all ownership checks.
+
+Plan topology changes without changing the running environment. Show the services
+to add or stop, resources to retain, applicable migrations and expected maintenance
+interruptions. Applying that plan is a separate explicit operation, rather than an
+implicit consequence of repeating preparation. Applying a plan can coordinate required
+provisioning, separately executed owning migrations and startup, validating the
+conditions before promoting each image. Server startup still never migrates.
+
+If a change involves several applications and a later step fails, retain confirmed
+progress, record each application's result and stop further promotions. Preserve
+resources and allow an explicit continuation from the recorded progress. Keep the
+failed application in its documented safe state; do not automatically return all
+images to previous versions or reverse database changes. Image rollback still
+requires schema and event-contract compatibility. No transaction across
+applications, databases and the broker is promised.
+
+These decisions were approved on 2026-10-06 to close the existing runtime and
+deployment transition gaps. The composition preflight contract above and the
+post-migration outcomes below complete the approved behavioral decisions for
+these gaps. Implementation and executable verification remain separate work.
+
+### Verification failure after a successful migration
+
+Record the candidate image, completed migration outcome and actual process/readiness
+state separately from successful transition completion. Selecting a digest or
+committing its schema changes does not prove that the application was verified.
+
+If HTTP is ready but an applicable messaging role is not, keep the candidate
+running and retain Kong access to its otherwise usable HTTP operations. Record
+that the candidate is running with messaging degradation and verification pending;
+do not report the transition as successfully completed or promote further
+applications. Existing messaging recovery may continue. Explicit continuation
+rechecks readiness and records recovery without repeating completed migrations.
+
+If the process or HTTP readiness fails to become ready by the verification
+deadline, stop the candidate using the existing bounded shutdown contract. Record
+the failure and retain the migrated database and other owned resources. Recovery
+requires explicit continuation or image rollback after evaluating schema and
+event-contract compatibility; neither automatically reverses the database. This
+candidate-verification policy does not replace ordinary running applications'
+dependency-outage recovery behavior.
 
 ## Kong access and local development
 
@@ -209,6 +312,13 @@ Implementation must provide evidence of:
 - All eight capability combinations selecting the correct generated adapters,
   required configuration, infrastructure, migrations and probe states. Generated
   projects still need meaningful behavior/tests before satisfying application gates.
+- Existing generated integrations surviving enabled-to-disabled-to-enabled
+  transitions without requiring disabled services or credentials. Incompatible
+  business composition must fail before changing the environment, with the
+  dependency identified rather than its behavior silently omitted.
+- Functionality-group requirements driving both composition and preflight. Reject
+  an unmet requirement before adapter bootstrap or environment changes; also
+  execute the real supported compositions rather than treating metadata as proof.
 - Real persistent and messaging applications, plus disabled-capability cases that
   start without those services or credentials. Preserve User/Wallet behavior.
 - Kong-only client access, absent APIs for applications without exposure, private
@@ -221,6 +331,15 @@ Implementation must provide evidence of:
   loss, and correct readiness for unavailable enabled dependencies.
 - Image selection by digest, failure handling before promotion, and verified
   operational commands including PostgreSQL restoration.
+- Deployment planning without changing the running environment, explicit
+  application of selection changes and usable inspection/shutdown after desired
+  configuration edits. Verify retained resources, recorded partial progress and
+  explicit continuation after a later application's failure.
+- Successful migrations followed by candidate verification failure: messaging-only
+  degradation keeps usable HTTP available without reporting a completed transition;
+  process/HTTP failure past the deadline stops the candidate and retains the
+  migrated state. Verify explicit continuation, completed migrations not repeated,
+  and no automatic image or database rollback.
 
 Use focused checks during implementation and the repository's full Docker-backed
 gate before declaring code ready, following [developer checks](developer-checks.md).
