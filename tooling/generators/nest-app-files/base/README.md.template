@@ -1,21 +1,22 @@
 # __name__
 
-Independent Nest 12/Bun application generated with these capabilities, declared
-in `application.json`:
+Independent Nest 12/Bun application with these integrations prepared at generation:
 
-| Capability             | Enabled                                                 |
+| Capability             | Prepared                                                |
 | ---------------------- | ------------------------------------------------------- |
 | PostgreSQL persistence | <!--#if persistence-->yes<!--#else-->no<!--#endif-->    |
 | RabbitMQ messaging     | <!--#if messaging-->yes<!--#else-->no<!--#endif-->      |
 | Kong exposure          | <!--#if exposure-->yes<!--#else-->no<!--#endif-->       |
 
-The declaration selects applicable configuration, adapters and readiness probes;
+The current `application.json` selects applicable configuration, adapters and readiness probes;
 withdrawing exposure in it removes the business REST/GraphQL adapters.
 Disabled capabilities have no settings, adapters, background connections or
 readiness dependency. Operational HTTP is always present. Add business
 behavior under `application/` and `domain/` only when needed; no User/Wallet
 implementation, CRUD, SQL, event contract, public route or example assertion is
 generated. The private package exports no application implementation.
+The integration-specific sections below apply only while that capability is
+selected. A delivered artifact carries its selection in `app/application.json`.
 
 ## Run
 
@@ -131,6 +132,20 @@ within the shared 15-second deadline; a timeout exits nonzero.
 
 ## Check and distribute
 
+To disable a prepared integration, change its `application.json` flag, run
+preflight, and prepare the same development run again before starting it.
+Keep its source, owned SQL and `composition.json` registration for reactivation.
+Required functionality still fails preflight if its dependency is disabled.
+Private operational HTTP remains, with inactive probes marked `not_applicable`.
+Never-prepared capabilities require explicit author implementation first.
+
+`distribution.json` selects dependency roots and adapter paths per integration.
+Rebuild after every selection change: disabled integration paths and migration
+interfaces are omitted from delivery, while checkout source remains available
+for the next build. Keep shared code outside those paths and load optional
+adapters only from selected factories. Preparing the same development run retains
+database credentials, data and accepted broker work across reactivation.
+
 ```sh
 bun run nx run __name__:lint
 bun run nx run __name__:typecheck
@@ -151,7 +166,7 @@ the same environment. The artifact includes Bun TypeScript sources, its
 declaration, composition registrations and installed runtime dependencies; no workspace or install is
 needed. Build for the deployment OS/architecture using the pinned Bun version.
 <!--#if persistence-->
-The artifact also provides `migration:up`, `migration:status` and
+With persistence selected, the artifact also provides `migration:up`, `migration:status` and
 `migration:down` for this application's own database; supply
 `__PREFIX___DB_MIGRATION_USERNAME`/`_PASSWORD` only to those commands.
 <!--#else-->

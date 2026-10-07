@@ -44,6 +44,40 @@ together, then exercise the real public behavior. Registrations express a contra
 they cannot prove that an author correctly implemented a database or message
 adapter. Startup additionally rejects missing or extra factory bindings.
 
+## Disable and reactivate prepared integrations
+
+For an empty generated application whose integrations were prepared at generation,
+edit only its `application.json` selection, then run preflight and prepare the same
+development environment again:
+
+```sh
+bun --no-env-file src/packages/capabilities/preflight.ts src/apps/telemetry
+bun run env:prepare --environment=development --run=telemetry --app=telemetry
+bun run dev --run=telemetry --app=telemetry
+```
+
+Stop the current application process before changing its selection. Disable
+`persistence`, `messaging` or `exposure` independently; leave `composition.json`,
+adapter source and owned SQL intact. Disabled integrations load no adapter, read
+no dependency credentials and contribute no readiness dependency. Private health
+HTTP remains available. Restoring the flag and preparing the same run reuses its
+resource identities, credentials, database rows and accepted broker work. Missing
+consumers do not cancel messages. Shutdown preserves retained volumes; sibling
+environments remain independently owned.
+
+Keep functionality requirements accurate: an incompatible group is rejected
+before environment changes, rather than removed. A capability generated as absent
+still requires the author to implement and register it before enabling it. For an
+older generated application with eager imports, move optional adapter imports into
+selected factories as in the current template and declare its capability-specific
+[distribution inputs](distribution.md). No command rewrites existing author code.
+
+Rebuild `<name>:distribution` or the independent Linux image after selection
+changes. Nonpersistent artifacts have no migration interface or owned migration
+files even though SQL remains in the checkout. Reactivating persistence restores
+the interface on the next build. Deployment topology reconciliation is a separate
+workflow; this contract does not apply a production deployment.
+
 ## Source and delivered commands
 
 Run source preflight without credentials, a database or a broker:

@@ -204,9 +204,10 @@ the app a database application without editing a registry: workspace commands
 accept `DATABASE_APP=<name>` and the artifact adds owned `migration:*` commands.
 Add SQL under `database/migrations/` as described in
 [application-owned database content](database.md#application-owned-database-content).
-Packaging rejects `database/` content when persistence is not declared. Prepared
-environments also provision, migrate and validate its database like any persistent
-application. Environment HTTP ports, root startup selection and applicable broker
+Disabled persistence keeps owned SQL in the checkout but omits migrations and
+their interface from the artifact. Prepared environments also provision, migrate
+and validate its database like any persistent application. Environment HTTP ports,
+root startup selection and applicable broker
 settings derive from the declaration. Kong routes remain application-owned and
 explicit in `application.json`; follow the [application checklist](adding-an-application.md).
 

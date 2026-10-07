@@ -10,23 +10,17 @@ import {
   Module,
   type ModuleMetadata,
 } from '@nestjs/common';
-//#if exposure
-import { GraphQLModule } from '@nestjs/graphql';
-import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
-//#endif
 //#if persistence
-import { sql, type DatabasePool } from 'slonik';
-import { DATABASE_POOL, DatabaseModule } from '../database/database.module';
+import type { DatabasePool } from 'slonik';
+import { DATABASE_POOL } from '../configs/tokens';
 //#endif
 import { composeApplication, preflightApplication, readApplicationComposition } from '@starter/capabilities/composition';
 import { HealthController, ServiceHealth } from '@starter/nest-support/operations';
 //#if messaging
 import type { MessageHandler } from '../application/message-handler';
-import { RabbitTransport } from '../adapters/rabbitmq.transport';
+import type { RabbitTransport } from '../adapters/rabbitmq.transport';
+import { MESSAGING_TRANSPORT } from '../configs/tokens';
 import { messagingOptions } from '../configs/environment';
-//#endif
-//#if exposure
-import { StatusResolver } from '../adapters/status.resolver';
 //#endif
 
 const directory = new URL('../', import.meta.url);
@@ -40,25 +34,34 @@ type Functionality = ModuleMetadata;
 // Register requirements in composition.json and bind the same group name here.
 // Factories compose adapters; domain/ and application/ remain framework-free.
 const functionality: Record<string, () => Functionality> = {};
-const parts = composeApplication<Functionality>(declaration, readApplicationComposition(directory), {
+const parts = await Promise.all(composeApplication<Functionality | Promise<Functionality>>(declaration, readApplicationComposition(directory), {
   integrations: {
 //#if persistence
-    persistence: () => ({ imports: [DatabaseModule] }),
+    persistence: async () => {
+      const { DatabaseModule } = await import('../database/database.module');
+      return { imports: [DatabaseModule] };
+    },
 //#endif
 //#if messaging
     messaging: () => ({}),
 //#endif
 //#if exposure
-    exposure: () => ({
-      imports: [GraphQLModule.forRoot<ApolloDriverConfig>({ driver: ApolloDriver, autoSchemaFile: true, playground: false })],
-      providers: [StatusResolver],
-    }),
+    exposure: async () => {
+      const { GraphQLModule } = await import('@nestjs/graphql');
+      const { ApolloDriver } = await import('@nestjs/apollo');
+      const { StatusResolver } = await import('../adapters/status.resolver');
+      return {
+        imports: [GraphQLModule.forRoot({ driver: ApolloDriver, autoSchemaFile: true, playground: false })],
+        providers: [StatusResolver],
+      };
+    },
 //#endif
   },
   groups: functionality,
-});
+}).map((part) => Promise.resolve(part)));
 //#if messaging
 const handlers = parts.flatMap((part) => part.handlers ?? []);
+const messaging = declaration.messaging ? await import('../adapters/rabbitmq.transport') : undefined;
 //#endif
 
 @Module({
@@ -70,11 +73,11 @@ const handlers = parts.flatMap((part) => part.handlers ?? []);
   providers: [
     ...parts.flatMap((part) => part.providers ?? []),
 //#if messaging
-    ...(declaration.messaging ? [{
-      provide: RabbitTransport,
+    ...(messaging ? [{
+      provide: messaging.RabbitTransport,
       inject: handlers,
-      useFactory: (...registered: MessageHandler[]) => new RabbitTransport(messagingOptions(), registered, new Logger('Messaging')),
-    }] : []),
+      useFactory: (...registered: MessageHandler[]) => new messaging.RabbitTransport(messagingOptions(), registered, new Logger('Messaging')),
+    }, { provide: MESSAGING_TRANSPORT, useExisting: messaging.RabbitTransport }] : []),
 //#endif
     {
       provide: ServiceHealth,
@@ -83,7 +86,7 @@ const handlers = parts.flatMap((part) => part.handlers ?? []);
         { token: DATABASE_POOL, optional: true },
 //#endif
 //#if messaging
-        { token: RabbitTransport, optional: true },
+        { token: MESSAGING_TRANSPORT, optional: true },
 //#endif
       ],
       useFactory: (
@@ -95,7 +98,7 @@ const handlers = parts.flatMap((part) => part.handlers ?? []);
 //#endif
       ) => new ServiceHealth(declaration, {
 //#if persistence
-        ...(pool ? { database: async () => { await pool.query(sql.unsafe`SELECT 1`); } } : {}),
+        ...(pool ? { database: async () => { const { sql } = await import('slonik'); await pool.query(sql.unsafe`SELECT 1`); } } : {}),
 //#endif
 //#if messaging
         ...(transport ? { consumer: () => transport.diagnostics.snapshot() } : {}),
@@ -106,7 +109,7 @@ const handlers = parts.flatMap((part) => part.handlers ?? []);
 })
 //#if messaging
 export class AppModule implements OnApplicationBootstrap, BeforeApplicationShutdown {
-  constructor(@Optional() @Inject(RabbitTransport) private readonly transport?: RabbitTransport) {}
+  constructor(@Optional() @Inject(MESSAGING_TRANSPORT) private readonly transport?: RabbitTransport) {}
   onApplicationBootstrap(): void { this.transport?.start(); }
   async beforeApplicationShutdown(): Promise<void> { await this.transport?.stop(); }
 }

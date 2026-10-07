@@ -45,6 +45,7 @@ export async function buildImage(
       'scripts/distribute.ts',
       'scripts/lib/distribution.ts',
       'scripts/lib/distribution-paths.ts',
+      'scripts/lib/distribution-selection.ts',
       'database/applications.ts',
       'database/migrate.mjs',
       'database/distribution.ts',
