@@ -222,11 +222,13 @@ export function deploymentPlan(input: {
       )
       .map(({ after }) => `app-${after.declaration.name}`),
   );
+  // Application updates recreate the active gateway even if its routes are unchanged.
   if (
     before.has('gateway') &&
     after.has('gateway') &&
-    ingress(applied.values(), state.applied.https) !==
-      ingress(requested.values(), desired.https)
+    (recreate.size > 0 ||
+      ingress(applied.values(), state.applied.https) !==
+        ingress(requested.values(), desired.https))
   )
     recreate.add('gateway');
   const stop = sorted(

@@ -23,8 +23,46 @@ import {
   backupApplication,
   restoreApplication,
   migrationHistory,
+  appliedMigrations,
   verifyArchive,
 } from '../lib/operations-backup';
+
+test('planning distinguishes an empty migration history from an unreadable running database', async () => {
+  const fixture = await operationsDatabaseFixture();
+  await withCleanup(async () => {
+    expect(await appliedMigrations('user', fixture.compose)).toEqual([
+      'baseline',
+    ]);
+    await fixture.sql('DROP TABLE pgmigrations');
+    expect(await appliedMigrations('user', fixture.compose)).toEqual([]);
+    await fixture.compose([
+      'exec',
+      '-T',
+      'postgres-user',
+      'psql',
+      '-X',
+      '-U',
+      'postgres',
+      '-d',
+      'user',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      'ALTER ROLE user_owner NOLOGIN',
+    ]);
+    for (const read of [migrationHistory, appliedMigrations]) {
+      const failure = await read('user', fixture.compose).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (!(failure instanceof Error))
+        throw new Error(
+          'Expected the unreadable database to reject the history query',
+        );
+      expect(failure.message).toContain('not permitted to log in');
+    }
+  }, [fixture.cleanup]);
+}, 60_000);
 
 for (const foreignKey of [false, true]) {
   test(`restore removes post-backup schema changes (foreign key: ${String(foreignKey)})`, async () => {
@@ -566,7 +604,29 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
     );
     const walletContainer = await fixture.compose(['ps', '-q', 'app-wallet']);
     const compatible = await fixture.variant('compatible');
+    const gatewayContainer = await fixture.compose(['ps', '-q', 'gateway']);
+    writeFileSync(
+      deploymentPath,
+      JSON.stringify({
+        ...(JSON.parse(originalDeployment) as object),
+        images: { ...fixture.images, user: compatible },
+      }),
+    );
+    const imagePlan = JSON.parse(await fixture.ops('plan')) as DeploymentPlan;
+    expect(imagePlan.changes.capabilities).toEqual([]);
+    expect(imagePlan.changes.ingress).toBeNull();
+    expect(imagePlan.services.recreate).toEqual(['app-user', 'gateway']);
+    expect(imagePlan.interruptions).toContainEqual({
+      service: 'gateway',
+      effect: 'Recreated; every exposed route is briefly unavailable',
+    });
+    expect(await fixture.compose(['ps', '-q', 'gateway'])).toBe(
+      gatewayContainer,
+    );
     await fixture.ops('update', 'user', `--image=${compatible}`);
+    expect(await fixture.compose(['ps', '-q', 'gateway'])).not.toBe(
+      gatewayContainer,
+    );
     expect(
       fixture
         .state()
@@ -1002,6 +1062,18 @@ test('operators plan desired changes while inspecting and shutting down the appl
       owner: prepared.owner,
       retained: prepared.retained,
     });
+    const adoptedInventory = readFileSync(statePath, 'utf8');
+    await sql('user', 'ALTER ROLE user_owner NOLOGIN');
+    await withCleanup(async () => {
+      expect((await plan()).migrations).toContainEqual({
+        application: 'user',
+        image: fixture.images.user,
+        history: 'unavailable',
+        applicable: null,
+        unknownToImage: null,
+      });
+      expect(readFileSync(statePath, 'utf8')).toBe(adoptedInventory);
+    }, [() => sql('user', 'ALTER ROLE user_owner LOGIN')]);
     await fixture.ops('migrate', 'wallet');
     for (const { application, applicable } of pending)
       expect(applicable).toEqual(

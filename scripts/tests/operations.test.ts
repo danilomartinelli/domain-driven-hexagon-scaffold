@@ -619,6 +619,72 @@ test('plans reactivation of retained inactive resources and capability changes w
   ]);
 });
 
+for (const exposure of [true, false]) {
+  test(`an image-only update plans the active gateway interruption (application exposed: ${String(exposure)})`, () => {
+    const user = {
+      image: digest('user', 'a'),
+      declaration: declaration('user', { ...everything, exposure }),
+    };
+    const wallet = {
+      image: digest('wallet', 'b'),
+      declaration: declaration('wallet', everything),
+    };
+    const state = installation([user, wallet]);
+    const plan = deploymentPlan({
+      state,
+      existing: true,
+      desired: {
+        https: state.applied.https,
+        applications: [
+          { ...user, image: digest('user', 'c'), migrations: [] },
+          { ...wallet, migrations: [] },
+        ],
+      },
+      histories: { user: [], wallet: [] },
+      secretFiles: [],
+    });
+    expect(plan.changes.capabilities).toEqual([]);
+    expect(plan.changes.ingress).toBeNull();
+    expect(plan.services).toEqual({
+      add: [],
+      stop: [],
+      recreate: ['app-user', 'gateway'],
+      unchanged: ['app-wallet', 'postgres-user', 'postgres-wallet', 'rabbitmq'],
+    });
+    expect(plan.interruptions).toContainEqual({
+      service: 'gateway',
+      effect: 'Recreated; every exposed route is briefly unavailable',
+    });
+  });
+}
+
+test('an image-only update without exposed applications does not plan a gateway', () => {
+  const user = {
+    image: digest('user', 'a'),
+    declaration: declaration('user', { ...everything, exposure: false }),
+  };
+  const state = installation([user]);
+  const plan = deploymentPlan({
+    state,
+    existing: true,
+    desired: {
+      https: state.applied.https,
+      applications: [{ ...user, image: digest('user', 'c'), migrations: [] }],
+    },
+    histories: { user: [] },
+    secretFiles: [],
+  });
+  expect(plan.services).toEqual({
+    add: [],
+    stop: [],
+    recreate: ['app-user'],
+    unchanged: ['postgres-user', 'rabbitmq'],
+  });
+  expect(plan.interruptions.map(({ service }) => service)).toEqual([
+    'app-user',
+  ]);
+});
+
 test('an unchanged desired selection plans no service change but reports pending owned migrations', () => {
   const user = {
     image: digest('user', 'a'),

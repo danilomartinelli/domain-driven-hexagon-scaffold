@@ -76,10 +76,11 @@ export function appliedMigrations(
   app: string,
   compose: Compose,
 ): Promise<string[]> {
+  // A standalone assignment lets sh -e propagate a failed existence probe.
   return readHistory(
     app,
     compose,
-    `if [ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.pgmigrations') IS NOT NULL")" = t ]; then ${historyQuery}; fi`,
+    `exists="$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.pgmigrations') IS NOT NULL")"; if [ "$exists" = t ]; then ${historyQuery}; fi`,
   );
 }
 
