@@ -37,6 +37,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Added
 
+- `ops apply --plan=<file>` applies a reviewed desired selection: it adds,
+  removes, reconfigures and reactivates applications, provisioning identities
+  before separate owner migrations and verifying each promoted candidate. Inactive
+  services stop while databases, credentials, volumes and queued work are
+  retained. A failed step stops later promotions; `ops continue` resumes the
+  recorded progress without repeating migrations, and `ops retained` reports
+  retained resources.
 - `ops plan` previews a desired Compose selection against the applied installation:
   services to add, stop or recreate, retained resources, applicable migrations and
   expected interruptions, without changing it. Rejected images are explained first.

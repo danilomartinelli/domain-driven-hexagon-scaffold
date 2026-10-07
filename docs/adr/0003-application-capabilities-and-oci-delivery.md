@@ -152,9 +152,8 @@ separate migration and startup outcomes and the retained owned identities. Plann
 previews services, retained resources, applicable migrations and interruptions
 without changing the installation. Inspection and shutdown use the applied
 inventory after desired edits, and version 1 inventories are adopted with their
-identities. Image updates keep the desired selection coherent. Applying topology
-changes remains to be implemented; the updater still rejects changed
-capabilities/routes.
+identities. Image updates keep the desired selection coherent; the bounded updater
+still rejects changed capabilities/routes.
 Candidate verification recovery is implemented (#74): migration outcomes, selected
 digests, runtime observations and verification results are recorded separately.
 HTTP-ready candidates keep serving during messaging degradation; process/HTTP
@@ -163,5 +162,15 @@ Explicit continuation verifies recovery without rerunning completed migrations.
 Another promotion of the pending application waits for continuation or
 compatibility-reviewed rollback; independent application operations remain available.
 Continuation also enforces the existing data/messaging assessment after a restore.
+Applying reviewed topology changes is implemented (#75); see
+[applying a reviewed plan](../operations.md#apply-a-reviewed-plan). `apply` refuses
+a plan that no longer matches before changing anything, provisions identities
+before separate owner migrations and verifies each promotion as a candidate.
+Removal and capability disablement stop only inactive services, retaining
+databases, credentials, volumes and queued work for reactivation. Per-application
+progress survives a later failure, further promotions stop, and explicit
+continuation resumes without repeated migrations or automatic reversal. Live
+regressions exercise addition, disablement, removal, shutdown, reactivation and
+both failure kinds with real images, PostgreSQL, RabbitMQ and Kong.
 
 No actual registry publication or deployment is established by this ADR.

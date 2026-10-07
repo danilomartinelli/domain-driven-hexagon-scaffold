@@ -97,8 +97,10 @@ bun run ops --directory="$ops_dir" probe wallet
 
 Prepare starts only required PostgreSQL/RabbitMQ services, creates the owning
 database and non-superuser owner/runtime identities, grants connection permission,
-and verifies supplied credentials. Repeat `prepare` to verify reuse: it never
-generates or rotates passwords, migrates, seeds or deletes data. Changing a secret
+and verifies supplied credentials. A [reviewed plan](#apply-a-reviewed-plan) can
+instead bootstrap the selection, including migrations and verified startup.
+Repeat `prepare` to verify reuse: it never generates or rotates passwords,
+migrates, seeds or deletes data. Changing a secret
 file against retained database/broker credentials fails; perform intentional
 credential rotation separately. Repeated preparation operates the applied
 installation and reports a differing desired selection without applying it. Direct
@@ -146,18 +148,21 @@ ingress. Editing it changes only that request. `state.json` separately records:
   owner/runtime roles and credential files, and the broker volume, vhost and
   credential file. They are recorded when first applied and never removed by
   these commands.
+- **Pending deployment:** the incomplete [topology deployment](#partial-outcomes-and-continuation),
+  if any.
 
 `status`, `probe`, `inspect`, `replay`, `backup`, `restore`, `migrate`, `start`,
-`stop` and `down` use the applied inventory even when the desired selection adds or
-removes applications or is invalid. Ownership checks still refuse resources
-labelled for another installation. The installation name is part of its recorded
+`stop`, `retained` and `down` use the applied inventory even when the desired
+selection adds or removes applications or is invalid. Ownership checks still
+refuse resources labelled for another installation. The installation name is part of its recorded
 identity; planning and image updates refuse a renamed `deployment.json`.
 
 `update` and `rollback` record their candidate in `deployment.json` before changing
 the installation and keep other desired edits. They refuse an invalid selection or
 one without that application, and they reject changed capabilities or routes.
-`prepare`, `start` and the other commands never add, remove or reconfigure
-applications to match the desired selection.
+Only [`apply`](#apply-a-reviewed-plan) adds, removes or reconfigures applications
+to match a reviewed desired selection; `prepare`, `start` and the other commands
+never do.
 
 Inventories with `"version": 1` are adopted by the next command other than `plan`.
 Adoption keeps the project, owner label, credentials, volumes, applied images and
@@ -192,6 +197,102 @@ another application, an unavailable image or exposure without HTTPS. Planning do
 not start, stop or recreate services, migrate, change credentials, queues,
 `state.json` or `deployment.json`; it writes diagnostics under `logs/` and holds the
 operation lock while it runs.
+
+### Apply a reviewed plan
+
+Save the preview, review it, then apply exactly that file:
+
+```sh
+bun run ops --directory="$ops_dir" plan > "$ops_dir/plan.json"
+bun run ops --directory="$ops_dir" apply --plan="$ops_dir/plan.json"
+```
+
+`apply` plans again and refuses, before changing inventory or services, when the
+reviewed installation, applications, images, capabilities, routes, ingress,
+services, retained resources or interruptions no longer match; plan again after
+any edit. Recorded outcomes and live migration history may differ from the review.
+It also refuses missing or invalid secret files, an unassessed restore, and a
+promotion of an application whose candidate verification is pending. An image
+whose database already applied migrations unknown to it is refused: during review
+when the history is readable, otherwise after starting the database and before
+its server stops. Return to an older image only through
+[compatibility-reviewed rollback](#compatible-image-rollback), which applies to an
+applied application without capability changes. To reactivate an application or
+change its capabilities, first apply an image that contains its database's
+migrations, then roll back with a review. A directory without
+`state.json` is bootstrapped this way: the inventory is recorded before any
+resource exists. The operation writes `apply-<id>.json` with the baseline and
+desired selections, each step's images, status and transition records, and every
+apply or continue attempt with its diagnostic log. It runs these steps in order:
+
+1. **Ingress:** select a changed HTTPS listener.
+2. **Removals:** stop and remove each removed application's server and database
+   containers. Its volume, roles, credential files and queued messages remain.
+3. **Promotions,** one per added or changed application in name order: start
+   newly required PostgreSQL/RabbitMQ, create absent identities and verify the
+   supplied credentials, check migration status, stop the prior server, back up an
+   existing database and run the owned migrations with the owner secret. The image
+   is then selected and verified as an
+   [update candidate](#candidate-verification-and-explicit-continuation). Servers
+   receive runtime secrets only and never migrate.
+4. **Reconciliation:** stop and remove infrastructure that the applied selection
+   no longer needs, such as the database of an application whose persistence was
+   disabled, an unused broker or gateway, then reload Kong after route changes.
+
+Applications the plan leaves unchanged keep their containers, images, credentials
+and data. Disabling a capability or removing an application never deletes a
+database, volume, credential or queued message. Producers keep publishing durable
+work for an inactive consumer; its absence never purges or cancels queues.
+Reactivation reuses the retained volume, database, roles and credential files, and
+the consumer recovers queued work with its original event identity. A retained
+credential file changed while inactive fails provisioning instead of rotating it.
+Inspect retained resources at any time, including after removal or `down`:
+
+```sh
+bun run ops --directory="$ops_dir" retained
+```
+
+The JSON lists each retained database and the broker with its applied activity,
+Docker container state (such as `running` or `exited`, or `absent`) and volume
+presence. `down` stops and removes every owned container, including retired
+services left by an interrupted operation, and keeps all volumes.
+
+### Partial outcomes and continuation
+
+A failed step stops every later step. The command exits nonzero and prints each
+step's status. Completed steps stay applied with their resources; the failed
+application keeps its step's safe state:
+
+| Failure                                     | Application state                                                           | Step status            |
+| ------------------------------------------- | --------------------------------------------------------------------------- | ---------------------- |
+| Provisioning or migration                   | Prior image, if any, stays applied; stopped once its migration window began | `failed`               |
+| Candidate HTTP ready, messaging unavailable | Candidate serving HTTP with verification pending                            | `verification-pending` |
+| Candidate process or HTTP failed            | Candidate stopped; migrated state retained                                  | `verification-failed`  |
+| Signal                                      | As at the interruption; owned one-shot containers removed                   | `interrupted`          |
+
+A failed migration rolls back in its single transaction. A database or broker
+started for a failed promotion keeps running, reported by `retained`, until a
+later deployment uses or retires it or `down` stops it. No failure restores
+previous images, runs migration down, purges broker state or retires
+infrastructure. `state.json` keeps `pendingDeployment` until the deployment
+completes, and `update` is refused meanwhile. Repair the cause, then continue from
+the recorded progress with the same desired selection:
+
+```sh
+bun run ops --directory="$ops_dir" continue
+```
+
+Continuation skips completed steps without repeating their migrations or backups.
+It verifies a pending candidate again, as `continue <app>` does, and retries a
+failed promotion from provisioning; only migrations absent from the database's
+history run. Supply `--assessment=<file>` after a restore. To change course
+instead, edit `deployment.json`, then plan and apply the new selection. That
+deployment supersedes the incomplete one, whose record remains. Removing a pending
+candidate's application withdraws its transition; changing its image still
+requires `continue <app>` or compatibility-reviewed rollback first. A completed
+deployment lists applied applications whose servers are not running, such as a
+prior image stopped by a failed migration; it never restarts them. Inspect
+`status` and start them explicitly.
 
 ## Interrupted operations and stale locks
 
@@ -241,7 +342,8 @@ migration status, stops the selected application, creates an owned backup under
 verifies private readiness. Gateway reload briefly interrupts ingress. Sibling
 application containers and images are preserved. Nonpersistent images skip database
 steps. Changed capabilities/routes appear in `plan`; this bounded updater rejects
-them instead of silently discarding state.
+them instead of silently discarding state. Apply them through a
+[reviewed plan](#apply-a-reviewed-plan).
 
 A failed migration exits nonzero, records a failed transition and migration outcome
 and leaves the prior image applied with its server stopped. It never promotes the
@@ -462,7 +564,19 @@ backups/restores, correlated replay and unavailable backlog. Planning coverage
 adopts a version 1 inventory, edits the desired selection, previews it, rejects
 incompatible, misidentified and invalid selections, inspects and shuts down the
 applied installation, refuses a foreign owner, restarts with stable identities and
-data and preserves a sibling installation. It retains owned
+data and preserves a sibling installation. Topology coverage bootstraps User
+through plan and apply, adds Wallet without touching User, withdraws Wallet's
+exposure, then removes Wallet while User keeps queuing its events. It inspects
+retained resources, refuses a foreign owner and shuts down. Reactivation on an
+image older than Wallet's retained database is refused; a compatible image
+supersedes it with the same roles, volumes and credentials, recovering the queued
+event identity.
+Disabling both applications' exposure retires Kong. A two-application apply stops
+after a later migration failure, an earlier candidate failure and an earlier
+candidate's messaging degradation; explicit continuation completes each without
+repeating migrations. It also refuses an older image without a compatibility
+review, and supersedes an interrupted deployment without restarting its stopped
+server. It retains owned
 volumes and inventory under `.context/test-runs/operations-<id>/`; command logs
 and results remain there as local full-gate evidence. Use `down` on that exact
 directory for cleanup. No command deletes volumes. Local-registry fixtures are

@@ -75,8 +75,9 @@ selected factories as in the current template and declare its capability-specifi
 Rebuild `<name>:distribution` or the independent Linux image after selection
 changes. Nonpersistent artifacts have no migration interface or owned migration
 files even though SQL remains in the checkout. Reactivating persistence restores
-the interface on the next build. Deployment topology reconciliation is a separate
-workflow; this contract does not apply a production deployment.
+the interface on the next build. A Compose installation applies such images
+through a [reviewed topology plan](operations.md#apply-a-reviewed-plan); this
+contract does not apply a production deployment.
 
 ## Source and delivered commands
 
@@ -109,7 +110,7 @@ a read-only filesystem, no mounted secrets and no application environment. New
 preparation validates every selected image before provisioning. Update/rollback
 validates the candidate before rewriting Compose or applied state, stopping a
 service or migrating. Existing prepare/start/migrate/replay/restore operations
-also validate their selected artifacts, and `plan` validates every desired image. Failure preserves existing services,
+also validate their selected artifacts, and `plan`/`apply` validate every desired image. Failure preserves existing services,
 credentials, databases and queued work; diagnostic logs may be written and Docker
 may fetch the selected image. Old images without the compatibility contract fail
 closed and must be rebuilt with their application-owned registrations.

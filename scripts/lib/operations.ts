@@ -11,7 +11,18 @@ import {
   waitForCandidate,
   type ApplicationRuntime,
 } from './operations-verification';
-import { transitionSchema, type Transition } from './operations-transition';
+import {
+  transitionSchema,
+  unverified,
+  type Transition,
+} from './operations-transition';
+import {
+  deploymentRecordSchema,
+  deploymentSteps,
+  deploymentSummary,
+  type DeploymentRecord,
+  type DeploymentStep,
+} from './operations-deployment';
 import { verifyEnvironmentOwnership } from './ownership';
 import { operationsCompose, provisionDatabase } from './operations-compose';
 import {
@@ -23,21 +34,35 @@ import {
   verifyArchive,
 } from './operations-backup';
 import {
+  appliedImages,
   desiredDivergence,
   desiredSelection,
   imageDigest,
   newInstallation,
   readInstallation,
   readJson,
+  retainResources,
+  sameHttps,
+  sameImages,
   selectDesiredImage,
   writeJson,
   type AppliedApplication,
   type Artifact,
+  type DeploymentConfig,
+  type InstallationState,
 } from './operations-config';
-import { deploymentPlan, type PlannedArtifact } from './operations-plan';
+import {
+  deploymentPlan,
+  matchesReviewedPlan,
+  requiredServices,
+  type DeploymentPlan,
+  type PlannedArtifact,
+} from './operations-plan';
 
 const actions = [
   'plan',
+  'apply',
+  'retained',
   'prepare',
   'migrate',
   'status',
@@ -64,7 +89,7 @@ export async function runOperations(args: string[]): Promise<void> {
       continue;
     }
     const match =
-      /^--(directory|image|output|input|compatibility|assessment|message|limit|offset)=(.+)$/.exec(
+      /^--(directory|image|output|input|compatibility|assessment|message|limit|offset|plan)=(.+)$/.exec(
         arg,
       );
     if (!match || options.has(match[1]))
@@ -82,13 +107,26 @@ export async function runOperations(args: string[]): Promise<void> {
     throw new Error(
       `Usage: bun run ops --directory=<directory> ${actions.join('|')} [application]`,
     );
-  if ((action === 'prepare' || action === 'plan') && name)
+  if (['prepare', 'plan', 'apply', 'retained'].includes(action) && name)
     throw new Error(
       `${action} applies to the complete installation; omit the application argument`,
     );
   // Recorded inventory, not the desired selection, identifies what commands operate.
   const installation = readInstallation(requestedDirectory);
   const directory = installation.directory;
+  const transitionPath = (id: string) =>
+    join(directory, `transition-${id}.json`);
+  const incompleteVerificationError = (application: string) =>
+    new Error(
+      `Continue or roll back ${application} before further promotions; verification is incomplete`,
+    );
+  const olderImageError = (
+    application: string,
+    migrations: readonly string[],
+  ) =>
+    new Error(
+      `${application}: its database already applied migrations unknown to the selected image (${migrations.join(', ')}); return to an older image only through the compatibility-reviewed rollback command`,
+    );
   const diagnostics = operationsDiagnostics(directory, action);
   const lock = join(directory, '.operation-lock');
   try {
@@ -308,13 +346,18 @@ export async function runOperations(args: string[]): Promise<void> {
       return undefined;
     }
   };
-  const plan = async (): Promise<void> => {
+  /**
+   * Inspect every desired image in isolation and preview its transition from the
+   * applied installation. Neither planning nor its rejection changes anything.
+   */
+  const inspectDesired = async (): Promise<{
+    state: InstallationState;
+    https?: DeploymentConfig['https'];
+    artifacts: PlannedArtifact[];
+    plan: DeploymentPlan;
+  }> => {
     const { config } = desiredSelection(installation);
     const existing = installation.state;
-    if (installation.adopted)
-      console.error(
-        'Planning against the version 1 inventory adopted in memory; the next other operator command records it.',
-      );
     const state = existing ?? newInstallation(config.name, directory, []);
     await verifyEnvironmentOwnership(state, execute, Boolean(existing));
     const desired: PlannedArtifact[] = [];
@@ -359,32 +402,80 @@ export async function runOperations(args: string[]): Promise<void> {
           application,
         );
     const secrets = join(directory, 'secrets');
-    console.log(
-      JSON.stringify(
-        deploymentPlan({
-          state,
-          existing: Boolean(existing),
-          desired: {
-            ...(config.https ? { https: config.https } : {}),
-            applications: desired,
-          },
-          histories,
-          secretFiles: existsSync(secrets) ? readdirSync(secrets) : [],
-        }),
-        null,
-        2,
+    return {
+      state,
+      https: config.https,
+      artifacts: desired,
+      plan: deploymentPlan({
+        state,
+        existing: Boolean(existing),
+        desired: {
+          ...(config.https ? { https: config.https } : {}),
+          applications: desired,
+        },
+        histories,
+        secretFiles: existsSync(secrets) ? readdirSync(secrets) : [],
+      }),
+    };
+  };
+  /** Refuse a stale, unsupplied or blocked plan before any inventory or environment change. */
+  const reviewApply = async () => {
+    const file = options.get('plan');
+    if (!file)
+      throw new Error(
+        'Supply --plan=<reviewed plan file> containing the output of plan',
+      );
+    const reviewed = readJson(file);
+    const inspected = await inspectDesired();
+    const { plan, state } = inspected;
+    if (!matchesReviewedPlan(reviewed, plan))
+      throw new Error(
+        'The reviewed plan no longer matches the installation or desired selection; nothing was changed. Run plan again and review it.',
+      );
+    if (plan.resources.missingSecrets.length)
+      throw new Error(
+        `Supply secret files before applying: ${plan.resources.missingSecrets.join(', ')}`,
+      );
+    // Render the target topology to validate every secret it will mount.
+    operationsCompose({
+      ...state,
+      applied: {
+        ...(inspected.https ? { https: inspected.https } : {}),
+        applications: inspected.artifacts.map(({ image, declaration }) => ({
+          image,
+          declaration,
+        })),
+      },
+    });
+    if (existsSync(join(directory, 'recovery.json')))
+      throw new Error('Complete restore assessment before changing topology');
+    const promoted = new Set(
+      deploymentSteps(plan).flatMap(({ kind, application }) =>
+        kind === 'promote' && application ? [application] : [],
       ),
     );
+    for (const application of promoted)
+      if (state.pendingTransitions?.[application])
+        throw incompleteVerificationError(application);
+    for (const { application, unknownToImage } of plan.migrations)
+      if (promoted.has(application) && unknownToImage?.length)
+        throw olderImageError(application, unknownToImage);
+    return inspected;
   };
   let completed = false;
   await withCleanup(async () => {
     if (action === 'plan') {
-      await plan();
+      if (installation.adopted)
+        console.error(
+          'Planning against the version 1 inventory adopted in memory; the next other operator command records it.',
+        );
+      console.log(JSON.stringify((await inspectDesired()).plan, null, 2));
       completed = true;
       return;
     }
-    let state = installation.state;
-    const newlyPrepared = !state;
+    const applying = action === 'apply' ? await reviewApply() : undefined;
+    let state = installation.state ?? applying?.state;
+    const newlyPrepared = !installation.state;
     if (!state) {
       if (action !== 'prepare') throw new Error('Prepare the deployment first');
       const { config } = desiredSelection(installation);
@@ -394,16 +485,12 @@ export async function runOperations(args: string[]): Promise<void> {
       state = newInstallation(config.name, directory, artifacts, config.https);
     }
     const pendingId = name ? state.pendingTransitions?.[name] : undefined;
-    const pendingPath = pendingId
-      ? join(directory, `transition-${pendingId}.json`)
-      : undefined;
+    const pendingPath = pendingId ? transitionPath(pendingId) : undefined;
     const pending = pendingPath
       ? transitionSchema.parse(readJson(pendingPath))
       : undefined;
     if (pending && ['update', 'start', 'migrate', 'restore'].includes(action))
-      throw new Error(
-        `Continue or roll back ${pending.application} before further promotions; verification is incomplete`,
-      );
+      throw incompleteVerificationError(pending.application);
     if (
       !name &&
       action === 'start' &&
@@ -412,8 +499,20 @@ export async function runOperations(args: string[]): Promise<void> {
       throw new Error(
         'Continue or roll back pending applications before starting the complete installation',
       );
-    if (action === 'continue' && (!pending || name !== pending.application))
+    if (
+      action === 'continue' &&
+      name &&
+      (!pending || name !== pending.application)
+    )
       throw new Error('Select the application with a pending transition');
+    if (action === 'continue' && !name && !state.pendingDeployment)
+      throw new Error(
+        'No incomplete topology deployment to continue; select an application with a pending transition',
+      );
+    if (action === 'update' && state.pendingDeployment)
+      throw new Error(
+        'Continue the incomplete topology deployment, or apply a newly reviewed plan, before updating images',
+      );
     // Validate selected immutable artifacts before rewriting Compose/state,
     // supplying credentials to containers, stopping services or running migrations.
     let validatedCandidate: Artifact | undefined;
@@ -431,6 +530,7 @@ export async function runOperations(args: string[]): Promise<void> {
       validatedCandidate = await artifact(name, image);
     } else if (
       !newlyPrepared &&
+      (name || action !== 'continue') &&
       ['prepare', 'start', 'migrate', 'replay', 'restore', 'continue'].includes(
         action,
       )
@@ -445,7 +545,10 @@ export async function runOperations(args: string[]): Promise<void> {
     const saveCompose = (value = current) => {
       writeJson(
         composePath,
-        operationsCompose(value, !['down', 'stop', 'probe'].includes(action)),
+        operationsCompose(
+          value,
+          !['down', 'stop', 'probe', 'retained'].includes(action),
+        ),
       );
     };
     saveCompose();
@@ -540,7 +643,10 @@ export async function runOperations(args: string[]): Promise<void> {
       return value;
     };
     /** Commit migrations, recording their outcome separately from startup. */
-    const migrateUp = (selected: Artifact, operation: 'migrate' | 'update') =>
+    const migrateUp = (
+      selected: Artifact,
+      operation: 'migrate' | 'update' | 'apply',
+    ) =>
       recordedStep(
         selected.declaration.name,
         () => migrate(selected, 'up'),
@@ -553,6 +659,22 @@ export async function runOperations(args: string[]): Promise<void> {
           },
         }),
       );
+    /** Create absent identities and verify every supplied password against retained ones. */
+    const provision = (application: string) =>
+      compose([
+        'exec',
+        '-T',
+        `postgres-${application}`,
+        'sh',
+        '-ec',
+        provisionDatabase(application),
+      ]);
+    /** Authenticate with the server's own broker configuration; the password never reaches a command line. */
+    const verifyBroker = (messenger: Artifact) =>
+      oneShot(`app-${messenger.declaration.name}`, [
+        '-e',
+        "import {connect} from 'amqplib'; import {configurationValue} from '@starter/nest-support/configuration'; try { const c=await connect({hostname:process.env.RABBITMQ_HOST,port:5672,username:process.env.RABBITMQ_USERNAME,password:configurationValue('RABBITMQ_PASSWORD'),vhost:process.env.RABBITMQ_VHOST},{timeout:2000});await c.close(); } catch { process.exit(1); }",
+      ]);
     const probe = async (selected: Artifact): Promise<string> =>
       compose([
         'exec',
@@ -789,6 +911,393 @@ export async function runOperations(args: string[]): Promise<void> {
         writeJson(recordPath, record);
       }
     };
+    const deploymentPath = (id: string) => join(directory, `apply-${id}.json`);
+    const ownedLabels = [
+      '--filter',
+      `label=com.docker.compose.project=${current.project}`,
+      '--filter',
+      `label=dev.starter.owner=${current.owner}`,
+    ];
+    /** This installation's service containers and states, excluding one-off commands. */
+    const ownedServices = async (): Promise<Map<string, string>> =>
+      new Map(
+        (
+          await execute([
+            'docker',
+            'ps',
+            '-a',
+            ...ownedLabels,
+            '--filter',
+            'label=com.docker.compose.oneoff=False',
+            '--format',
+            '{{.Label "com.docker.compose.service"}}\t{{.State}}',
+          ])
+        )
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => {
+            const [service, state] = line.split('\t');
+            return [service, state];
+          }),
+      );
+    /** Stop and remove this installation's containers for services it no longer runs; volumes remain. */
+    const retire = async (services: readonly string[]) => {
+      for (const service of services) {
+        const ids = await execute([
+          'docker',
+          'ps',
+          '-aq',
+          ...ownedLabels,
+          '--filter',
+          `label=com.docker.compose.service=${service}`,
+        ]);
+        if (!ids) continue;
+        const containers = ids.split(/\s+/);
+        await execute(['docker', 'stop', '-t', '20', ...containers], 60_000);
+        await execute(['docker', 'rm', ...containers]);
+      }
+      // Networks of retired services would otherwise outlive Compose's knowledge of them.
+      const defined = Object.keys(
+        z
+          .object({ networks: z.record(z.string(), z.unknown()) })
+          .parse(operationsCompose(current, false)).networks,
+      );
+      const orphaned = (
+        await execute([
+          'docker',
+          'network',
+          'ls',
+          ...ownedLabels,
+          '--format',
+          '{{.ID}}\t{{.Label "com.docker.compose.network"}}',
+        ])
+      )
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => line.split('\t'))
+        .filter(([, network]) => !defined.includes(network))
+        .map(([id]) => id);
+      if (orphaned.length)
+        await execute(['docker', 'network', 'rm', ...orphaned]);
+    };
+    /** Retire an application from the applied selection; its retained identities and data remain. */
+    const removeApplication = async (application: string) => {
+      const entry = current.applied.applications.find(
+        (candidate) => candidate.declaration.name === application,
+      );
+      if (!entry) return;
+      current.applied.applications = current.applied.applications.filter(
+        (candidate) => candidate !== entry,
+      );
+      await retire([
+        `app-${application}`,
+        ...(entry.declaration.persistence ? [`postgres-${application}`] : []),
+      ]);
+      // A reviewed removal withdraws, but keeps, an unverified candidate's record.
+      const withdrawn = current.pendingTransitions?.[application];
+      if (withdrawn) {
+        const path = transitionPath(withdrawn);
+        writeJson(path, {
+          ...transitionSchema.parse(readJson(path)),
+          status: 'withdrawn',
+          error:
+            'Removed by a reviewed topology deployment; durable state retained.',
+        });
+        const remaining = Object.entries(
+          current.pendingTransitions ?? {},
+        ).filter(([candidate]) => candidate !== application);
+        if (remaining.length)
+          current.pendingTransitions = Object.fromEntries(remaining);
+        else delete current.pendingTransitions;
+      }
+      writeJson(statePath, current);
+      saveCompose();
+    };
+    /**
+     * Provision, migrate and verify one added or changed application. A promoted
+     * candidate is only verified again; completed migrations are never repeated.
+     */
+    const promote = async (
+      deployment: DeploymentRecord,
+      step: DeploymentStep,
+      target: Artifact,
+    ) => {
+      const application = target.declaration.name;
+      const previous = current.applied.applications.find(
+        (entry) => entry.declaration.name === application,
+      );
+      const lastId = step.transitions.at(-1);
+      const pendingTransition = current.pendingTransitions?.[application];
+      if (pendingTransition && pendingTransition !== lastId)
+        throw incompleteVerificationError(application);
+      if (lastId) {
+        const lastPath = transitionPath(lastId);
+        const last = transitionSchema.parse(readJson(lastPath));
+        if (
+          previous?.image === target.image &&
+          last.candidateImage === target.image &&
+          ['completed', 'not-applicable'].includes(last.migration.outcome)
+        ) {
+          if (last.status !== 'verified')
+            await verifyCandidate(target, last, lastPath);
+          return;
+        }
+      }
+      const id = randomUUID();
+      const recordPath = transitionPath(id);
+      const record: Transition = {
+        action: 'apply',
+        application,
+        previousImage: previous?.image ?? null,
+        candidateImage: target.image,
+        compatibilityReview: null,
+        status: 'provisioning',
+        migrationStatus: '',
+        migration: {
+          outcome: target.declaration.persistence
+            ? 'not-started'
+            : 'not-applicable',
+          completedAt: null,
+        },
+        runtime: null,
+        verification: { outcome: 'not-started', reason: '' },
+        attempts: [],
+        backup: '',
+        error: '',
+        diagnostic: diagnostics.logPath,
+        deployment: deployment.id,
+      };
+      writeJson(recordPath, record);
+      step.transitions.push(id);
+      writeJson(deploymentPath(deployment.id), deployment);
+      let migration: AppliedApplication['migration'];
+      const promoted = (): AppliedApplication[] => {
+        const entry: AppliedApplication = {
+          ...previous,
+          ...target,
+          ...(migration ? { migration } : {}),
+        };
+        return previous
+          ? current.applied.applications.map((candidate) =>
+              candidate === previous ? entry : candidate,
+            )
+          : [...current.applied.applications, entry];
+      };
+      const databaseExisted = current.retained.databases.some(
+        (entry) => entry.application === application,
+      );
+      const brokerActive = current.applied.applications.some(
+        (entry) => entry.declaration.messaging,
+      );
+      await withCleanup(async () => {
+        try {
+          // Identities are recorded before their volumes exist, so a later
+          // failure cannot strand inspection, shutdown or reactivation.
+          current.retained = retainResources(current, [target]);
+          writeJson(statePath, current);
+          saveCompose({
+            ...current,
+            applied: { ...current.applied, applications: promoted() },
+          });
+          if (
+            target.declaration.persistence &&
+            !previous?.declaration.persistence
+          ) {
+            await compose([
+              'up',
+              '-d',
+              '--wait',
+              '--wait-timeout',
+              '60',
+              `postgres-${application}`,
+            ]);
+            await provision(application);
+          }
+          if (target.declaration.messaging && !brokerActive) {
+            await compose([
+              'up',
+              '-d',
+              '--wait',
+              '--wait-timeout',
+              '60',
+              'rabbitmq',
+            ]);
+            await verifyBroker(target);
+          }
+          if (target.declaration.persistence) {
+            record.migrationStatus = await migrate(target, 'status');
+            const unknown = [
+              ...record.migrationStatus.matchAll(/^missing file\t(.+)$/gm),
+            ].map(([, migration]) => migration);
+            if (unknown.length) throw olderImageError(application, unknown);
+          }
+          if (previous)
+            await compose(['stop', '--timeout', '20', `app-${application}`]);
+          if (target.declaration.persistence) {
+            if (databaseExisted)
+              record.backup = await backupApplication(
+                current,
+                previous?.declaration.persistence ? previous : target,
+                join(directory, 'backups', `${application}-${id}.dump`),
+                compose,
+              );
+            record.status = 'migrating';
+            record.migration.outcome = 'running';
+            writeJson(recordPath, record);
+            try {
+              await migrateUp(target, 'apply');
+            } catch (error) {
+              record.migration.outcome = 'failed';
+              throw error;
+            }
+            record.migration = { outcome: 'completed', completedAt: now() };
+            migration = {
+              operation: 'apply',
+              image: target.image,
+              result: 'committed',
+              at: record.migration.completedAt ?? now(),
+            };
+          }
+          record.status = 'promoting';
+          writeJson(recordPath, record);
+          current.applied.applications = promoted();
+          current.pendingTransitions ??= {};
+          current.pendingTransitions[application] = id;
+          writeJson(statePath, current);
+          await verifyCandidate(target, record, recordPath);
+        } catch (error) {
+          if (!unverified(record.status)) record.status = 'failed';
+          record.error =
+            'No automatic database reversal. Inspect status and retained transition evidence before recovery.';
+          throw error;
+        }
+      }, [
+        () => {
+          writeJson(recordPath, record);
+        },
+        () => {
+          saveCompose();
+        },
+      ]);
+    };
+    /**
+     * Stop infrastructure the applied selection no longer derives, then reload
+     * changed ingress. Returns applied applications whose servers are not running.
+     */
+    const reconcile = async (
+      https: DeploymentConfig['https'] | undefined,
+      gatewayStale: boolean,
+    ): Promise<string[]> => {
+      if (!https && current.applied.https) {
+        delete current.applied.https;
+        writeJson(statePath, current);
+        saveCompose();
+      }
+      const required = requiredServices(current.applied.applications);
+      await retire(
+        [...(await ownedServices()).keys()]
+          .filter((service) => !required.has(service))
+          .sort(),
+      );
+      if (gatewayStale) await refreshGateway();
+      const states = await ownedServices();
+      return current.applied.applications
+        .map(({ declaration }) => declaration.name)
+        .filter(
+          (application) => states.get(`app-${application}`) !== 'running',
+        );
+    };
+    /** Run a deployment's remaining steps in order; a failed step stops every later one. */
+    const deploy = async (
+      deployment: DeploymentRecord,
+      operation: 'apply' | 'continue',
+      artifacts: ReadonlyMap<string, Artifact>,
+    ) => {
+      const path = deploymentPath(deployment.id);
+      const attempt: DeploymentRecord['attempts'][number] = {
+        operation,
+        at: now(),
+        diagnostic: diagnostics.logPath,
+        outcome: 'running',
+        error: '',
+      };
+      deployment.attempts.push(attempt);
+      deployment.status = 'applying';
+      writeJson(path, deployment);
+      const https = deployment.desired.https ?? undefined;
+      let gatewayStale = false;
+      let stopped: string[] = [];
+      try {
+        for (const step of deployment.steps) {
+          if (step.status === 'completed') continue;
+          step.status = 'running';
+          writeJson(path, deployment);
+          try {
+            if (step.kind === 'ingress') {
+              current.applied.https = https;
+              writeJson(statePath, current);
+              saveCompose();
+              gatewayStale = true;
+            } else if (step.kind === 'remove' && step.application) {
+              const removed = current.applied.applications.find(
+                (entry) => entry.declaration.name === step.application,
+              );
+              await removeApplication(step.application);
+              gatewayStale ||= Boolean(removed?.declaration.exposure);
+            } else if (step.kind === 'promote') {
+              const target = step.application
+                ? artifacts.get(step.application)
+                : undefined;
+              if (!target) throw new Error('Promotion has no desired image');
+              await promote(deployment, step, target);
+              // Candidate verification reloads the gateway from the applied selection.
+              gatewayStale = false;
+            } else {
+              stopped = await reconcile(https, gatewayStale);
+            }
+          } catch (error) {
+            const lastId = step.transitions.at(-1);
+            const transition = lastId
+              ? transitionSchema.parse(readJson(transitionPath(lastId))).status
+              : '';
+            step.status = controller.signal.aborted
+              ? 'interrupted'
+              : unverified(transition)
+                ? transition
+                : 'failed';
+            throw error;
+          }
+          step.status = 'completed';
+          step.completedAt = now();
+          writeJson(path, deployment);
+        }
+        deployment.status = 'completed';
+        attempt.outcome = 'completed';
+        delete current.pendingDeployment;
+        writeJson(statePath, current);
+        console.log(
+          `Topology deployment ${deployment.id} applied:\n${deploymentSummary(deployment)}`,
+        );
+        // A superseded failure can leave a prior server stopped; never restart it implicitly.
+        if (stopped.length)
+          console.log(
+            `Applied applications not running: ${stopped.join(', ')}. Inspect status and start them explicitly.`,
+          );
+      } catch (error) {
+        deployment.status = 'incomplete';
+        attempt.outcome = controller.signal.aborted
+          ? 'interrupted'
+          : 'incomplete';
+        attempt.error =
+          error instanceof Error ? error.message : 'Deployment step failed';
+        throw new Error(
+          `${attempt.error}\nTopology deployment incomplete; completed steps, resources and data are retained:\n${deploymentSummary(deployment)}\nInspect ${path}, repair the cause and run continue, or plan and apply a new selection.`,
+          { cause: error },
+        );
+      } finally {
+        writeJson(path, deployment);
+      }
+    };
     if (action === 'prepare') {
       const infra = current.applied.applications
         .filter((entry) => entry.declaration.persistence)
@@ -812,22 +1321,11 @@ export async function runOperations(args: string[]): Promise<void> {
         for (const entry of current.applied.applications.filter(
           (entry) => entry.declaration.persistence,
         ))
-          await compose([
-            'exec',
-            '-T',
-            `postgres-${entry.declaration.name}`,
-            'sh',
-            '-ec',
-            provisionDatabase(entry.declaration.name),
-          ]);
+          await provision(entry.declaration.name);
         const messenger = current.applied.applications.find(
           (entry) => entry.declaration.messaging,
         );
-        if (messenger)
-          await oneShot(`app-${messenger.declaration.name}`, [
-            '-e',
-            "import {connect} from 'amqplib'; import {configurationValue} from '@starter/nest-support/configuration'; try { const c=await connect({hostname:process.env.RABBITMQ_HOST,port:5672,username:process.env.RABBITMQ_USERNAME,password:configurationValue('RABBITMQ_PASSWORD'),vhost:process.env.RABBITMQ_VHOST},{timeout:2000});await c.close(); } catch { process.exit(1); }",
-          ]);
+        if (messenger) await verifyBroker(messenger);
       } catch (error) {
         await withCleanup(() => {
           throw error;
@@ -891,6 +1389,7 @@ export async function runOperations(args: string[]): Promise<void> {
         ),
       ]);
     } else if (action === 'down') {
+      // Ownership was verified above; orphans are this installation's retired services.
       await compose([
         '--profile',
         'applications',
@@ -899,6 +1398,7 @@ export async function runOperations(args: string[]): Promise<void> {
         'down',
         '--timeout',
         '20',
+        '--remove-orphans',
       ]);
       console.log(
         'Owned containers and networks stopped; volumes, secrets and inventory retained',
@@ -906,6 +1406,96 @@ export async function runOperations(args: string[]): Promise<void> {
     } else if (action === 'probe') {
       console.log(
         JSON.stringify(await probeApplication(requiredApp(), compose, execute)),
+      );
+    } else if (action === 'apply') {
+      if (!applying) throw new Error('Apply requires a reviewed plan');
+      const id = randomUUID();
+      const superseded = current.pendingDeployment;
+      if (superseded) {
+        const path = deploymentPath(superseded);
+        writeJson(path, {
+          ...deploymentRecordSchema.parse(readJson(path)),
+          status: 'superseded',
+          supersededBy: id,
+        });
+      }
+      const deployment: DeploymentRecord = {
+        id,
+        status: 'applying',
+        createdAt: now(),
+        desired: {
+          https: applying.https ?? null,
+          images: appliedImages(applying.artifacts),
+        },
+        baseline: {
+          https: current.applied.https ?? null,
+          images: appliedImages(current.applied.applications),
+        },
+        steps: deploymentSteps(applying.plan),
+        attempts: [],
+        supersededBy: null,
+      };
+      writeJson(deploymentPath(id), deployment);
+      current.pendingDeployment = id;
+      writeJson(statePath, current);
+      await deploy(
+        deployment,
+        'apply',
+        new Map(
+          applying.artifacts.map(({ image, declaration }) => [
+            declaration.name,
+            { image, declaration },
+          ]),
+        ),
+      );
+    } else if (action === 'continue' && !name) {
+      assessRecovery(directory, options.get('assessment'));
+      const path = deploymentPath(current.pendingDeployment ?? '');
+      const deployment = deploymentRecordSchema.parse(readJson(path));
+      const { config } = desiredSelection(installation);
+      if (
+        !sameImages(config.images, deployment.desired.images) ||
+        !sameHttps(config.https, deployment.desired.https ?? undefined)
+      )
+        throw new Error(
+          'deployment.json no longer selects the deployment being continued; restore it, or plan and apply the edited selection',
+        );
+      const artifacts = new Map<string, Artifact>();
+      for (const [application, image] of Object.entries(config.images))
+        artifacts.set(application, await artifact(application, image));
+      await deploy(deployment, 'continue', artifacts);
+      rmSync(join(directory, 'recovery.json'), { force: true });
+    } else if (action === 'retained') {
+      const containers = await ownedServices();
+      const volumes = (
+        await execute(['docker', 'volume', 'ls', '-q', ...ownedLabels])
+      ).split('\n');
+      const active = requiredServices(current.applied.applications);
+      const describe = (service: string, volume: string) => ({
+        activity: active.has(service) ? 'active' : 'inactive',
+        container: containers.get(service) ?? 'absent',
+        volumePresent: volumes.includes(volume),
+      });
+      console.log(
+        JSON.stringify(
+          {
+            databases: current.retained.databases.map((entry) => ({
+              ...entry,
+              ...describe(entry.service, entry.volume),
+            })),
+            broker: current.retained.broker
+              ? {
+                  ...current.retained.broker,
+                  ...describe(
+                    current.retained.broker.service,
+                    current.retained.broker.volume,
+                  ),
+                }
+              : null,
+          },
+          null,
+          2,
+        ),
       );
     } else if (action === 'continue') {
       assessRecovery(directory, options.get('assessment'));
@@ -1029,7 +1619,7 @@ export async function runOperations(args: string[]): Promise<void> {
         candidate.image,
       );
       const id = randomUUID();
-      const recordPath = join(directory, `transition-${id}.json`);
+      const recordPath = transitionPath(id);
       const record: Transition = {
         action,
         application: previous.declaration.name,
@@ -1113,12 +1703,7 @@ export async function runOperations(args: string[]): Promise<void> {
           writeJson(join(directory, 'state.json'), current);
           await verifyCandidate(candidate, record, recordPath);
         } catch (error) {
-          if (
-            !['verification-pending', 'verification-failed'].includes(
-              record.status,
-            )
-          )
-            record.status = 'failed';
+          if (!unverified(record.status)) record.status = 'failed';
           record.error =
             'No automatic database reversal. Inspect status and retained transition evidence before recovery.';
           throw error;

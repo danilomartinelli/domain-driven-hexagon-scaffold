@@ -20,7 +20,7 @@ const name = z
   .string()
   .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/)
   .max(40);
-const httpsSchema = z.strictObject({
+export const httpsSchema = z.strictObject({
   bind: z.ipv4().default('0.0.0.0'),
   port: z.number().int().min(1).max(65535).default(443),
 });
@@ -44,7 +44,7 @@ const timestamp = z.iso.datetime();
 const appliedApplicationSchema = artifactSchema.extend({
   migration: z
     .strictObject({
-      operation: z.enum(['migrate', 'update', 'restore']),
+      operation: z.enum(['migrate', 'update', 'apply', 'restore']),
       image: imageDigest,
       result: z.enum(['committed', 'restored', 'failed', 'interrupted']),
       at: timestamp,
@@ -52,7 +52,7 @@ const appliedApplicationSchema = artifactSchema.extend({
     .optional(),
   startup: z
     .strictObject({
-      operation: z.enum(['start', 'update', 'rollback']),
+      operation: z.enum(['start', 'update', 'rollback', 'apply']),
       image: imageDigest,
       readiness: z.enum(['http', 'full']),
       result: z.enum(['verified', 'pending', 'failed', 'interrupted']),
@@ -95,6 +95,8 @@ export const stateSchema = z.strictObject({
   // Owned durable identities outlive their applications' active selection.
   retained: retainedSchema,
   pendingTransitions: z.record(name, z.uuid()).optional(),
+  // An incomplete topology deployment blocks image updates until continued or superseded.
+  pendingDeployment: z.uuid().optional(),
 });
 export type InstallationState = z.infer<typeof stateSchema>;
 export type AppliedApplication =

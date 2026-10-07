@@ -4,9 +4,10 @@ import { runtimeSchema } from './operations-verification';
 
 /** Durable progress is independent of image selection and the latest runtime observation. */
 export const transitionSchema = z.object({
-  action: z.enum(['update', 'rollback']),
+  action: z.enum(['update', 'rollback', 'apply']),
   application: z.string(),
-  previousImage: imageDigest,
+  // Applied additions have no previous image.
+  previousImage: imageDigest.nullable(),
   candidateImage: imageDigest,
   compatibilityReview: z.unknown(),
   status: z.string(),
@@ -38,5 +39,14 @@ export const transitionSchema = z.object({
   backup: z.string(),
   error: z.string(),
   diagnostic: z.string(),
+  /** The topology deployment that requested an applied transition. */
+  deployment: z.uuid().optional(),
 });
 export type Transition = z.infer<typeof transitionSchema>;
+
+/** A promoted candidate whose verification has not succeeded. */
+export function unverified(
+  status: string,
+): status is 'verification-pending' | 'verification-failed' {
+  return status === 'verification-pending' || status === 'verification-failed';
+}

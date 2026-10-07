@@ -924,6 +924,96 @@ function fakeDockerOperations(directory: string) {
   };
 }
 
+test('apply refuses an unreviewed, stale or unsupplied plan before provisioning or recording inventory', async () => {
+  const directory = realpathSync(
+    mkdtempSync(join(tmpdir(), 'ddh-operations-apply-')),
+  );
+  try {
+    const messenger = {
+      name: 'user',
+      persistence: false,
+      messaging: true,
+      exposure: false,
+    };
+    // Isolated preflight prints the image's declaration; nothing else exists yet.
+    const log = join(directory, 'docker.log');
+    writeFileSync(
+      join(directory, 'docker'),
+      `#!/usr/bin/env bun
+import { appendFileSync } from 'node:fs';
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n');
+if (process.argv[2] === 'start') console.log(${JSON.stringify(JSON.stringify(messenger))});
+`,
+      { mode: 0o700 },
+    );
+    const ops = (...args: string[]) =>
+      runCommand(
+        [
+          'bun',
+          '--no-env-file',
+          'scripts/operations.ts',
+          `--directory=${directory}`,
+          ...args,
+        ],
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH ?? ''}`,
+          },
+        },
+      );
+    writeFileSync(
+      join(directory, 'deployment.json'),
+      JSON.stringify(userDeployment),
+    );
+    const planned = await ops('plan');
+    expect(planned.code, planned.stderr).toBe(0);
+    const reviewed = join(directory, 'plan.json');
+    writeFileSync(reviewed, planned.stdout);
+
+    const unreviewed = await ops('apply');
+    expect(unreviewed.code).not.toBe(0);
+    expect(unreviewed.stderr).toContain('Supply --plan=<reviewed plan file>');
+
+    const unsupplied = await ops('apply', `--plan=${reviewed}`);
+    expect(unsupplied.code).not.toBe(0);
+    expect(unsupplied.stderr).toContain(
+      'Supply secret files before applying: broker-password',
+    );
+
+    mkdirSync(join(directory, 'secrets'));
+    writeFileSync(
+      join(directory, 'secrets', 'broker-password'),
+      'fixture-password\n',
+    );
+    const edited = {
+      ...userDeployment,
+      images: { user: `example/user@sha256:${'e'.repeat(64)}` },
+    };
+    writeFileSync(join(directory, 'deployment.json'), JSON.stringify(edited));
+    const stale = await ops('apply', `--plan=${reviewed}`);
+    expect(stale.code).not.toBe(0);
+    expect(stale.stderr).toContain(
+      'The reviewed plan no longer matches the installation or desired selection',
+    );
+
+    // Refusals leave no inventory and never reach Compose.
+    expect(existsSync(join(directory, 'state.json'))).toBe(false);
+    expect(existsSync(join(directory, 'compose.json'))).toBe(false);
+    expect(readFileSync(join(directory, 'deployment.json'), 'utf8')).toBe(
+      JSON.stringify(edited),
+    );
+    const calls = readFileSync(log, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => z.array(z.string()).parse(JSON.parse(line)));
+    expect(calls.some(([command]) => command === 'compose')).toBe(false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('shutdown adopts a version 1 inventory with its original identities and desired selection', async () => {
   const directory = realpathSync(
     mkdtempSync(join(tmpdir(), 'ddh-operations-adoption-')),
@@ -1022,6 +1112,7 @@ test('shutdown adopts a version 1 inventory with its original identities and des
       'down',
       '--timeout',
       '20',
+      '--remove-orphans',
     ]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
