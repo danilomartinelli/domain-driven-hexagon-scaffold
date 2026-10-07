@@ -266,16 +266,19 @@ from committed migrations, including after explicit continuation.
 | --------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
 | HTTP and applicable messaging roles ready                 | Keep serving; complete verification                                         | `verified`                                               |
 | HTTP ready, messaging unavailable                         | Keep serving usable HTTP through Kong; allow application transport recovery | `verification-pending`, `messaging-degraded`             |
+| Process running, HTTP probe unavailable                   | Keep the candidate running; readiness remains unknown                       | `verification-pending`, `http-unknown`                   |
 | Process or HTTP unavailable after the verification window | Stop only the candidate, preserving its selected image and durable state    | `verification-failed`, `process-failed` or `http-failed` |
 
 Candidate verification polls for up to 60 seconds, with bounded Docker and HTTP
-probes. Failed process/HTTP verification uses the application's existing 15-second
+probes. A failed Docker probe is unknown readiness, so it leaves verification
+pending without stopping the running candidate or reporting success. Confirmed
+process/HTTP failure uses the application's existing 15-second
 shutdown contract and Compose's longer 20-second grace. The updater retains the
 database, broker resources, backup, container and private diagnostic records.
 These rules apply to candidates; ordinary running applications retain their
 database/broker outage recovery behavior.
 
-Both incomplete results exit nonzero and block another promotion of that
+All incomplete results exit nonzero and block another promotion of that
 application. Independent application operations remain available and preserve the
 pending transition. Inspect `probe`, `status`, the transition and its diagnostic log,
 then repair the failed dependency or runtime prerequisite and explicitly continue:

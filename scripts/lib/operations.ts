@@ -553,11 +553,7 @@ export async function runOperations(args: string[]): Promise<void> {
           },
         }),
       );
-    const probe = async (
-      selected: Artifact,
-      wait = false,
-      readiness: 'http' | 'all' = 'all',
-    ): Promise<string> =>
+    const probe = async (selected: Artifact): Promise<string> =>
       compose([
         'exec',
         '-T',
@@ -566,9 +562,9 @@ export async function runOperations(args: string[]): Promise<void> {
         '-e',
         `
         let response;
-        for (let attempt = 0; attempt < ${wait ? '90' : '1'}; attempt++) {
-          response = await fetch('http://127.0.0.1:3000/health/ready${readiness === 'http' ? '/http' : ''}', { signal: AbortSignal.timeout(5000) });
-          if (response.ok || ${wait ? 'false' : 'true'}) break;
+        for (let attempt = 0; attempt < 90; attempt++) {
+          response = await fetch('http://127.0.0.1:3000/health/ready/http', { signal: AbortSignal.timeout(5000) });
+          if (response.ok) break;
           await response.body?.cancel();
           await Bun.sleep(500);
         }
@@ -576,15 +572,11 @@ export async function runOperations(args: string[]): Promise<void> {
           readiness: await (await fetch('http://127.0.0.1:3000/health/ready')).json(),
           backlog: await (await fetch('http://127.0.0.1:3000/health/backlog')).json(),
         }));
-        process.exit(${wait ? 'response.ok ? 0 : 1' : '0'});
+        process.exit(response.ok ? 0 : 1);
       `,
       ]);
-    /** Start one selected server; `start` verifies HTTP and image changes full readiness. */
-    const startApplication = (
-      selected: Artifact,
-      operation: 'start' | 'update' | 'rollback',
-    ) => {
-      const readiness = operation === 'start' ? 'http' : 'full';
+    /** Ordinary startup verifies HTTP; candidate transitions have their own verification. */
+    const startApplication = (selected: Artifact) => {
       return recordedStep(
         selected.declaration.name,
         async () => {
@@ -597,15 +589,13 @@ export async function runOperations(args: string[]): Promise<void> {
             '60',
             `app-${selected.declaration.name}`,
           ]);
-          console.log(
-            await probe(selected, true, readiness === 'full' ? 'all' : 'http'),
-          );
+          console.log(await probe(selected));
         },
         (result, at) => ({
           startup: {
-            operation,
+            operation: 'start',
             image: selected.image,
-            readiness,
+            readiness: 'http',
             result: result === 'succeeded' ? 'verified' : result,
             at,
           },
@@ -680,7 +670,7 @@ export async function runOperations(args: string[]): Promise<void> {
           },
           controller.signal,
         );
-        if (runtime.process !== 'running' || runtime.http !== 'ready') {
+        if (runtime.process !== 'running' || runtime.http === 'not_ready') {
           record.status = 'verification-failed';
           record.verification = {
             outcome: 'failed',
@@ -723,6 +713,12 @@ export async function runOperations(args: string[]): Promise<void> {
           );
           throw new Error(
             `Candidate stopped after verification deadline. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
+          );
+        }
+        if (runtime.http !== 'ready') {
+          record.verification.reason = 'http-unknown';
+          throw new Error(
+            `Candidate verification pending: HTTP probe unavailable. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
           );
         }
         if (!gatewayReady) {
@@ -882,7 +878,7 @@ export async function runOperations(args: string[]): Promise<void> {
         if (/^pending\t/m.test(status))
           throw new Error('Run pending owned migrations before startup');
       }
-      for (const entry of selected) await startApplication(entry, 'start');
+      for (const entry of selected) await startApplication(entry);
       await refreshGateway();
       rmSync(join(directory, 'recovery.json'), { force: true });
     } else if (action === 'stop') {
