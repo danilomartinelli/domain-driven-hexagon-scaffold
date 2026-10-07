@@ -60,7 +60,8 @@ distribution and runner lifecycle suite that `run-many` would otherwise skip
 silently if its target disappeared. Editor tasks must name existing scripts.
 The existing real-Docker runner suite remains `test:tooling`. Its focused broker
 and gateway subsets are available as `bun run nx run test-runner:test-broker`
-and `bun run nx run test-runner:test-gateway`; both run in CI.
+and `bun run nx run test-runner:test-gateway`; both remain part of the mandatory
+local lifecycle gate.
 
 `bun run audit:changed` compares dependency files against the merge-base of
 `HEAD` and `origin/master`, including branch commits, staged/unstaged changes and

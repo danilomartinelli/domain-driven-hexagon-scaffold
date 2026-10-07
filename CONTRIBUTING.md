@@ -18,16 +18,19 @@ validation steps apply to human contributors as well as coding agents.
 
 ## Checks
 
-| Change                              | Before opening a pull request                                                   |
+| Change                              | Before committing and opening a pull request                                    |
 | ----------------------------------- | ------------------------------------------------------------------------------- |
 | Code, configuration or dependencies | `bun run check:full` or `make check` (Docker must be running)                   |
 | Documentation only                  | Format the affected files, run `bun run check:docs` and verify changed commands |
 
 The pre-commit hook runs formatting, `check:code` and staged documentation
-checks, plus the dependency audit when dependency files are staged. Continuous
-integration runs `bun run check`, focused Docker-backed runner subsets and the
-E2E, component and distribution suites on every pull request; the remaining
-runner lifecycle cases run in the local full gate. See [developer checks](docs/developer-checks.md) for each suite.
+checks, plus the dependency audit when dependency files are staged. It does not
+run Docker suites automatically: run the full local gate before committing code,
+configuration or dependency changes. Continuous integration runs `bun run check:ci`
+with a five-minute limit, alongside native OCI checks limited to fifteen minutes
+per architecture. The required `check` status waits for both. Workspace mutation,
+runner lifecycle, operations, E2E, component and distribution suites remain
+mandatory in the local full gate. See [developer checks](docs/developer-checks.md) for each suite.
 
 ## Pull requests
 

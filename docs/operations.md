@@ -248,11 +248,64 @@ and leaves the prior image applied with its server stopped. It never promotes th
 candidate or runs migration down. `deployment.json` keeps the requested candidate,
 so `plan` reports the outstanding image change; restore the applied digest there to
 withdraw it. Inspect the transition, `status` and owned database before deciding
-whether to restart the prior image or retry a corrected candidate. If migration
-succeeds but startup fails, the applied state selects the candidate with its
-committed migration and failed startup, the transition still fails, and the
-previous digest remains available in that record. Do not interpret an image pull or
-a migration success as a verified update.
+whether to restart the prior image or retry a corrected candidate.
+
+### Candidate verification and explicit continuation
+
+Image selection, migration completion, observed runtime and transition verification
+are separate evidence in `transition-<id>.json`. `state.json` retains each application's
+pending transition until its verification succeeds. A selected digest, completed migration or
+live process alone does not establish a completed update.
+
+The applied application's startup outcome also remains `pending` during incomplete
+verification, becomes `failed` for confirmed process/HTTP failure, and changes to
+`verified` only when verification succeeds. `plan` reports these outcomes separately
+from committed migrations, including after explicit continuation.
+
+| Verification result                                       | Candidate behavior                                                          | Transition evidence                                      |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| HTTP and applicable messaging roles ready                 | Keep serving; complete verification                                         | `verified`                                               |
+| HTTP ready, messaging unavailable                         | Keep serving usable HTTP through Kong; allow application transport recovery | `verification-pending`, `messaging-degraded`             |
+| Process running, HTTP probe unavailable                   | Keep the candidate running; readiness remains unknown                       | `verification-pending`, `http-unknown`                   |
+| Process or HTTP unavailable after the verification window | Stop only the candidate, preserving its selected image and durable state    | `verification-failed`, `process-failed` or `http-failed` |
+
+Candidate verification polls for up to 60 seconds, with bounded Docker and HTTP
+probes. A failed Docker probe is unknown readiness, so it leaves verification
+pending without stopping the running candidate or reporting success. Confirmed
+process/HTTP failure uses the application's existing 15-second
+shutdown contract and Compose's longer 20-second grace. The updater retains the
+database, broker resources, backup, container and private diagnostic records.
+These rules apply to candidates; ordinary running applications retain their
+database/broker outage recovery behavior.
+
+All incomplete results exit nonzero and block another promotion of that
+application. Independent application operations remain available and preserve the
+pending transition. Inspect `probe`, `status`, the transition and its diagnostic log,
+then repair the failed dependency or runtime prerequisite and explicitly continue:
+
+```sh
+bun run ops --directory="$ops_dir" probe user
+bun run ops --directory="$ops_dir" status user
+bun run ops --directory="$ops_dir" continue user
+```
+
+Continuation starts a stopped candidate or verifies the already running one. It
+does not invoke completed migrations, create another backup or replace sibling
+applications. Automatic messaging recovery does not clear pending verification;
+only successful explicit continuation does. Each attempt retains its observation
+and diagnostic reference in the transition. `probe` also reports a stopped or
+missing process without claiming HTTP readiness.
+
+If a database was restored, continuation enforces the same global recovery
+assessment as startup. Supply `--assessment=<file>` after every pending restore
+has completed and its data/messaging assessment covers all recovery IDs; see
+[backup and restore](#manual-per-application-backup-and-restore). Successful
+continuation clears that assessed recovery barrier.
+
+Alternatively, use compatibility-reviewed image rollback below for the pending
+application. No failure automatically restores previous images, runs migration
+down, purges broker state or rolls back the distributed installation atomically.
+Do not edit the pending transition or inventory to bypass recovery.
 
 ## Compatible image rollback
 
@@ -403,14 +456,15 @@ bun run check:full
 The operational regression executes these commands with real Docker, a disposable
 loopback-only registry, exact digests, supplied test certificates, PostgreSQL,
 RabbitMQ and Kong. It covers bootstrap/reuse, private secrets and listeners,
-owner/runtime separation, update failure, compatible rollback, both application
+owner/runtime separation, migration failure, candidate messaging degradation,
+process/HTTP verification failure and continuation, compatible rollback, both application
 backups/restores, correlated replay and unavailable backlog. Planning coverage
 adopts a version 1 inventory, edits the desired selection, previews it, rejects
 incompatible, misidentified and invalid selections, inspects and shuts down the
 applied installation, refuses a foreign owner, restarts with stable identities and
 data and preserves a sibling installation. It retains owned
 volumes and inventory under `.context/test-runs/operations-<id>/`; command logs
-and results are included in the existing CI diagnostics collection. Use `down` on that exact
+and results remain there as local full-gate evidence. Use `down` on that exact
 directory for cleanup. No command deletes volumes. Local-registry fixtures are
 verification infrastructure, not a GHCR release or production deployment.
 

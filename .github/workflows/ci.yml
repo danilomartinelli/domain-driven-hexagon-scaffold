@@ -25,7 +25,7 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -49,21 +49,14 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
-  check:
-    name: check
-    needs: images
-    if: always()
+  quality:
+    name: Quality
     # Pinned so runner image upgrades are deliberate.
     runs-on: ubuntu-24.04
-    # Keep time for component/distribution checks after the serial live suites.
-    timeout-minutes: 45
+    # Keep routine checks bounded; check:full is required locally before commit.
+    timeout-minutes: 5
     steps:
-      - name: Require both image architectures
-        if: needs.images.result != 'success'
-        run: exit 1
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
@@ -71,47 +64,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      # Fast gate: formatting, docs references, lint, types, boundaries and unit tests.
       - name: Check
-        run: bun run check
-      - name: Parallel Nx application runners
-        run: bun run nx run test-runner:test-nx-runner
-      - name: Select preservation regression
-        id: preservation
+        run: bun run check:ci
+  check:
+    name: check
+    needs: [quality, images]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Require quality and both image architectures
         env:
-          COMPARISON_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          COMPARISON_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: bun scripts/preservation-required.ts --base="$COMPARISON_BASE" --head="$COMPARISON_HEAD"
-      - name: Preserve development and sibling environments
-        if: steps.preservation.outputs.required == 'true'
-        run: bun run nx run test-runner:test-preservation
-      - name: Broker regression and cleanup ownership
-        run: bun run nx run test-runner:test-broker
-      - name: Gateway setup and cleanup ownership
-        run: bun run nx run test-runner:test-gateway
-      - name: Selected environments and retained state
-        run: bun run nx run test-runner:test-selection
-      - name: Container watch and local debugging
-        run: bun run nx run test-runner:test-private-development
-      - name: Compose reference operations
-        run: bun run nx run test-runner:test-operations
-      - name: Distributed system tests
-        run: bun run test:e2e
-      # Keep component failures inside the existing required check status.
-      - name: Component tests
-        run: bun run test:component
-
-      - name: Independent distribution tests
-        run: bun run test:distribution
-
-      - name: Preserve failed run diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-run-diagnostics-${{ github.run_attempt }}
-          path: |
-            .context/test-runs/*/run.log
-            .context/test-runs/*/result.json
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 7
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          IMAGE_RESULT: ${{ needs.images.result }}
+        run: test "$QUALITY_RESULT" = success && test "$IMAGE_RESULT" = success

@@ -17,12 +17,17 @@ import { backupApplication } from '../lib/operations-backup';
 import { operationsDiagnostics } from '../lib/operations-diagnostics';
 import {
   retainResources,
+  stateSchema,
   type InstallationState,
 } from '../lib/operations-config';
 import { operationsCompose } from '../lib/operations-compose';
 import { deploymentPlan } from '../lib/operations-plan';
 import { until } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
+import {
+  transitionSchema,
+  type Transition,
+} from '../lib/operations-transition';
 
 const userImage = `example/user@sha256:${'a'.repeat(64)}`;
 const userDeployment = { name: 'example', images: { user: userImage } };
@@ -49,6 +54,176 @@ function secretState(directory: string): InstallationState {
     },
     retained: { databases: [] },
   };
+}
+
+for (const version of [1, 2]) {
+  test(`candidate with an unknown final HTTP probe keeps running with verification pending (inventory v${String(version)})`, async () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'ddh-probe-')));
+    try {
+      const state = secretState(directory);
+      state.applied.applications[0].declaration.persistence = false;
+      const transitionId = 'a1111111-1111-4111-8111-111111111111';
+      state.pendingTransitions = { user: transitionId };
+      const recordPath = join(directory, `transition-${transitionId}.json`);
+      const transition: Transition = {
+        action: 'update',
+        application: 'user',
+        previousImage: `example/user@sha256:${'b'.repeat(64)}`,
+        candidateImage: state.applied.applications[0].image,
+        compatibilityReview: null,
+        status: 'verification-pending',
+        migrationStatus: '',
+        migration: { outcome: 'not-applicable', completedAt: null },
+        runtime: null,
+        verification: { outcome: 'pending', reason: 'messaging-degraded' },
+        attempts: [],
+        backup: '',
+        error: '',
+        diagnostic: '',
+      };
+      writeFileSync(
+        join(directory, 'deployment.json'),
+        JSON.stringify(userDeployment),
+      );
+      state.retained = retainResources(state, state.applied.applications);
+      const inventory =
+        version === 1
+          ? {
+              version: 1,
+              project: state.project,
+              owner: state.owner,
+              directory,
+              config: userDeployment,
+              artifacts: state.applied.applications,
+              pendingTransitions: state.pendingTransitions,
+            }
+          : state;
+      writeFileSync(join(directory, 'state.json'), JSON.stringify(inventory));
+      writeFileSync(recordPath, JSON.stringify(transition));
+      mkdirSync(join(directory, 'secrets'));
+      writeFileSync(
+        join(directory, 'secrets/broker-password'),
+        'fixture-password',
+      );
+      writeFileSync(join(directory, 'probes'), '0');
+      // Advance the verification clock at probe boundaries, leaving subprocess
+      // deadlines and the actual polling/decision path intact in an isolated CLI.
+      const preload = join(directory, 'clock.ts');
+      writeFileSync(
+        preload,
+        `
+      import { readFileSync } from 'node:fs';
+      const now = Date.now;
+      Date.now = () => now() + Number(readFileSync(${JSON.stringify(join(directory, 'probes'))}, 'utf8')) * 30_000;
+    `,
+      );
+      writeFileSync(
+        join(directory, 'docker'),
+        `#!/usr/bin/env bun
+      import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+      const args = process.argv.slice(2);
+      const count = () => Number(readFileSync('probes', 'utf8'));
+      if (args[0] === 'create') console.log('preflight');
+      else if (args[0] === 'start') console.log(${JSON.stringify(JSON.stringify(state.applied.applications[0].declaration))});
+      else if (args[0] === 'ps' || args[0] === 'network' || args[0] === 'volume') {}
+      else if (args[0] === 'inspect') console.log(JSON.stringify({
+        image: ${JSON.stringify(state.applied.applications[0].image)},
+        process: existsSync('stopped') ? 'exited' : 'running',
+      }));
+      else if (args[0] === 'compose') {
+        const command = args[args.indexOf('--file') + 2];
+        if (command === 'ps') {
+          writeFileSync('probes', String(count() + 1));
+          console.log('candidate');
+        } else if (command === 'exec') {
+          if (count() >= 3 && !existsSync('recovered')) {
+            console.error('Docker exec failed');
+            process.exit(1);
+          }
+          console.log(JSON.stringify({
+            http: true,
+            readiness: {
+              service: 'user',
+              consumer: { status: 'not_applicable' },
+              publisher: { status: existsSync('recovered') ? 'ready' : 'not_ready' },
+            },
+            backlog: null,
+          }));
+        } else if (command === 'stop') writeFileSync('stopped', 'true');
+        else if (command !== 'logs') throw new Error('Unexpected Compose command: ' + command);
+      } else throw new Error('Unexpected Docker command: ' + args[0]);
+    `,
+        { mode: 0o700 },
+      );
+      const continueCandidate = () =>
+        runCommand(
+          [
+            'bun',
+            '--no-env-file',
+            '--preload',
+            preload,
+            'scripts/operations.ts',
+            `--directory=${directory}`,
+            'continue',
+            'user',
+          ],
+          {
+            cwd: process.cwd(),
+            env: {
+              ...process.env,
+              PATH: `${directory}:${process.env.PATH ?? ''}`,
+            },
+            timeout: 10_000,
+          },
+        );
+      const result = await continueCandidate();
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain('HTTP probe unavailable');
+      expect(Number(readFileSync(join(directory, 'probes'), 'utf8'))).toBe(3);
+      expect(existsSync(join(directory, 'stopped'))).toBe(false);
+      const record = () =>
+        transitionSchema.parse(JSON.parse(readFileSync(recordPath, 'utf8')));
+      expect(record()).toMatchObject({
+        status: 'verification-pending',
+        verification: { outcome: 'pending', reason: 'http-unknown' },
+        runtime: { process: 'running', http: 'unknown' },
+        attempts: [{ outcome: 'pending', reason: 'http-unknown' }],
+      });
+      const applied = () =>
+        stateSchema.parse(
+          JSON.parse(readFileSync(join(directory, 'state.json'), 'utf8')),
+        );
+      expect(applied()).toMatchObject({
+        version: 2,
+        pendingTransitions: { user: transitionId },
+        applied: {
+          applications: [
+            {
+              startup: {
+                operation: 'update',
+                image: userImage,
+                readiness: 'full',
+                result: 'pending',
+              },
+            },
+          ],
+        },
+      });
+      writeFileSync(join(directory, 'recovered'), 'true');
+      expect((await continueCandidate()).code).toBe(0);
+      expect(record()).toMatchObject({ status: 'verified' });
+      expect(record().attempts).toHaveLength(2);
+      expect(applied()).not.toHaveProperty('pendingTransitions');
+      expect(applied().applied.applications[0].startup).toMatchObject({
+        operation: 'update',
+        image: userImage,
+        readiness: 'full',
+        result: 'verified',
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 }
 
 for (const key of [

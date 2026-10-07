@@ -6,6 +6,12 @@ import { applicationDeclarationSchema } from '@starter/capabilities/declaration'
 import { runCommand, type CommandResult } from './command';
 import { withCleanup } from './cleanup';
 import { operationsDiagnostics } from './operations-diagnostics';
+import {
+  probeApplication,
+  waitForCandidate,
+  type ApplicationRuntime,
+} from './operations-verification';
+import { transitionSchema, type Transition } from './operations-transition';
 import { verifyEnvironmentOwnership } from './ownership';
 import { operationsCompose, provisionDatabase } from './operations-compose';
 import {
@@ -42,6 +48,7 @@ const actions = [
   'inspect',
   'replay',
   'update',
+  'continue',
   'rollback',
   'backup',
   'restore',
@@ -386,6 +393,27 @@ export async function runOperations(args: string[]): Promise<void> {
         artifacts.push(await artifact(app, image));
       state = newInstallation(config.name, directory, artifacts, config.https);
     }
+    const pendingId = name ? state.pendingTransitions?.[name] : undefined;
+    const pendingPath = pendingId
+      ? join(directory, `transition-${pendingId}.json`)
+      : undefined;
+    const pending = pendingPath
+      ? transitionSchema.parse(readJson(pendingPath))
+      : undefined;
+    if (pending && ['update', 'start', 'migrate', 'restore'].includes(action))
+      throw new Error(
+        `Continue or roll back ${pending.application} before further promotions; verification is incomplete`,
+      );
+    if (
+      !name &&
+      action === 'start' &&
+      Object.keys(state.pendingTransitions ?? {}).length
+    )
+      throw new Error(
+        'Continue or roll back pending applications before starting the complete installation',
+      );
+    if (action === 'continue' && (!pending || name !== pending.application))
+      throw new Error('Select the application with a pending transition');
     // Validate selected immutable artifacts before rewriting Compose/state,
     // supplying credentials to containers, stopping services or running migrations.
     let validatedCandidate: Artifact | undefined;
@@ -403,7 +431,9 @@ export async function runOperations(args: string[]): Promise<void> {
       validatedCandidate = await artifact(name, image);
     } else if (
       !newlyPrepared &&
-      ['prepare', 'start', 'migrate', 'replay', 'restore'].includes(action)
+      ['prepare', 'start', 'migrate', 'replay', 'restore', 'continue'].includes(
+        action,
+      )
     ) {
       for (const entry of state.applied.applications)
         if (!name || name === entry.declaration.name)
@@ -523,11 +553,7 @@ export async function runOperations(args: string[]): Promise<void> {
           },
         }),
       );
-    const probe = async (
-      selected: Artifact,
-      wait = false,
-      readiness: 'http' | 'all' = 'all',
-    ): Promise<string> =>
+    const probe = async (selected: Artifact): Promise<string> =>
       compose([
         'exec',
         '-T',
@@ -536,9 +562,9 @@ export async function runOperations(args: string[]): Promise<void> {
         '-e',
         `
         let response;
-        for (let attempt = 0; attempt < ${wait ? '90' : '1'}; attempt++) {
-          response = await fetch('http://127.0.0.1:3000/health/ready${readiness === 'http' ? '/http' : ''}', { signal: AbortSignal.timeout(5000) });
-          if (response.ok || ${wait ? 'false' : 'true'}) break;
+        for (let attempt = 0; attempt < 90; attempt++) {
+          response = await fetch('http://127.0.0.1:3000/health/ready/http', { signal: AbortSignal.timeout(5000) });
+          if (response.ok) break;
           await response.body?.cancel();
           await Bun.sleep(500);
         }
@@ -546,15 +572,11 @@ export async function runOperations(args: string[]): Promise<void> {
           readiness: await (await fetch('http://127.0.0.1:3000/health/ready')).json(),
           backlog: await (await fetch('http://127.0.0.1:3000/health/backlog')).json(),
         }));
-        process.exit(${wait ? 'response.ok ? 0 : 1' : '0'});
+        process.exit(response.ok ? 0 : 1);
       `,
       ]);
-    /** Start one selected server; `start` verifies HTTP and image changes full readiness. */
-    const startApplication = (
-      selected: Artifact,
-      operation: 'start' | 'update' | 'rollback',
-    ) => {
-      const readiness = operation === 'start' ? 'http' : 'full';
+    /** Ordinary startup verifies HTTP; candidate transitions have their own verification. */
+    const startApplication = (selected: Artifact) => {
       return recordedStep(
         selected.declaration.name,
         async () => {
@@ -567,15 +589,13 @@ export async function runOperations(args: string[]): Promise<void> {
             '60',
             `app-${selected.declaration.name}`,
           ]);
-          console.log(
-            await probe(selected, true, readiness === 'full' ? 'all' : 'http'),
-          );
+          console.log(await probe(selected));
         },
         (result, at) => ({
           startup: {
-            operation,
+            operation: 'start',
             image: selected.image,
-            readiness,
+            readiness: 'http',
             result: result === 'succeeded' ? 'verified' : result,
             at,
           },
@@ -596,6 +616,178 @@ export async function runOperations(args: string[]): Promise<void> {
           '60',
           'gateway',
         ]);
+    };
+    const verifyCandidate = async (
+      selected: Artifact,
+      record: Transition,
+      recordPath: string,
+    ) => {
+      record.status = 'verifying';
+      record.verification = { outcome: 'pending', reason: 'readiness' };
+      writeJson(recordPath, record);
+      recordOutcome(selected.declaration.name, {
+        startup: {
+          operation: record.action,
+          image: selected.image,
+          readiness: 'full',
+          result: 'pending',
+          at: now(),
+        },
+      });
+      let observed: ApplicationRuntime | null = null;
+      try {
+        const before = await probeApplication(selected, compose, execute);
+        if (before.process !== 'running' || before.image !== selected.image) {
+          try {
+            await compose([
+              'up',
+              '-d',
+              '--no-deps',
+              `app-${selected.declaration.name}`,
+            ]);
+          } catch {
+            // Docker may create a container before its client fails. Observe the
+            // candidate through the same deadline before deciding whether to stop it.
+            record.error = `Candidate startup command failed; inspect ${diagnostics.logPath}`;
+          }
+        }
+        // Load ingress before the final readiness observation, including when
+        // messaging remains degraded. A gateway failure must not skip candidate checks.
+        let gatewayReady = true;
+        try {
+          await refreshGateway();
+        } catch {
+          gatewayReady = false;
+        }
+        const runtime = await waitForCandidate(
+          selected,
+          compose,
+          execute,
+          (runtime) => {
+            observed = runtime;
+            record.runtime = runtime;
+            writeJson(recordPath, record);
+          },
+          controller.signal,
+        );
+        if (runtime.process !== 'running' || runtime.http === 'not_ready') {
+          record.status = 'verification-failed';
+          record.verification = {
+            outcome: 'failed',
+            reason:
+              runtime.process !== 'running' ? 'process-failed' : 'http-failed',
+          };
+          // The application owns its 15-second shutdown; Compose grants 20 seconds.
+          await withCleanup(
+            () =>
+              compose(
+                [
+                  'logs',
+                  '--no-color',
+                  '--tail',
+                  '200',
+                  `app-${selected.declaration.name}`,
+                ],
+                15_000,
+                true,
+              ),
+            [
+              () =>
+                compose(
+                  [
+                    'stop',
+                    '--timeout',
+                    '20',
+                    `app-${selected.declaration.name}`,
+                  ],
+                  30_000,
+                  true,
+                ),
+            ],
+          );
+          record.runtime = await probeApplication(
+            selected,
+            compose,
+            execute,
+            true,
+          );
+          throw new Error(
+            `Candidate stopped after verification deadline. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
+          );
+        }
+        if (runtime.http !== 'ready') {
+          record.verification.reason = 'http-unknown';
+          throw new Error(
+            `Candidate verification pending: HTTP probe unavailable. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
+          );
+        }
+        if (!gatewayReady) {
+          record.verification.reason = 'gateway';
+          throw new Error(
+            `Candidate verification pending: gateway unavailable. Diagnostic: ${diagnostics.logPath}`,
+          );
+        }
+        if (!['ready', 'not_applicable'].includes(runtime.messaging)) {
+          record.status = 'verification-pending';
+          record.verification = {
+            outcome: 'pending',
+            reason: 'messaging-degraded',
+          };
+          throw new Error(
+            `Candidate HTTP remains available; messaging verification pending. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
+          );
+        }
+        record.status = 'verified';
+        record.verification = { outcome: 'verified', reason: '' };
+        record.error = '';
+        writeJson(recordPath, record);
+        if (current.pendingTransitions) {
+          current.pendingTransitions = Object.fromEntries(
+            Object.entries(current.pendingTransitions).filter(
+              ([application]) => application !== selected.declaration.name,
+            ),
+          );
+          if (!Object.keys(current.pendingTransitions).length)
+            delete current.pendingTransitions;
+        }
+        writeJson(join(directory, 'state.json'), current);
+        console.log(
+          `Transition verified: ${selected.declaration.name} ${selected.image}`,
+        );
+      } catch (error) {
+        if (record.status === 'verifying') {
+          record.status = 'verification-pending';
+          record.verification = {
+            outcome: 'pending',
+            reason: controller.signal.aborted
+              ? 'interrupted'
+              : record.verification.reason,
+          };
+        }
+        throw error;
+      } finally {
+        recordOutcome(selected.declaration.name, {
+          startup: {
+            operation: record.action,
+            image: selected.image,
+            readiness: 'full',
+            result: controller.signal.aborted
+              ? 'interrupted'
+              : record.verification.outcome === 'verified'
+                ? 'verified'
+                : record.verification.outcome === 'failed'
+                  ? 'failed'
+                  : 'pending',
+            at: now(),
+          },
+        });
+        record.attempts.push({
+          diagnostic: diagnostics.logPath,
+          runtime: observed,
+          ...record.verification,
+        });
+        writeJson(recordPath, record);
+      }
     };
     if (action === 'prepare') {
       const infra = current.applied.applications
@@ -686,7 +878,7 @@ export async function runOperations(args: string[]): Promise<void> {
         if (/^pending\t/m.test(status))
           throw new Error('Run pending owned migrations before startup');
       }
-      for (const entry of selected) await startApplication(entry, 'start');
+      for (const entry of selected) await startApplication(entry);
       await refreshGateway();
       rmSync(join(directory, 'recovery.json'), { force: true });
     } else if (action === 'stop') {
@@ -712,7 +904,25 @@ export async function runOperations(args: string[]): Promise<void> {
         'Owned containers and networks stopped; volumes, secrets and inventory retained',
       );
     } else if (action === 'probe') {
-      console.log(await probe(requiredApp()));
+      console.log(
+        JSON.stringify(await probeApplication(requiredApp(), compose, execute)),
+      );
+    } else if (action === 'continue') {
+      assessRecovery(directory, options.get('assessment'));
+      const selected = requiredApp();
+      if (
+        !pending ||
+        !pendingPath ||
+        selected.image !== pending.candidateImage ||
+        !['completed', 'not-applicable', 'compatibility-reviewed'].includes(
+          pending.migration.outcome,
+        )
+      )
+        throw new Error(
+          'Continuation requires the selected candidate and a confirmed migration outcome',
+        );
+      await verifyCandidate(selected, pending, pendingPath);
+      rmSync(join(directory, 'recovery.json'), { force: true });
     } else if (action === 'inspect' || action === 'replay') {
       const selected = requiredApp();
       if (!selected.declaration.messaging)
@@ -819,8 +1029,8 @@ export async function runOperations(args: string[]): Promise<void> {
         candidate.image,
       );
       const id = randomUUID();
-      const transitionPath = join(directory, `transition-${id}.json`);
-      const transition = {
+      const recordPath = join(directory, `transition-${id}.json`);
+      const record: Transition = {
         action,
         application: previous.declaration.name,
         previousImage: previous.image,
@@ -828,11 +1038,20 @@ export async function runOperations(args: string[]): Promise<void> {
         compatibilityReview,
         status: 'preparing',
         migrationStatus: '',
+        migration: {
+          outcome: candidate.declaration.persistence
+            ? 'not-started'
+            : 'not-applicable',
+          completedAt: null,
+        },
+        runtime: null,
+        verification: { outcome: 'not-started', reason: '' },
+        attempts: [],
         backup: '',
         error: '',
         diagnostic: diagnostics.logPath,
       };
-      writeJson(transitionPath, transition);
+      writeJson(recordPath, record);
       const promoted = () =>
         current.applied.applications.map((entry) =>
           entry.declaration.name === previous.declaration.name
@@ -846,7 +1065,7 @@ export async function runOperations(args: string[]): Promise<void> {
             applied: { ...current.applied, applications: promoted() },
           });
           if (candidate.declaration.persistence)
-            transition.migrationStatus = await migrate(candidate, 'status');
+            record.migrationStatus = await migrate(candidate, 'status');
           // A short per-application maintenance window prevents writes during schema transition.
           await compose([
             'stop',
@@ -855,7 +1074,7 @@ export async function runOperations(args: string[]): Promise<void> {
             `app-${previous.declaration.name}`,
           ]);
           if (candidate.declaration.persistence) {
-            transition.backup = await backupApplication(
+            record.backup = await backupApplication(
               current,
               previous,
               join(
@@ -865,31 +1084,48 @@ export async function runOperations(args: string[]): Promise<void> {
               ),
               compose,
             );
-            transition.status =
+            record.status =
               action === 'update' ? 'migrating' : 'compatibility-reviewed';
-            writeJson(transitionPath, transition);
-            if (action === 'update') await migrateUp(candidate, 'update');
+            writeJson(recordPath, record);
+            if (action === 'update') {
+              record.migration.outcome = 'running';
+              writeJson(recordPath, record);
+              try {
+                await migrateUp(candidate, 'update');
+              } catch (error) {
+                record.migration.outcome = 'failed';
+                throw error;
+              }
+              record.migration = {
+                outcome: 'completed',
+                completedAt: new Date().toISOString(),
+              };
+            } else {
+              record.migration.outcome = 'compatibility-reviewed';
+            }
           }
-          transition.status = 'promoting';
-          writeJson(transitionPath, transition);
+          record.status = 'promoting';
+          writeJson(recordPath, record);
           // Only successful migrations can select the candidate for application startup.
           current.applied.applications = promoted();
-          writeJson(statePath, current);
-          await startApplication(candidate, action);
-          await refreshGateway();
-          transition.status = 'verified';
-          console.log(
-            `${action} verified: ${candidate.declaration.name} ${candidate.image}`,
-          );
+          current.pendingTransitions ??= {};
+          current.pendingTransitions[candidate.declaration.name] = id;
+          writeJson(join(directory, 'state.json'), current);
+          await verifyCandidate(candidate, record, recordPath);
         } catch (error) {
-          transition.status = 'failed';
-          transition.error =
+          if (
+            !['verification-pending', 'verification-failed'].includes(
+              record.status,
+            )
+          )
+            record.status = 'failed';
+          record.error =
             'No automatic database reversal. Inspect status and retained transition evidence before recovery.';
           throw error;
         }
       }, [
         () => {
-          writeJson(transitionPath, transition);
+          writeJson(recordPath, record);
         },
         () => {
           saveCompose();

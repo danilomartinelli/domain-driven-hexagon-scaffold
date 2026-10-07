@@ -74,8 +74,13 @@ Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`, created lazily 
 Use `bun run test:unit` for infrastructure-free application and package tests;
 bare `bun test` only discovers `src/packages/core/tests`.
 
-Before declaring code changes ready, run the full gate, `bun run check:full`
-(`make check`), with Docker running. For documentation-only changes, format the
+Before committing code, configuration or dependency changes, and before declaring
+them ready, run the full local gate, `bun run check:full` (`make check`), with Docker
+running. GitHub CI runs only `check:ci` (a five-minute job) and native OCI image
+checks (a fifteen-minute job per architecture). Workspace mutation regressions,
+Docker lifecycle, Compose operations, E2E, component and distribution suites
+remain mandatory locally; green CI does not replace them. The pre-commit hook
+does not run these Docker suites automatically. For documentation-only changes, format the
 affected files, run `bun run check:docs` and verify changed commands. Targeted
 checks remain the development loop; see [developer checks](docs/developer-checks.md)
 for focused suites and the scope of each gate.

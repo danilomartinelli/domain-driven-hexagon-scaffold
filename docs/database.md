@@ -278,9 +278,10 @@ failed shutdowns. No retention flag is required. Unreadable inventory also retai
 the workspace and fails cleanup; diagnostic export is still attempted. Copies
 without durable development inventory are removed after diagnostic export.
 Use `env:inspect` or `env:down` from the printed retained workspace path.
-Failed CI jobs upload only `run.log` and `result.json` as the
-`test-run-diagnostics-<attempt>` artifact, retained for seven days; generated
-manifests and Compose configuration are excluded.
+CI's OCI jobs upload image logs plus `run.log` and `result.json` as
+`image-checks-<runner>-<attempt>` artifacts, retained for seven days; generated
+manifests and Compose configuration are excluded. The other Docker suites run
+locally and retain diagnostics in the paths above.
 The manifest provides database and broker settings to `env:exec`; shell values
 win over defaults. **Tests reject an override that differs from the selected
 owned target**, instead of silently replacing it or connecting to it.

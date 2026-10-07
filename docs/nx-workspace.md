@@ -261,15 +261,14 @@ experiments remain possible; use the package commands for the quality gates.
 Unit discovery has no E2E preload. Bare `bun test` runs only `src/packages/core/tests`.
 `bun run nx run test-runner:test-nx-runner` executes the parallel application
 migration regression through Nx. Run it when changing project dependencies,
-targets or workspace fixtures; CI runs it independently of the full local
-runner lifecycle suite.
+targets or workspace fixtures; the full local runner lifecycle suite includes it.
 
 `bun run nx run test-runner:test-broker` runs the pinned-image healthcheck and
 container-ownership regressions without provisioning application databases.
-This uncached subset runs in CI and is also included in `test:tooling`.
+This uncached subset is included in the mandatory local `test:tooling` gate.
 `bun run nx run test-runner:test-gateway` selects the existing environment tests
 for loaded gateway upstreams, target overrides, occupied proxy/Admin ports and
-failed-setup cleanup. This uncached subset also runs in CI; `test:tooling`
+failed-setup cleanup. This uncached subset runs locally; `test:tooling`
 retains the broader development/sibling preservation cases.
 For the focused preservation target and its pre-review selection, see
 [focused feedback](developer-checks.md#focused-feedback).

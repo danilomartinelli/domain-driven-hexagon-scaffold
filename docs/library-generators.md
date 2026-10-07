@@ -231,6 +231,6 @@ bun run nx run generators:test-component --skip-nx-cache
 
 The live target owns unique labelled PostgreSQL and RabbitMQ containers and TCP
 outage gates; cleanup verifies ownership and never deletes volumes. It runs with
-`test:component`, `check:full` and CI. Generation itself only writes the requested
+the local `test:component` and `check:full` gates. Generation itself only writes the requested
 app and does not alter User/Wallet, root start commands, database environments or
 the lockfile.

@@ -55,7 +55,7 @@ const appliedApplicationSchema = artifactSchema.extend({
       operation: z.enum(['start', 'update', 'rollback']),
       image: imageDigest,
       readiness: z.enum(['http', 'full']),
-      result: z.enum(['verified', 'failed', 'interrupted']),
+      result: z.enum(['verified', 'pending', 'failed', 'interrupted']),
       at: timestamp,
     })
     .optional(),
@@ -94,6 +94,7 @@ export const stateSchema = z.strictObject({
   }),
   // Owned durable identities outlive their applications' active selection.
   retained: retainedSchema,
+  pendingTransitions: z.record(name, z.uuid()).optional(),
 });
 export type InstallationState = z.infer<typeof stateSchema>;
 export type AppliedApplication =
@@ -108,6 +109,7 @@ const legacyStateSchema = z.strictObject({
   directory: z.string(),
   config: deploymentSchema,
   artifacts: z.array(artifactSchema),
+  pendingTransitions: z.record(name, z.uuid()).optional(),
 });
 
 export function readJson(path: string): unknown {

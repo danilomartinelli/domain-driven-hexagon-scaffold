@@ -9,7 +9,7 @@ import {
 import { runCommand } from '../lib/command';
 import { z } from 'zod';
 
-test('the uncached preservation scenario is wired into CI with full comparison history', async () => {
+test('the uncached preservation scenario remains covered by the local lifecycle gate', async () => {
   const project = z
     .object({
       targets: z.record(
@@ -27,46 +27,20 @@ test('the uncached preservation scenario is wired into CI with full comparison h
   expect(project.targets['test-preservation'].options.command).toContain(
     'prepared regression runs reject foreign targets and preserve development and sibling data',
   );
-  const workflow = z
-    .object({
-      jobs: z.object({
-        check: z.object({
-          steps: z.array(
-            z
-              .object({
-                uses: z.string().optional(),
-                id: z.string().optional(),
-                run: z.string().optional(),
-                if: z.string().optional(),
-                with: z.record(z.string(), z.unknown()).optional(),
-              })
-              .loose(),
-          ),
-        }),
-      }),
-    })
+  expect(project.targets['test-live'].cache).toBe(false);
+  expect(project.targets['test-live'].options.command).toContain(
+    './scripts/tests/environment.test.ts',
+  );
+  expect(project.targets['test-live'].options.command).not.toContain(
+    '--test-name-pattern',
+  );
+  const { scripts } = z
+    .object({ scripts: z.record(z.string(), z.string()) })
     .parse(
-      Bun.YAML.parse(
-        await Bun.file(
-          new URL('../../.github/workflows/ci.yml', import.meta.url),
-        ).text(),
-      ),
+      await Bun.file(new URL('../../package.json', import.meta.url)).json(),
     );
-  const steps = workflow.jobs.check.steps;
-  expect(
-    steps.find((step) => step.uses?.startsWith('actions/checkout@'))?.with?.[
-      'fetch-depth'
-    ],
-  ).toBe(0);
-  expect(
-    steps.find((step) => step.run?.includes('scripts/preservation-required.ts'))
-      ?.id,
-  ).toBe('preservation');
-  expect(
-    steps.find(
-      (step) => step.run === 'bun run nx run test-runner:test-preservation',
-    )?.if,
-  ).toBe("steps.preservation.outputs.required == 'true'");
+  expect(scripts['check:full']).toContain('bun run test:tooling');
+  expect(scripts['test:tooling']).toBe('bun run nx run test-runner:test-live');
 });
 
 test('preservation selection includes staged, unstaged and new runtime files, but skips documentation', async () => {
