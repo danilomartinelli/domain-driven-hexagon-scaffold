@@ -234,7 +234,7 @@ bun run check:full
 | `test:images`                                                            | `test-runner:test-images`; execute the independent Linux artifacts on both architectures   |
 | `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)                          |
 | `test:tooling`                                                           | `test-runner:test-live`                                                                    |
-| `test:operations`                                                        | `test-runner:test-operations`; disposable Compose bootstrap, update, rollback and recovery |
+| `test:operations`                                                        | `test-runner:test-operations`; Compose bootstrap, planning, updates, rollback and recovery |
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                                     |
 | `seed:up`                                                                | `database:seed`                                                                            |
 | `migration:*:tests`, `seed:up:tests`                                     | Corresponding database target with the `test` configuration                                |

@@ -145,9 +145,16 @@ authorized dispatch executes.
 The [Compose reference operations](../operations.md) are implemented (#63):
 independent image digests, file secrets, private services and HTTPS, separated
 owner migrations, verified updates/rollback and manual per-application recovery.
-The shipped reference keeps a fixed deployment selection and rejects changed
-capabilities/routes. The desired/applied/retained separation and deployment
-reconciliation described above remain to be implemented and verified.
+Desired-deployment planning is implemented (#73); see
+[operations](../operations.md#desired-applied-and-retained-state). `deployment.json`
+remains the desired selection, while `state.json` records applied images with
+separate migration and startup outcomes and the retained owned identities. Planning
+previews services, retained resources, applicable migrations and interruptions
+without changing the installation. Inspection and shutdown use the applied
+inventory after desired edits, and version 1 inventories are adopted with their
+identities. Image updates keep the desired selection coherent. Applying topology
+changes remains to be implemented; the updater still rejects changed
+capabilities/routes.
 Candidate verification failures currently leave the selected candidate in its
 reached process state; the explicit degraded-verification state and bounded stop
 on process/HTTP verification failure described above are not yet implemented.

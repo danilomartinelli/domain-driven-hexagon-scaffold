@@ -16,11 +16,53 @@ import { until } from './app-runtime-fixture';
 import { z } from 'zod';
 import { appWorkspace, generate, run } from './app-generator-fixture';
 import { operationsDatabaseFixture } from './operations-database-fixture';
+import { availablePort } from '../lib/environments';
+import { stateSchema } from '../lib/operations-config';
+import type { DeploymentPlan } from '../lib/operations-plan';
 import {
   backupApplication,
   restoreApplication,
   migrationHistory,
+  appliedMigrations,
+  verifyArchive,
 } from '../lib/operations-backup';
+
+test('planning distinguishes an empty migration history from an unreadable running database', async () => {
+  const fixture = await operationsDatabaseFixture();
+  await withCleanup(async () => {
+    expect(await appliedMigrations('user', fixture.compose)).toEqual([
+      'baseline',
+    ]);
+    await fixture.sql('DROP TABLE pgmigrations');
+    expect(await appliedMigrations('user', fixture.compose)).toEqual([]);
+    await fixture.compose([
+      'exec',
+      '-T',
+      'postgres-user',
+      'psql',
+      '-X',
+      '-U',
+      'postgres',
+      '-d',
+      'user',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      'ALTER ROLE user_owner NOLOGIN',
+    ]);
+    for (const read of [migrationHistory, appliedMigrations]) {
+      const failure = await read('user', fixture.compose).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (!(failure instanceof Error))
+        throw new Error(
+          'Expected the unreadable database to reject the history query',
+        );
+      expect(failure.message).toContain('not permitted to log in');
+    }
+  }, [fixture.cleanup]);
+}, 60_000);
 
 for (const foreignKey of [false, true]) {
   test(`restore removes post-backup schema changes (foreign key: ${String(foreignKey)})`, async () => {
@@ -39,7 +81,12 @@ for (const foreignKey of [false, true]) {
       await restoreApplication(
         fixture.state,
         fixture.app,
-        backup,
+        await verifyArchive(
+          fixture.state,
+          fixture.app,
+          backup,
+          fixture.compose,
+        ),
         fixture.compose,
       );
       expect(
@@ -76,7 +123,12 @@ for (const foreignKey of [false, true]) {
       await restoreApplication(
         fixture.state,
         fixture.app,
-        repeated,
+        await verifyArchive(
+          fixture.state,
+          fixture.app,
+          repeated,
+          fixture.compose,
+        ),
         fixture.compose,
       );
       expect(await migrationHistory('user', fixture.compose)).toEqual([
@@ -119,7 +171,7 @@ test('restore rolls back schema cleanup and data when archive SQL fails', async 
     const failure = await restoreApplication(
       fixture.state,
       fixture.app,
-      backup,
+      await verifyArchive(fixture.state, fixture.app, backup, fixture.compose),
       fixture.compose,
     ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
@@ -434,11 +486,44 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
         sha256: createHash('sha256').update(invalidBytes).digest('hex'),
       }),
     );
+    const schemaOutcome = (app: string) =>
+      fixture
+        .state()
+        .applied.applications.find((entry) => entry.declaration.name === app)
+        ?.migration;
+    const migrated = schemaOutcome('user');
+    expect(migrated).toMatchObject({
+      operation: 'migrate',
+      image: fixture.images.user,
+      result: 'committed',
+    });
+    // A refused archive opens no recovery gate and keeps the recorded outcome.
+    const foreignArchive = await fixture.opsResult(
+      'restore',
+      'user',
+      `--input=${walletBackup}`,
+    );
+    expect(foreignArchive.code).not.toBe(0);
+    expect(foreignArchive.stderr).toContain(
+      'Backup ownership or checksum does not match',
+    );
+    expect(schemaOutcome('user')).toEqual(migrated);
+    expect(existsSync(join(fixture.directory, 'recovery.json'))).toBe(false);
     expect(
       (await fixture.opsResult('restore', 'user', `--input=${invalidBackup}`))
         .code,
     ).not.toBe(0);
+    expect(schemaOutcome('user')).toMatchObject({
+      operation: 'restore',
+      image: fixture.images.user,
+      result: 'failed',
+    });
     await fixture.ops('restore', 'wallet', `--input=${walletBackup}`);
+    expect(schemaOutcome('wallet')).toMatchObject({
+      operation: 'restore',
+      image: fixture.images.wallet,
+      result: 'restored',
+    });
     const pending = z
       .object({
         applications: z.record(
@@ -482,6 +567,10 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
       ]),
     ).toBe('');
     await fixture.ops('restore', 'user', `--input=${backup}`);
+    expect(schemaOutcome('user')).toMatchObject({
+      operation: 'restore',
+      result: 'restored',
+    });
     expect(
       await sql('user', 'SELECT row_to_json(users) FROM users ORDER BY id'),
     ).toBe(userRows);
@@ -515,12 +604,61 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
     );
     const walletContainer = await fixture.compose(['ps', '-q', 'app-wallet']);
     const compatible = await fixture.variant('compatible');
+    const gatewayContainer = await fixture.compose(['ps', '-q', 'gateway']);
+    writeFileSync(
+      deploymentPath,
+      JSON.stringify({
+        ...(JSON.parse(originalDeployment) as object),
+        images: { ...fixture.images, user: compatible },
+      }),
+    );
+    const imagePlan = JSON.parse(await fixture.ops('plan')) as DeploymentPlan;
+    expect(imagePlan.changes.capabilities).toEqual([]);
+    expect(imagePlan.changes.ingress).toBeNull();
+    expect(imagePlan.services.recreate).toEqual(['app-user', 'gateway']);
+    expect(imagePlan.interruptions).toContainEqual({
+      service: 'gateway',
+      effect: 'Recreated; every exposed route is briefly unavailable',
+    });
+    expect(await fixture.compose(['ps', '-q', 'gateway'])).toBe(
+      gatewayContainer,
+    );
     await fixture.ops('update', 'user', `--image=${compatible}`);
+    expect(await fixture.compose(['ps', '-q', 'gateway'])).not.toBe(
+      gatewayContainer,
+    );
     expect(
       fixture
         .state()
-        .artifacts.find((entry) => entry.declaration.name === 'user')?.image,
+        .applied.applications.find((entry) => entry.declaration.name === 'user')
+        ?.image,
     ).toBe(compatible);
+    const appliedUser = () =>
+      fixture
+        .state()
+        .applied.applications.find(
+          (entry) => entry.declaration.name === 'user',
+        );
+    // Image commands keep the desired selection coherent with their request;
+    // separately recorded outcomes state whether it was applied.
+    const desiredUser = () =>
+      z
+        .object({ images: z.record(z.string(), z.string()) })
+        .parse(JSON.parse(readFileSync(deploymentPath, 'utf8'))).images.user;
+    expect(desiredUser()).toBe(compatible);
+    expect(appliedUser()).toMatchObject({
+      migration: {
+        operation: 'update',
+        image: compatible,
+        result: 'committed',
+      },
+      startup: {
+        operation: 'update',
+        image: compatible,
+        readiness: 'full',
+        result: 'verified',
+      },
+    });
     expect(await fixture.compose(['ps', '-q', 'app-wallet'])).toBe(
       walletContainer,
     );
@@ -613,11 +751,12 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
     expect(readFileSync(evidencePath ?? '', 'utf8')).toContain(
       'division by zero',
     );
-    expect(
-      fixture
-        .state()
-        .artifacts.find((entry) => entry.declaration.name === 'user')?.image,
-    ).toBe(compatible);
+    expect(desiredUser()).toBe(failing);
+    expect(appliedUser()).toMatchObject({
+      image: compatible,
+      migration: { operation: 'update', image: failing, result: 'failed' },
+      startup: { operation: 'update', image: compatible, result: 'verified' },
+    });
     expect(
       await fixture.compose([
         'exec',
@@ -677,12 +816,11 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
         expect(
           await fixture.compose(['ps', '--all', '--format', '{{.Name}}']),
         ).not.toContain('-command-');
-        expect(
-          fixture
-            .state()
-            .artifacts.find((entry) => entry.declaration.name === 'user')
-            ?.image,
-        ).toBe(compatible);
+        expect(appliedUser()).toMatchObject({
+          image: compatible,
+          migration: { image: interruptedImage, result: 'interrupted' },
+        });
+        expect(desiredUser()).toBe(interruptedImage);
       } finally {
         if (updater.exitCode === null) updater.kill('SIGTERM');
         await updater.exited;
@@ -724,6 +862,16 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
       `--image=${fixture.images.user}`,
       `--compatibility=${receipt}`,
     );
+    expect(desiredUser()).toBe(fixture.images.user);
+    expect(appliedUser()).toMatchObject({
+      image: fixture.images.user,
+      startup: {
+        operation: 'rollback',
+        image: fixture.images.user,
+        readiness: 'full',
+        result: 'verified',
+      },
+    });
     expect(await fixture.request('/v1/users')).toEqual(before);
     expect(await fixture.compose(['ps', '-q', 'app-wallet'])).toBe(
       walletContainer,
@@ -851,3 +999,445 @@ test('generated messaging applications require their own validated recovery inte
     }, [workspace.cleanup]);
   }, [fixture.cleanup]);
 }, 300_000);
+
+test('operators plan desired changes while inspecting and shutting down the applied installation', async () => {
+  const fixture = await operationsFixture();
+  const sibling = join(fixture.directory, 'sibling');
+  const siblingOps = (action: string, ...args: string[]) =>
+    fixture.execute(
+      ['bun', 'run', 'ops', `--directory=${sibling}`, action, ...args],
+      150_000,
+    );
+  await withCleanup(async () => {
+    const deploymentPath = join(fixture.directory, 'deployment.json');
+    const statePath = join(fixture.directory, 'state.json');
+    const composePath = join(fixture.directory, 'compose.json');
+    const bootstrap = readFileSync(deploymentPath, 'utf8');
+    const sql = (app: string, query: string) =>
+      fixture.compose([
+        'exec',
+        '-T',
+        `postgres-${app}`,
+        'psql',
+        '-U',
+        'postgres',
+        '-d',
+        app,
+        '-At',
+        '-c',
+        query,
+      ]);
+    const plan = async () =>
+      JSON.parse(await fixture.ops('plan')) as DeploymentPlan;
+    await fixture.ops('prepare');
+    const prepared = fixture.state();
+    // Installations prepared before this state model keep their identities.
+    const legacy = JSON.stringify({
+      version: 1,
+      project: prepared.project,
+      owner: prepared.owner,
+      directory: prepared.directory,
+      config: JSON.parse(bootstrap) as unknown,
+      artifacts: prepared.applied.applications,
+    });
+    writeFileSync(statePath, legacy);
+    const legacyPlan = await fixture.opsResult('plan');
+    expect(legacyPlan.code, legacyPlan.stderr).toBe(0);
+    expect(legacyPlan.stderr).toContain('adopted in memory');
+    expect(readFileSync(statePath, 'utf8')).toBe(legacy);
+    const pending = (JSON.parse(legacyPlan.stdout) as DeploymentPlan)
+      .migrations;
+    expect(
+      pending.map(({ application, history }) => [application, history]),
+    ).toEqual([
+      ['user', 'read'],
+      ['wallet', 'read'],
+    ]);
+    const adoption = await fixture.opsResult('migrate', 'user');
+    expect(adoption.code, adoption.stderr).toBe(0);
+    expect(adoption.stderr).toContain('Recorded the existing inventory');
+    expect(fixture.state()).toMatchObject({
+      version: 2,
+      project: prepared.project,
+      owner: prepared.owner,
+      retained: prepared.retained,
+    });
+    const adoptedInventory = readFileSync(statePath, 'utf8');
+    await sql('user', 'ALTER ROLE user_owner NOLOGIN');
+    await withCleanup(async () => {
+      expect((await plan()).migrations).toContainEqual({
+        application: 'user',
+        image: fixture.images.user,
+        history: 'unavailable',
+        applicable: null,
+        unknownToImage: null,
+      });
+      expect(readFileSync(statePath, 'utf8')).toBe(adoptedInventory);
+    }, [() => sql('user', 'ALTER ROLE user_owner LOGIN')]);
+    await fixture.ops('migrate', 'wallet');
+    for (const { application, applicable } of pending)
+      expect(applicable).toEqual(
+        (
+          await sql(application, 'SELECT name FROM pgmigrations ORDER BY id')
+        ).split('\n'),
+      );
+    await fixture.ops('start');
+    const profile = {
+      email: 'planning@example.com',
+      country: 'England',
+      street: 'Baker street',
+      postalCode: 'NW16XE',
+    };
+    await fixture.request('/v1/users', { method: 'POST', data: profile });
+    const users = await fixture.request('/v1/users');
+    const userId = z
+      .object({ data: z.array(z.object({ id: z.string() })) })
+      .parse(users).data[0].id;
+    await until(async () =>
+      fixture.request(`/v1/wallets/by-user/${userId}`).then(
+        () => true,
+        () => false,
+      ),
+    );
+    const wallet = await fixture.request(`/v1/wallets/by-user/${userId}`);
+
+    // A sibling installation shares the host but none of its resources.
+    mkdirSync(join(sibling, 'secrets'), { recursive: true, mode: 0o700 });
+    for (const file of [
+      'wallet-admin-password',
+      'wallet-owner-password',
+      'wallet-runtime-password',
+      'broker-password',
+    ])
+      writeFileSync(join(sibling, 'secrets', file), `${randomUUID()}\n`, {
+        mode: 0o444,
+      });
+    for (const file of ['tls.crt', 'tls.key'])
+      writeFileSync(
+        join(sibling, 'secrets', file),
+        readFileSync(join(fixture.directory, 'secrets', file)),
+        { mode: 0o444 },
+      );
+    writeFileSync(
+      join(sibling, 'deployment.json'),
+      JSON.stringify({
+        name: 'sibling',
+        images: { wallet: fixture.images.wallet },
+        https: { bind: '127.0.0.1', port: await availablePort() },
+      }),
+    );
+    await siblingOps('prepare');
+    await siblingOps('migrate', 'wallet');
+    const siblingProject = stateSchema.parse(
+      JSON.parse(readFileSync(join(sibling, 'state.json'), 'utf8')),
+    ).project;
+    const siblingContainers = () =>
+      fixture.execute([
+        'docker',
+        'ps',
+        '-q',
+        '--filter',
+        `label=com.docker.compose.project=${siblingProject}`,
+      ]);
+    const siblingBefore = await siblingContainers();
+    expect(siblingBefore).not.toBe('');
+
+    const project = fixture.state().project;
+    const identity = async () => {
+      const { owner, retained } = fixture.state();
+      const volumes = (
+        await fixture.execute([
+          'docker',
+          'volume',
+          'ls',
+          '-q',
+          '--filter',
+          `label=com.docker.compose.project=${project}`,
+        ])
+      ).split('\n');
+      return {
+        owner,
+        retained,
+        volumes: await fixture.execute([
+          'docker',
+          'volume',
+          'inspect',
+          '--format',
+          '{{.Name}} {{.CreatedAt}}',
+          ...volumes,
+        ]),
+        roles: [
+          await sql(
+            'user',
+            "SELECT string_agg(oid || ':' || rolname, ',' ORDER BY rolname) FROM pg_roles WHERE rolname LIKE 'user\\_%'",
+          ),
+          await sql(
+            'wallet',
+            "SELECT string_agg(oid || ':' || rolname, ',' ORDER BY rolname) FROM pg_roles WHERE rolname LIKE 'wallet\\_%'",
+          ),
+        ],
+      };
+    };
+    const durable = async () => [
+      await sql('user', 'SELECT row_to_json(users) FROM users ORDER BY id'),
+      await sql(
+        'wallet',
+        'SELECT row_to_json(wallets) FROM wallets ORDER BY id',
+      ),
+      await sql('user', 'SELECT name FROM pgmigrations ORDER BY id'),
+    ];
+    const identityBefore = await identity();
+    const dataBefore = await durable();
+
+    const compatible = await fixture.variant('compatible');
+    const ledger = await fixture.variant('addition');
+    const desired = {
+      ...(JSON.parse(bootstrap) as object),
+      images: { user: compatible, ledger },
+    };
+    writeFileSync(deploymentPath, JSON.stringify(desired));
+    const inventory = () => [
+      readFileSync(statePath, 'utf8'),
+      readFileSync(composePath, 'utf8'),
+      readFileSync(deploymentPath, 'utf8'),
+    ];
+    const inventoryBefore = inventory();
+    const containersBefore = await fixture.compose(['ps', '-q']);
+    const preview = await plan();
+    expect(preview.installation).toEqual({
+      name: 'verification',
+      project,
+      status: 'existing',
+    });
+    expect(
+      preview.applied.applications.map(
+        ({ application, image, migration, startup }) => [
+          application,
+          image,
+          typeof migration === 'string' ? migration : migration.result,
+          typeof startup === 'string'
+            ? startup
+            : `${startup.result}:${startup.readiness}`,
+        ],
+      ),
+    ).toEqual([
+      ['user', fixture.images.user, 'committed', 'verified:http'],
+      ['wallet', fixture.images.wallet, 'committed', 'verified:http'],
+    ]);
+    expect(preview.changes).toEqual({
+      additions: [
+        {
+          application: 'ledger',
+          image: ledger,
+          persistence: true,
+          messaging: true,
+          exposure: false,
+          routes: [],
+        },
+      ],
+      removals: [{ application: 'wallet', image: fixture.images.wallet }],
+      images: [
+        { application: 'user', from: fixture.images.user, to: compatible },
+      ],
+      capabilities: [],
+      ingress: null,
+    });
+    expect(preview.services).toEqual({
+      add: ['app-ledger', 'postgres-ledger'],
+      stop: ['app-wallet', 'postgres-wallet'],
+      recreate: ['app-user', 'gateway'],
+      unchanged: ['postgres-user', 'rabbitmq'],
+    });
+    expect(preview.resources.retain).toEqual([
+      {
+        kind: 'database',
+        application: 'user',
+        volume: `${project}_postgres-user`,
+        before: 'active',
+        after: 'active',
+      },
+      {
+        kind: 'database',
+        application: 'wallet',
+        volume: `${project}_postgres-wallet`,
+        before: 'active',
+        after: 'inactive',
+      },
+      {
+        kind: 'broker',
+        volume: `${project}_rabbitmq`,
+        before: 'active',
+        after: 'active',
+      },
+    ]);
+    expect(preview.resources.provision).toEqual([
+      {
+        kind: 'database',
+        application: 'ledger',
+        volume: `${project}_postgres-ledger`,
+        database: 'ledger',
+        roles: ['ledger_owner', 'ledger_runtime'],
+        secrets: [
+          'ledger-admin-password',
+          'ledger-owner-password',
+          'ledger-runtime-password',
+        ],
+      },
+    ]);
+    expect(preview.resources.missingSecrets).toEqual([
+      'ledger-admin-password',
+      'ledger-owner-password',
+      'ledger-runtime-password',
+    ]);
+    expect(preview.migrations).toEqual([
+      {
+        application: 'ledger',
+        image: ledger,
+        history: 'new-database',
+        applicable: (
+          await sql('wallet', 'SELECT name FROM pgmigrations ORDER BY id')
+        ).split('\n'),
+        unknownToImage: [],
+      },
+      {
+        application: 'user',
+        image: compatible,
+        history: 'read',
+        applicable: ['1990000000000_operations-compatible'],
+        unknownToImage: [],
+      },
+    ]);
+    expect(preview.interruptions.map(({ service }) => service)).toEqual([
+      'app-user',
+      'app-wallet',
+      'gateway',
+      'postgres-wallet',
+    ]);
+    // Planning and ordinary preparation leave the applied installation unchanged.
+    expect(inventory()).toEqual(inventoryBefore);
+    expect(await fixture.compose(['ps', '-q'])).toBe(containersBefore);
+    expect(await durable()).toEqual(dataBefore);
+    expect(await fixture.ops('prepare')).toContain(
+      'Preparation does not apply topology changes',
+    );
+    expect(fixture.state()).toEqual(
+      stateSchema.parse(JSON.parse(inventoryBefore[0])),
+    );
+    expect(readFileSync(composePath, 'utf8')).toBe(inventoryBefore[1]);
+    expect(await fixture.compose(['ps', '-q'])).toBe(containersBefore);
+    expect(await identity()).toEqual(identityBefore);
+
+    // The desired removal does not strand inspection of the applied application.
+    expect(await fixture.ops('probe', 'wallet')).toContain('"readiness"');
+    expect(await fixture.ops('status', 'wallet')).toContain('applied\t');
+
+    const incompatible = await fixture.variant('incompatible');
+    writeFileSync(
+      deploymentPath,
+      JSON.stringify({
+        ...desired,
+        images: { user: incompatible, billing: fixture.images.wallet },
+      }),
+    );
+    const rejected = await fixture.opsResult('plan');
+    expect(rejected.code).not.toBe(0);
+    expect(rejected.stderr).toContain(
+      'user: Image preflight failed for user: Application user: group user-profile requires persistence',
+    );
+    expect(rejected.stderr).toContain(
+      'billing: Image does not own the selected application; it declares wallet',
+    );
+    // Desired edits never bypass ownership guards.
+    writeFileSync(deploymentPath, JSON.stringify(desired));
+    const foreign = { name: `${project}-foreign`, owner: randomUUID() };
+    await withCleanup(async () => {
+      await fixture.execute([
+        'docker',
+        'create',
+        '--name',
+        foreign.name,
+        '--label',
+        `com.docker.compose.project=${project}`,
+        '--label',
+        `dev.starter.owner=${foreign.owner}`,
+        'registry:2',
+      ]);
+      for (const action of ['plan', 'down']) {
+        const refused = await fixture.opsResult(action);
+        expect(refused.code).not.toBe(0);
+        expect(refused.stderr).toContain(
+          'Refusing resource owned by another environment',
+        );
+      }
+    }, [() => removeOwnedContainer(foreign)]);
+    expect(await fixture.compose(['ps', '-q'])).toBe(containersBefore);
+
+    // An invalid desired selection does not strand inspection or shutdown.
+    writeFileSync(
+      deploymentPath,
+      JSON.stringify({ name: 'verification', images: { user: 'user:latest' } }),
+    );
+    for (const args of [
+      ['plan'],
+      ['update', 'user', `--image=${compatible}`],
+    ]) {
+      const invalid = await fixture.opsResult(
+        ...(args as [string, ...string[]]),
+      );
+      expect(invalid.code).not.toBe(0);
+      expect(invalid.stderr).toContain('exact repository@sha256 image digest');
+    }
+    expect(await fixture.ops('probe', 'user')).toContain('"readiness"');
+    expect(await fixture.ops('status', 'user')).toContain('applied\t');
+    expect(await fixture.ops('inspect', 'wallet')).toContain('"messages"');
+    expect(inventory().slice(0, 2)).toEqual(inventoryBefore.slice(0, 2));
+    expect(await fixture.compose(['ps', '-q'])).toBe(containersBefore);
+
+    await fixture.ops('down');
+    expect(await fixture.compose(['ps', '-aq'])).toBe('');
+    expect(await siblingContainers()).toBe(siblingBefore);
+    expect(await siblingOps('status', 'wallet')).toContain('applied\t');
+    writeFileSync(deploymentPath, JSON.stringify(desired));
+    await fixture.ops('prepare');
+    await fixture.ops('start');
+    expect(await identity()).toEqual(identityBefore);
+    expect(await durable()).toEqual(dataBefore);
+    expect(await fixture.request('/v1/users')).toEqual(users);
+    expect(await fixture.request(`/v1/wallets/by-user/${userId}`)).toEqual(
+      wallet,
+    );
+
+    // Updating the requested image keeps the remaining desired edits pending.
+    await fixture.ops('update', 'user', `--image=${compatible}`);
+    expect(JSON.parse(readFileSync(deploymentPath, 'utf8'))).toEqual(desired);
+    const updated = await plan();
+    expect(updated.changes.images).toEqual([]);
+    expect(
+      updated.changes.additions.map(({ application }) => application),
+    ).toEqual(['ledger']);
+    expect(
+      updated.changes.removals.map(({ application }) => application),
+    ).toEqual(['wallet']);
+    expect(updated.applied.applications[0]).toMatchObject({
+      application: 'user',
+      image: compatible,
+      migration: {
+        operation: 'update',
+        image: compatible,
+        result: 'committed',
+      },
+      startup: {
+        operation: 'update',
+        image: compatible,
+        readiness: 'full',
+        result: 'verified',
+      },
+    });
+    expect(await siblingContainers()).toBe(siblingBefore);
+  }, [
+    async () => {
+      if (existsSync(join(sibling, 'state.json'))) await siblingOps('down');
+    },
+    fixture.cleanup,
+  ]);
+}, 600_000);

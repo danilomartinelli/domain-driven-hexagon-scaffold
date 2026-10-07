@@ -6,7 +6,7 @@ import { provisionDatabase } from '../lib/operations-compose';
 import {
   writeJson,
   type Artifact,
-  type DeploymentState,
+  type InstallationState,
 } from '../lib/operations-config';
 import { until } from './app-runtime-fixture';
 import { removeOwnedContainer } from './owned-container';
@@ -16,7 +16,7 @@ import { withCleanup } from './cleanup';
 export async function operationsDatabaseFixture(): Promise<{
   directory: string;
   app: Artifact;
-  state: DeploymentState;
+  state: InstallationState;
   compose: (args: string[]) => Promise<string>;
   sql: (query: string) => Promise<string>;
   cleanup: () => Promise<void>;
@@ -40,13 +40,14 @@ export async function operationsDatabaseFixture(): Promise<{
       exposure: false,
     },
   };
-  const state: DeploymentState = {
-    version: 1,
+  const state: InstallationState = {
+    version: 2,
+    name: 'recovery',
     project,
     owner,
     directory,
-    config: { name: 'recovery', images: { user: image } },
-    artifacts: [app],
+    applied: { applications: [app] },
+    retained: { databases: [] },
   };
   const container = { name: `${project}-postgres`, owner };
   const composePath = join(directory, 'compose.json');

@@ -2,12 +2,12 @@ import { isUtf8 } from 'node:buffer';
 import { accessSync, constants, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { environmentPrefix } from '@starter/capabilities/declaration';
-import type { DeploymentState } from './operations-config';
+import type { InstallationState } from './operations-config';
 import { gatewayConfiguration } from './gateway';
 
 /** Validate operator files without changing credentials or embedding them in Compose. */
 export function operationsCompose(
-  state: DeploymentState,
+  state: InstallationState,
   verifySecrets = true,
 ): Record<string, unknown> {
   const labels = { 'dev.starter.owner': state.owner };
@@ -47,7 +47,7 @@ export function operationsCompose(
     timeout: '5s',
     retries: 30,
   });
-  for (const { image, declaration: app } of state.artifacts) {
+  for (const { image, declaration: app } of state.applied.applications) {
     const prefix = environmentPrefix(app.name);
     const db = app.name.replaceAll('-', '_');
     const serverSecrets: string[] = [];
@@ -131,7 +131,9 @@ export function operationsCompose(
       ]),
     };
   }
-  if (state.artifacts.some(({ declaration }) => declaration.messaging)) {
+  if (
+    state.applied.applications.some(({ declaration }) => declaration.messaging)
+  ) {
     volumes.rabbitmq = { labels };
     services.rabbitmq = {
       image:
@@ -159,12 +161,12 @@ export function operationsCompose(
       ]),
     };
   }
-  const exposed = state.artifacts.filter(
+  const exposed = state.applied.applications.filter(
     ({ declaration }) => declaration.exposure,
   );
   const configs: Record<string, unknown> = {};
   if (exposed.length) {
-    if (!state.config.https)
+    if (!state.applied.https)
       throw new Error(
         'Exposed applications require HTTPS bind/port and certificate files',
       );
@@ -188,7 +190,7 @@ export function operationsCompose(
       labels,
       networks: ['private', 'ingress'],
       ports: [
-        `${state.config.https.bind}:${String(state.config.https.port)}:8443`,
+        `${state.applied.https.bind}:${String(state.applied.https.port)}:8443`,
       ],
       secrets: [secret('tls.crt'), secret('tls.key')],
       configs: [{ source: 'routes', target: '/etc/kong/routes.json' }],
