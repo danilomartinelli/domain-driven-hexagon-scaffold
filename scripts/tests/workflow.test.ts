@@ -130,6 +130,123 @@ function reachable(
   return [...seen];
 }
 
+test('CI budgets quality and OCI separately and keeps the required check closed on either failure', async () => {
+  const workflow = z
+    .object({
+      on: z.record(z.string(), z.unknown()),
+      jobs: z.record(
+        z.string(),
+        z.object({
+          'timeout-minutes': z.number(),
+          needs: z.union([z.string(), z.array(z.string())]).optional(),
+          if: z.string().optional(),
+          strategy: z.unknown().optional(),
+          'continue-on-error': z.boolean().optional(),
+          steps: z.array(
+            z.object({
+              run: z.string().optional(),
+              env: z.record(z.string(), z.string()).optional(),
+              'continue-on-error': z.boolean().optional(),
+            }),
+          ),
+        }),
+      ),
+    })
+    .parse(
+      Bun.YAML.parse(
+        await Bun.file(join(root, '.github/workflows/ci.yml')).text(),
+      ),
+    );
+  expect(workflow.on).toHaveProperty('pull_request');
+  expect(workflow.on).toHaveProperty('push');
+  expect(Object.keys(workflow.jobs).sort()).toEqual([
+    'check',
+    'images',
+    'quality',
+  ]);
+  const { check, images, quality } = workflow.jobs;
+  expect(quality['timeout-minutes']).toBeGreaterThan(0);
+  expect(quality['timeout-minutes']).toBeLessThanOrEqual(5);
+  expect(images['timeout-minutes']).toBeGreaterThan(0);
+  expect(images['timeout-minutes']).toBeLessThanOrEqual(15);
+  expect(images.strategy).toEqual({
+    'fail-fast': false,
+    matrix: {
+      include: [
+        { platform: 'linux/amd64', runner: 'ubuntu-24.04' },
+        { platform: 'linux/arm64', runner: 'ubuntu-24.04-arm' },
+      ],
+    },
+  });
+  expect(images.steps.flatMap(({ run }) => run ?? '')).toContain(
+    'bun run test:images --platform=${{ matrix.platform }}',
+  );
+  expect(check['timeout-minutes']).toBe(1);
+  expect(quality.needs).toBeUndefined();
+  expect(images.needs).toBeUndefined();
+  expect(quality.strategy).toBeUndefined();
+  expect(check.strategy).toBeUndefined();
+  expect(check.needs).toEqual(['quality', 'images']);
+  expect(check.if).toBe('always()');
+  for (const job of Object.values(workflow.jobs)) {
+    expect(job['continue-on-error']).not.toBe(true);
+    for (const step of job.steps)
+      expect(step['continue-on-error']).not.toBe(true);
+  }
+  expect(check.steps).toHaveLength(1);
+  const gate = check.steps[0];
+  expect(gate.env).toEqual({
+    QUALITY_RESULT: '${{ needs.quality.result }}',
+    IMAGE_RESULT: '${{ needs.images.result }}',
+  });
+  for (const qualityResult of ['success', 'failure', 'cancelled', 'skipped']) {
+    for (const imageResult of ['success', 'failure', 'cancelled', 'skipped']) {
+      const result = await runCommand(['bash', '-e', '-c', gate.run ?? ''], {
+        cwd: root,
+        env: {
+          ...isolatedEnvironment(),
+          QUALITY_RESULT: qualityResult,
+          IMAGE_RESULT: imageResult,
+        },
+      });
+      expect(result.code === 0, `${qualityResult}/${imageResult}`).toBe(
+        qualityResult === 'success' && imageResult === 'success',
+      );
+    }
+  }
+  const commands = quality.steps.flatMap(({ run }) => run ?? '');
+  expect(commands).toContain('bun run check:ci');
+  const packageScripts = await readPackageScripts();
+  const ci = commands.flatMap((command) =>
+    invokedScripts(packageScripts, command).flatMap((script) =>
+      reachable(packageScripts, script),
+    ),
+  );
+  for (const suite of [
+    'lint',
+    'typecheck',
+    'lint:boundaries',
+    'test:unit',
+    'check:docs',
+    'format:check',
+  ])
+    expect(ci, suite).toContain(suite);
+  const full = reachable(packageScripts, 'check:full');
+  for (const suite of [
+    'check:workspace',
+    'audit:changed',
+    'test:tooling',
+    'test:operations',
+    'test:e2e',
+    'test:component',
+    'test:distribution',
+    'test:images',
+  ]) {
+    expect(ci, suite).not.toContain(suite);
+    expect(full, suite).toContain(suite);
+  }
+});
+
 test('example database targets can use distinct host ports together', async () => {
   const example = parse(await Bun.file(join(root, '.env.example')).text());
   expect(example.USER_DB_PORT).toBeDefined();

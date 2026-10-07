@@ -33,6 +33,15 @@ Kong; local Linux images reuse the independent distribution and migration
 contracts. See [ADR 0003's implementation status](0003-application-capabilities-and-oci-delivery.md#implementation-status).
 The earlier migration record remains historical evidence.
 
+Amended on 2026-10-07: to bound recurring GitHub Actions costs, automatic CI now
+runs `check:ci` in a five-minute quality job and native AMD64/ARM64 OCI validation
+in parallel, with a fifteen-minute limit per architecture. The required `check`
+status gates success of both groups. Workspace mutation regressions and separate
+Docker lifecycle, operations, E2E, component and distribution suites move to the
+mandatory local `check:full` gate before committing code/configuration/dependency
+changes. The non-Docker pre-commit hook remains a partial gate. This supersedes
+the earlier CI suite placement without removing local coverage.
+
 The repository will adopt Nx with `user` and `wallet` as separate Nest
 applications. Wallet's current size does not determine its intended application
 boundary. Preserve Nest 12 and Bun as the application runtime, package manager

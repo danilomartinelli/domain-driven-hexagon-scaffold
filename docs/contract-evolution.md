@@ -89,8 +89,8 @@ bun run nx run e2e:test-compatibility   # real persistence/broker; never cached
 ```
 
 `bun run check` includes the infrastructure-free matrix via `test:unit`.
-`bun run test:e2e` includes the retained-message scenario; therefore both CI's
-distributed suite and `bun run check:full` execute it. The focused live target
+`bun run test:e2e` includes the retained-message scenario, so the mandatory local
+`bun run check:full` executes it. The focused live target
 uses the same owned environment wrapper and cleanup, with `cache: false`.
 
 ## Coexistence, retirement and replay

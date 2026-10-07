@@ -464,7 +464,7 @@ incompatible, misidentified and invalid selections, inspects and shuts down the
 applied installation, refuses a foreign owner, restarts with stable identities and
 data and preserves a sibling installation. It retains owned
 volumes and inventory under `.context/test-runs/operations-<id>/`; command logs
-and results are included in the existing CI diagnostics collection. Use `down` on that exact
+and results remain there as local full-gate evidence. Use `down` on that exact
 directory for cleanup. No command deletes volumes. Local-registry fixtures are
 verification infrastructure, not a GHCR release or production deployment.
 

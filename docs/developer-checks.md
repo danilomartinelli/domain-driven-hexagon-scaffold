@@ -27,27 +27,25 @@ Git commits run lint-staged with the
 existing Prettier configuration, then `check:code` (lint, types, architecture and
 core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
 hook also audits them against the registry. The hook runs without Docker. A
-failure blocks the commit. Continuous integration runs `bun run check`,
-`bun run nx run test-runner:test-broker`, `bun run test:e2e` `bun run test:component` and `bun run test:distribution` on pull
-requests and pushes to `master`. All belong to the `check` job required by the
-`protect-master` ruleset. The uncached broker target uses the pinned Docker image
-to force the healthcheck-before-startup ordering and verifies fixture cleanup
-ownership. The distributed end-to-end suite verifies the service integration and
-all seven Gherkin cases through Kong, including separate GraphQL schemas and
-pending Wallet/deletion behavior. CI runs native AMD64 and ARM64 image jobs before the required `check` job, and
-`test-runner:test-private-development` verifies source watch and the local inspector.
-CI also runs `bun run nx run test-runner:test-selection` for declaration-selected
-topologies, generated application startup and retained database/message state.
-CI also runs `bun run nx run test-runner:test-operations` for the executable
-[Compose reference procedures](operations.md); `check:full` includes the same live suite through `test:operations`.
-CI also runs
-`bun run nx run test-runner:test-gateway` for loaded upstream configuration,
-foreign-target rejection, occupied proxy/Admin ports and failed Kong setup cleanup.
-CI also selects `test-runner:test-preservation` when the compared commits change
-anything outside documentation. This exercises the complete prepared E2E suite
-while checking development and sibling environment preservation. Dispatches and
-first pushes without a baseline run it conservatively. The broader runner
-lifecycle suite remains in local `check:full` and includes these focused targets.
+failure blocks the commit. The hook does not run Docker suites automatically.
+
+Continuous integration runs `bun run check:ci` on pull requests and pushes to
+`master`: lint, types, architecture, unit tests, documentation, formatting and
+workflow guardrails, with a five-minute job limit. Native AMD64 and ARM64 OCI
+image checks run in parallel with it, with a fifteen-minute limit per architecture.
+The `check` job required by the `protect-master` ruleset is a one-minute result
+gate: it fails unless quality and both image architectures succeed, including
+when a dependency is cancelled or skipped. Queue time is outside job timeouts;
+the OCI exception determines the overall workflow duration.
+
+Expensive workspace mutation regressions (`check:workspace`) and Docker-backed
+runner lifecycle, [Compose operations](operations.md), distributed E2E, component
+and distribution suites run in the mandatory local `check:full` gate before commit.
+The lifecycle suite includes broker/gateway cleanup, parallel Nx application
+runners, environment preservation, declaration-selected topologies and private
+development watch/debugging. These suites remain available for focused feedback;
+they are no longer repeated as separate CI steps. Green CI is not evidence that
+the full local gate was executed.
 
 To collect evidence such as individual test names (for example the seven
 Gherkin cases), run `AGENT=0 bun run check:full`: Bun's
@@ -55,14 +53,16 @@ Gherkin cases), run `AGENT=0 bun run check:full`: Bun's
 failures and totals under coding agents. Live `run-many` scripts print every
 task's output, including each provisioned run's `Result:` line.
 
-Before declaring code changes ready, run `bun run check:full` (`make check`)
-with Docker running. Its scope is the suites below. Documentation-only changes
+Before committing code, configuration or dependency changes, and before declaring
+them ready, run `bun run check:full` (`make check`) with Docker running. Its scope
+is the suites below. Documentation-only changes
 require formatting of the affected files, `bun run check:docs`, and verification
 of changed commands. The focused commands below remain available during development.
 The [migration evidence map](migration-evidence.md) links each delivered
 requirement to the suites that exercise it.
 
 - **Fast gate** (`bun run check`): Formatting, documentation references and `check:code`
+- **CI quality gate** (`bun run check:ci`): Lint, types, architecture, unit tests, documentation, formatting and workflow guardrails; excludes the expensive workspace mutation suite
 - **Full gate** (`bun run check:full`): Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E, service component suites isolated distribution verification and Linux image execution
 - **Types** (`bun run typecheck`): Application, tests, runner, database scripts and tool configs; includes decorator fixture
 - **Lint** (`bun run lint`): Same code/configuration scope; errors and warnings fail
@@ -119,8 +119,8 @@ exercise the task environment inherited from Nx. Use
 Changes to Nx targets, project dependencies or shared workspace fixtures also
 require `bun run nx run test-runner:test-nx-runner` before staged review. This
 uncached regression executes affected application components under a shared Nx
-parent and verifies that their migrations can run independently. CI runs the
-same target before environment-preservation and distributed suites.
+parent and verifies that their migrations can run independently. The local
+`test:tooling` gate includes the same regression.
 
 Infrastructure and runner changes also affect the applications' component
 fixtures. Before staged review, select and run the affected `test-component`
@@ -155,7 +155,7 @@ When changing application behavior, E2E coverage or runner code, run
 executes the complete prepared E2E suite, so adding tests can affect its deadline
 even when provisioning code is unchanged. `bun scripts/preservation-required.ts`
 shows whether branch, staged, unstaged or new files require it; `--base` and
-`--head` select immutable commits for CI. Git comparison failures fail the command.
+`--head` select immutable commits. Git comparison failures fail the command.
 
 Use `&&` to stop a sequential batch on failure. For independent checks, use
 separate tool calls (parallel when useful) and inspect every command's exit
