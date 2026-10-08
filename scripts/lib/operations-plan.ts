@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { ApplicationDeclaration } from '@starter/capabilities/declaration';
 import {
   retainResources,
@@ -19,7 +20,7 @@ interface Capabilities {
   persistence: boolean;
   messaging: boolean;
   exposure: boolean;
-  routes: string[];
+  routes: NonNullable<ApplicationDeclaration['routes']>;
 }
 type SelectedApplication = Capabilities & {
   application: string;
@@ -106,12 +107,14 @@ function capabilities({
     persistence,
     messaging,
     exposure,
-    routes: (routes ?? []).map((route) => route.name),
+    routes: routes ?? [],
   };
 }
 
 /** The long-running Compose services each selection requires, by role. */
-function services(applications: Iterable<Artifact>): Map<string, ServiceRole> {
+export function requiredServices(
+  applications: Iterable<Artifact>,
+): Map<string, ServiceRole> {
   const roles = new Map<string, ServiceRole>();
   for (const { declaration } of applications) {
     roles.set(`app-${declaration.name}`, 'application');
@@ -154,6 +157,8 @@ export function deploymentPlan(input: {
   /** Each retained database's applied migrations; undefined when unreadable now. */
   histories: Readonly<Record<string, readonly string[] | undefined>>;
   secretFiles: readonly string[];
+  /** An incomplete deployment may have applied routing changes without reloading Kong. */
+  gatewayReloadPending?: boolean;
 }): DeploymentPlan {
   const { state, desired } = input;
   const applied = new Map(
@@ -212,8 +217,8 @@ export function deploymentPlan(input: {
       : { from: state.applied.https ?? null, to: desired.https ?? null },
   };
 
-  const before = services(applied.values());
-  const after = services(requested.values());
+  const before = requiredServices(applied.values());
+  const after = requiredServices(requested.values());
   const recreate = new Set(
     transitions
       .filter(
@@ -226,7 +231,8 @@ export function deploymentPlan(input: {
   if (
     before.has('gateway') &&
     after.has('gateway') &&
-    (recreate.size > 0 ||
+    (input.gatewayReloadPending ||
+      recreate.size > 0 ||
       ingress(applied.values(), state.applied.https) !==
         ingress(requested.values(), desired.https))
   )
@@ -294,7 +300,8 @@ export function deploymentPlan(input: {
       changes.removals.length ||
       changes.images.length ||
       changes.capabilities.length ||
-      changes.ingress,
+      changes.ingress ||
+      recreate.has('gateway'),
     ),
     applied: {
       https: state.applied.https ?? null,
@@ -406,4 +413,57 @@ export function deploymentPlan(input: {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([service, effect]) => ({ service, effect })),
   };
+}
+
+/** Serialize with sorted keys so a reformatted reviewed file still compares equal. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, entry: unknown) =>
+    entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? Object.fromEntries(
+          Object.entries(entry).sort(([left], [right]) =>
+            left.localeCompare(right),
+          ),
+        )
+      : entry,
+  );
+}
+
+/**
+ * The topology an operator reviewed. Recorded outcomes, live migration history
+ * and secret availability may change between review and application; the
+ * selections, services, retained identities and interruptions may not. Parsing
+ * strips every other field.
+ */
+const reviewedTopology = z.object({
+  installation: z.unknown(),
+  applied: z.object({
+    https: z.unknown(),
+    applications: z.array(
+      z.object({
+        application: z.unknown(),
+        image: z.unknown(),
+        persistence: z.unknown(),
+        messaging: z.unknown(),
+        exposure: z.unknown(),
+        routes: z.unknown(),
+      }),
+    ),
+  }),
+  desired: z.unknown(),
+  changes: z.unknown(),
+  services: z.unknown(),
+  resources: z.object({ retain: z.unknown(), provision: z.unknown() }),
+  interruptions: z.unknown(),
+});
+
+/** Whether a reviewed plan file still describes the current transition. */
+export function matchesReviewedPlan(
+  reviewed: unknown,
+  current: DeploymentPlan,
+): boolean {
+  const parsed = reviewedTopology.safeParse(reviewed);
+  return (
+    parsed.success &&
+    canonical(parsed.data) === canonical(reviewedTopology.parse(current))
+  );
 }

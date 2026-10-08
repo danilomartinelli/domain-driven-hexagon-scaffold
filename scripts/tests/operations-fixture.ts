@@ -37,6 +37,13 @@ interface OperationsFixture {
       | 'http'
       | 'addition',
   ) => Promise<string>;
+  /** Push an immutable image that overlays files, keyed by absolute path, on another digest. */
+  derive: (
+    repository: string,
+    from: string,
+    label: string,
+    files: Record<string, string>,
+  ) => Promise<string>;
   cleanup: () => Promise<void>;
   request: (
     path: string,
@@ -218,6 +225,22 @@ export async function operationsFixture(): Promise<OperationsFixture> {
       compose,
       digest,
       cleanup,
+      derive: async (repository, from, label, files) => {
+        const context = join(directory, `image-${repository}-${label}`);
+        mkdirSync(context);
+        const copies = Object.entries(files).map(([target, content], index) => {
+          writeFileSync(join(context, `file-${String(index)}`), content);
+          return `COPY --chown=bun:bun file-${String(index)} ${target}`;
+        });
+        writeFileSync(
+          join(context, 'Dockerfile'),
+          `${[`FROM ${from}`, ...copies].join('\n')}\n`,
+        );
+        const tag = `127.0.0.1:${String(registryPort)}/${repository}:${label}`;
+        await execute(['docker', 'build', '-t', tag, context]);
+        tags.push(tag);
+        return digest(tag);
+      },
       variant: async (kind) => {
         const context = join(directory, kind);
         mkdirSync(context);

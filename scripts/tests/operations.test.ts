@@ -21,7 +21,12 @@ import {
   type InstallationState,
 } from '../lib/operations-config';
 import { operationsCompose } from '../lib/operations-compose';
-import { deploymentPlan } from '../lib/operations-plan';
+import {
+  deploymentPlan,
+  matchesReviewedPlan,
+  type DeploymentPlan,
+} from '../lib/operations-plan';
+import { applyFixture } from './operations-apply-fixture';
 import { until } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
 import {
@@ -525,6 +530,215 @@ function installation(
   };
 }
 
+test('reviewed plans preserve complete route definitions and reject edits to forwarding rules', () => {
+  const before = {
+    image: digest('user', 'a'),
+    declaration: declaration('user', everything),
+  };
+  const route = {
+    name: 'rest',
+    paths: ['/reviewed'],
+    methods: ['GET' as const],
+    stripPath: true,
+    upstreamPath: '/internal',
+  };
+  const planFor = (routes: typeof before.declaration.routes) =>
+    deploymentPlan({
+      state: installation([before]),
+      existing: true,
+      desired: {
+        applications: [
+          {
+            ...before,
+            declaration: { ...before.declaration, routes },
+            migrations: [],
+          },
+        ],
+      },
+      histories: {},
+      secretFiles: [],
+    });
+  const reviewed = planFor([route]);
+  expect(reviewed.changes.capabilities[0]).toMatchObject({
+    from: { routes: before.declaration.routes },
+    to: { routes: [route] },
+  });
+  expect(reviewed.desired.applications[0].routes).toEqual([route]);
+  expect(
+    matchesReviewedPlan(JSON.parse(JSON.stringify(reviewed)), reviewed),
+  ).toBe(true);
+  for (const edited of [
+    { ...route, paths: ['/changed'] },
+    { ...route, methods: ['POST'] },
+    { ...route, stripPath: false },
+    { ...route, upstreamPath: '/changed' },
+  ])
+    expect(matchesReviewedPlan(reviewed, planFor([edited]))).toBe(false);
+});
+
+for (const change of ['ingress', 'removal'] as const) {
+  for (const failure of ['before-gateway', 'during-gateway', 'legacy-record']) {
+    for (const recovery of ['continue', 'apply']) {
+      test(`${recovery} reloads pending gateway configuration after ${change} fails ${failure}`, async () => {
+        const apps = ['user', 'wallet'].map((name) => ({
+          image: digest(name, 'a'),
+          declaration: declaration(name, {
+            persistence: false,
+            messaging: false,
+            exposure: true,
+          }),
+        }));
+        const state = installation(apps);
+        const desired = {
+          https: {
+            bind: '127.0.0.1',
+            port: change === 'ingress' ? 9443 : 8443,
+          },
+          applications: (change === 'removal' ? apps.slice(0, 1) : apps).map(
+            (app) => ({ ...app, migrations: [] }),
+          ),
+        };
+        const fixture = applyFixture(state, desired);
+        try {
+          fixture.save('control.json', {
+            failure: failure === 'legacy-record' ? 'during-gateway' : failure,
+          });
+          const failed = await fixture.apply();
+          expect(failed.code, failed.stderr).not.toBe(0);
+          const id = fixture.state().pendingDeployment;
+          if (!id) throw new Error(failed.stderr);
+          expect(fixture.deployment(id).steps).toMatchObject([
+            {
+              kind: change === 'ingress' ? 'ingress' : 'remove',
+              status: 'completed',
+            },
+            { kind: 'reconcile', status: 'failed' },
+          ]);
+          if (failure === 'legacy-record') {
+            const record = fixture.deployment(id);
+            delete record.gatewayReloadPending;
+            fixture.save(`apply-${id}.json`, record);
+          }
+          fixture.save('control.json', {});
+          const preview = await fixture.ops('plan');
+          expect(preview.code, preview.stderr).toBe(0);
+          const plan = JSON.parse(preview.stdout) as DeploymentPlan;
+          const recovered =
+            recovery === 'apply'
+              ? await fixture.apply()
+              : await fixture.ops('continue');
+          expect(recovered.code, recovered.stderr).toBe(0);
+          expect(fixture.deployment(id).status).toBe(
+            recovery === 'apply' ? 'superseded' : 'completed',
+          );
+          expect(fixture.read('gateway.json')).toEqual(
+            operationsCompose(fixture.state()).services,
+          );
+          expect(plan.changed).toBe(true);
+          expect(plan.services.recreate).toContain('gateway');
+          expect(plan.interruptions.map(({ service }) => service)).toContain(
+            'gateway',
+          );
+        } finally {
+          fixture.cleanup();
+        }
+      });
+    }
+  }
+}
+
+for (const database of ['absent', 'stopped']) {
+  for (const unknownMigration of [undefined, '002_newer']) {
+    test(`apply starts an existing ${database} database before checking ${unknownMigration ? 'an older' : 'a compatible'} image`, async () => {
+      const before = {
+        image: digest('user', 'a'),
+        declaration: declaration('user', {
+          persistence: true,
+          messaging: false,
+          exposure: false,
+        }),
+      };
+      const target = { ...before, image: digest('user', 'b'), migrations: [] };
+      const fixture = applyFixture(installation([before]), {
+        https: undefined,
+        applications: [target],
+      });
+      try {
+        fixture.save('database.json', database);
+        fixture.save('control.json', { unknownMigration });
+        const result = await fixture.apply();
+        if (unknownMigration) {
+          expect(result.code).not.toBe(0);
+          expect(result.stderr).toContain(
+            `its database already applied migrations unknown to the selected image (${unknownMigration})`,
+          );
+          expect(
+            fixture.calls().some((args) => args.includes('migration:up')),
+          ).toBe(false);
+          expect(fixture.state().applied.applications[0].image).toBe(
+            before.image,
+          );
+        } else {
+          expect(result.code, result.stderr).toBe(0);
+          expect(fixture.state().applied.applications[0]).toMatchObject({
+            image: target.image,
+            migration: { result: 'committed' },
+            startup: { result: 'verified' },
+          });
+        }
+        expect(fixture.read('database.json')).toBe('running');
+      } finally {
+        fixture.cleanup();
+      }
+    });
+  }
+}
+
+for (const [signal, code] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+  ['SIGHUP', 129],
+] as const) {
+  test(`apply records ${signal} migration cancellation consistently across durable records`, async () => {
+    const before = {
+      image: digest('user', 'a'),
+      declaration: declaration('user', {
+        persistence: true,
+        messaging: false,
+        exposure: false,
+      }),
+    };
+    const target = { ...before, image: digest('user', 'b'), migrations: [] };
+    const fixture = applyFixture(installation([before]), {
+      https: undefined,
+      applications: [target],
+    });
+    try {
+      fixture.save('control.json', { signal });
+      const result = await fixture.apply();
+      expect(result.code, result.stderr).toBe(code);
+      const state = fixture.state();
+      expect(state.applied.applications[0].migration).toMatchObject({
+        result: 'interrupted',
+      });
+      const deployment = fixture.deployment(
+        state.pendingDeployment ?? 'missing',
+      );
+      const step = deployment.steps[0];
+      expect(step.status).toBe('interrupted');
+      expect(deployment.attempts.at(-1)?.outcome).toBe('interrupted');
+      expect(
+        fixture.transition(step.transitions.at(-1) ?? 'missing'),
+      ).toMatchObject({
+        status: 'interrupted',
+        migration: { outcome: 'interrupted', completedAt: null },
+      });
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}
+
 test('plans desired additions, removals and image changes against applied outcomes and retained resources', () => {
   const migration = {
     operation: 'migrate' as const,
@@ -749,7 +963,7 @@ test('plans reactivation of retained inactive resources and capability changes w
         persistence: true,
         messaging: true,
         exposure: true,
-        routes: ['rest'],
+        routes: user.declaration.routes ?? [],
       },
       to: { persistence: true, messaging: true, exposure: false, routes: [] },
     },
@@ -924,6 +1138,96 @@ function fakeDockerOperations(directory: string) {
   };
 }
 
+test('apply refuses an unreviewed, stale or unsupplied plan before provisioning or recording inventory', async () => {
+  const directory = realpathSync(
+    mkdtempSync(join(tmpdir(), 'ddh-operations-apply-')),
+  );
+  try {
+    const messenger = {
+      name: 'user',
+      persistence: false,
+      messaging: true,
+      exposure: false,
+    };
+    // Isolated preflight prints the image's declaration; nothing else exists yet.
+    const log = join(directory, 'docker.log');
+    writeFileSync(
+      join(directory, 'docker'),
+      `#!/usr/bin/env bun
+import { appendFileSync } from 'node:fs';
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n');
+if (process.argv[2] === 'start') console.log(${JSON.stringify(JSON.stringify(messenger))});
+`,
+      { mode: 0o700 },
+    );
+    const ops = (...args: string[]) =>
+      runCommand(
+        [
+          'bun',
+          '--no-env-file',
+          'scripts/operations.ts',
+          `--directory=${directory}`,
+          ...args,
+        ],
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH ?? ''}`,
+          },
+        },
+      );
+    writeFileSync(
+      join(directory, 'deployment.json'),
+      JSON.stringify(userDeployment),
+    );
+    const planned = await ops('plan');
+    expect(planned.code, planned.stderr).toBe(0);
+    const reviewed = join(directory, 'plan.json');
+    writeFileSync(reviewed, planned.stdout);
+
+    const unreviewed = await ops('apply');
+    expect(unreviewed.code).not.toBe(0);
+    expect(unreviewed.stderr).toContain('Supply --plan=<reviewed plan file>');
+
+    const unsupplied = await ops('apply', `--plan=${reviewed}`);
+    expect(unsupplied.code).not.toBe(0);
+    expect(unsupplied.stderr).toContain(
+      'Supply secret files before applying: broker-password',
+    );
+
+    mkdirSync(join(directory, 'secrets'));
+    writeFileSync(
+      join(directory, 'secrets', 'broker-password'),
+      'fixture-password\n',
+    );
+    const edited = {
+      ...userDeployment,
+      images: { user: `example/user@sha256:${'e'.repeat(64)}` },
+    };
+    writeFileSync(join(directory, 'deployment.json'), JSON.stringify(edited));
+    const stale = await ops('apply', `--plan=${reviewed}`);
+    expect(stale.code).not.toBe(0);
+    expect(stale.stderr).toContain(
+      'The reviewed plan no longer matches the installation or desired selection',
+    );
+
+    // Refusals leave no inventory and never reach Compose.
+    expect(existsSync(join(directory, 'state.json'))).toBe(false);
+    expect(existsSync(join(directory, 'compose.json'))).toBe(false);
+    expect(readFileSync(join(directory, 'deployment.json'), 'utf8')).toBe(
+      JSON.stringify(edited),
+    );
+    const calls = readFileSync(log, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => z.array(z.string()).parse(JSON.parse(line)));
+    expect(calls.some(([command]) => command === 'compose')).toBe(false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('shutdown adopts a version 1 inventory with its original identities and desired selection', async () => {
   const directory = realpathSync(
     mkdtempSync(join(tmpdir(), 'ddh-operations-adoption-')),
@@ -1022,6 +1326,7 @@ test('shutdown adopts a version 1 inventory with its original identities and des
       'down',
       '--timeout',
       '20',
+      '--remove-orphans',
     ]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
