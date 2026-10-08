@@ -33,7 +33,7 @@ test('ordinary OCI startup preserves application-owned HTTP and durable delivery
     'Injected one application-owned gateway request timeout',
   );
   expect(result.stdout).toContain(
-    'Observed usable application-owned HTTP before migrations',
+    'Observed Kong-resolved target before migrations',
   );
   expect(result.code, result.stdout + result.stderr).toBe(0);
 }, 660_000);

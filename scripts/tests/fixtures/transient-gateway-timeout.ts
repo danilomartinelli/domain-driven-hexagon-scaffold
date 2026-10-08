@@ -1,10 +1,11 @@
 import { spyOn } from 'bun:test';
 import pg from 'pg';
 import { readEnvironmentFile } from '../../../database/environment';
+import { kongResolved } from '../distribution-fixture';
 
 const fetch = globalThis.fetch;
 let injected = false;
-let observedHttp = false;
+let observedResolution = false;
 
 function fetchWithInitialTimeout(
   input: Parameters<typeof fetch>[0],
@@ -30,12 +31,13 @@ function fetchWithInitialTimeout(
   }
   return fetch(input, init).then(async (response) => {
     if (
-      !observedHttp &&
+      !observedResolution &&
       typeof input === 'string' &&
-      input.endsWith('/user/graphql') &&
-      response.status === 200
+      input.endsWith('/upstreams/app-user/health') &&
+      response.ok &&
+      kongResolved(await response.clone().json())
     ) {
-      observedHttp = true;
+      observedResolution = true;
       const file = process.env.DDH_ENVIRONMENT_FILE;
       if (!file) throw new Error('Missing owned manifest');
       const database = readEnvironmentFile(file).databases[0];
@@ -52,9 +54,7 @@ function fetchWithInitialTimeout(
           "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
         );
         if (tables.rows.length === 0)
-          console.log(
-            'Observed usable application-owned HTTP before migrations',
-          );
+          console.log('Observed Kong-resolved target before migrations');
       } finally {
         await owner.end();
       }
