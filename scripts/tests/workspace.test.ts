@@ -16,6 +16,51 @@ import { readProjectGraph } from '../lib/nx-graph';
 import { createWorkspace, isolatedEnvironment } from './workspace-fixture';
 import { withCleanup } from './cleanup';
 
+test('workspace cancellation lets an owned runner finish cleanup before returning interruption', async () => {
+  const workspace = await createWorkspace();
+  const cancellation = new AbortController();
+  const command = workspace.run(
+    [
+      process.execPath,
+      '-e',
+      `process.on('SIGTERM', async () => {
+        await Bun.sleep(50);
+        await Bun.write('.context/cleaned', 'yes');
+        process.exit(0);
+      });
+      await Bun.write('.context/ready', 'yes');
+      setInterval(() => {}, 1000);`,
+    ],
+    {
+      timeout: 5_000,
+      cancellation: { signal: cancellation.signal, graceMs: 1_000 },
+    },
+  );
+  await withCleanup(async () => {
+    const deadline = Date.now() + 2_000;
+    while (
+      !(await Bun.file(join(workspace.root, '.context/ready')).exists()) &&
+      Date.now() < deadline
+    )
+      await Bun.sleep(20);
+    expect(
+      await Bun.file(join(workspace.root, '.context/ready')).exists(),
+    ).toBe(true);
+    cancellation.abort('SIGTERM');
+    const result = await command;
+    expect(result.code, result.stdout + result.stderr).toBe(143);
+    expect(
+      await Bun.file(join(workspace.root, '.context/cleaned')).text(),
+    ).toBe('yes');
+  }, [
+    async () => {
+      cancellation.abort('SIGTERM');
+      await command;
+    },
+    workspace.cleanup,
+  ]);
+}, 10_000);
+
 test.each([
   { name: 'database', databases: [{ app: 'retired' }], broker: undefined },
   { name: 'broker', databases: [], broker: { vhost: 'retained' } },

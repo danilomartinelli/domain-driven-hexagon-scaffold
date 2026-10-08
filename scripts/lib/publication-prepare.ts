@@ -89,17 +89,16 @@ export async function preparePublication(
                 `./scripts/tests/distribution-${app.name === 'user' ? '' : 'wallet-'}shutdown.test.ts`,
               ],
             ]
-          : [
-              [
-                'bun',
-                'scripts/with-test-database.ts',
-                `--app=${app.name}`,
-                '--no-database-setup',
-                '--',
-                'bun',
-                'scripts/tests/fixtures/image-capabilities.ts',
-              ],
-            ];
+          : [];
+      suites.unshift([
+        'bun',
+        'scripts/with-test-database.ts',
+        `--app=${app.name}`,
+        '--no-database-setup',
+        '--',
+        'bun',
+        'scripts/tests/fixtures/image-capabilities.ts',
+      ]);
       for (const args of suites) {
         const result = await runCommand(args, {
           cwd: workspaceRoot,
@@ -110,6 +109,7 @@ export async function preparePublication(
             ...process.env,
             DDH_IMAGE_PLATFORM: platform,
             DDH_VALIDATED_IMAGE: id,
+            DDH_PUBLICATION_READINESS: 'true',
           },
           progress: { label: `validate ${app.name} ${platform}`, logPath: log },
         });

@@ -77,6 +77,36 @@ The [delivery design](../scaffold-design.md#deployment-configuration-and-reconci
 records the seven approved decisions and their acceptance evidence. These are
 accepted design clarifications, not a claim that the transition gaps are fixed.
 
+## Publication validation boundaries approved on 2026-10-08
+
+The common publication gate proves the selected artifact's technical readiness:
+private HTTP readiness, effective declared Kong routing, and readiness of every
+applicable messaging role. Functional API and message scenarios remain owned by
+the application. The common gate must not invent a GraphQL endpoint or business
+message: valid applications can expose REST, require authentication, or perform
+state-changing operations. Adding a mandatory functional scenario interface for
+each application is outside this correction.
+
+Kong evidence combines installed route/service configuration with actual active
+HTTP probing of the artifact. In the gate-owned disposable environment, observe
+the same target/address become unhealthy and then recover automatically through
+an active readiness check, without configuration reload or manual healthy reset.
+An initially healthy state is insufficient because Kong initializes new targets
+optimistically. This controlled transition never affects an existing development
+or deployment environment and does not execute a business request.
+
+Once the artifact process starts, allow a single 60-second window for complete
+technical readiness, shared by all applicable checks. This permits transient
+startup recovery while refusing persistent degradation. Invalid or inconsistent
+probe responses never count as readiness; an exhausted window fails validation
+without issuing an approval receipt and retains diagnostics and bounded cleanup.
+
+Publication approval requires applicable messaging readiness even when HTTP is
+usable. This condition belongs to artifact approval, preserving ordinary HTTP
+startup during broker outages and the existing tests of that behavior. The
+[delivery design](../scaffold-design.md#publication-validation-boundaries)
+records these accepted boundaries; the implementation status below records their delivery.
+
 ## Implementation status
 
 The identity and MIT metadata standardization and bounded rename command from
@@ -141,6 +171,21 @@ package preflight, commit tags and immutable digest output. See
 [publication](../publication.md) for setup and the explicit trigger. Actual
 registry publication and package visibility remain unverified until an
 authorized dispatch executes.
+
+An audit on 2026-10-08 reproduced two defects in that publication validation:
+the generic image runtime assumes `/<application>/graphql` instead of respecting
+declared routes, and the generated-image fixture can approve an unavailable
+messaging consumer. The existing full local gate and CI passed without detecting
+these cases. The correction in #81 adds a common approval gate for each immutable
+image before application-owned scenarios. It validates capability-aware readiness,
+installed routing and observed Kong target recovery within a shared 60-second
+window. Public-command OCI regressions cover custom routes, retained/empty routing,
+consumer/publisher roles, unavailable dependencies, invalid responses, gateway
+faults and deadline enforcement. The required image gate runs these checks on
+Linux AMD64 and ARM64; ordinary startup remains separate from approval, preserving
+HTTP and durable messaging during broker outages. See the
+[publication contract](../publication.md#validation-and-artifact-transfer).
+This implementation does not establish registry publication or deployment.
 
 The [Compose reference operations](../operations.md) are implemented (#63):
 independent image digests, file secrets, private services and HTTPS, separated

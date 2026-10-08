@@ -77,6 +77,36 @@ image capability fixture, including applicable owning migrations, readiness,
 startup and shutdown. Validation uses disposable owned test infrastructure and
 temporary credentials. Runtime containers have no checkout mounts.
 
+Before application-owned scenarios, every selected image passes the common
+technical approval gate in disposable owned infrastructure. It checks private
+HTTP readiness and validates the aggregate response's application identity,
+lifecycle, database capability and consumer/publisher states. Enabled messaging
+requires at least one applicable role, with every applicable role ready and
+connected; disabled messaging requires both roles to be not applicable and needs
+no broker. HTTP 200, missing fields or unknown states alone cannot approve an image.
+
+For exposed applications, the gate reads back Kong services, routes, associations
+and active-check settings against the effective declaration. It marks the selected
+target unhealthy with Kong's `PUT` API, observes `UNHEALTHY`, then requires
+automatic recovery of the same target/address to `HEALTHY` through
+`/health/ready/http`. Passive checks are disabled; configuration is not reloaded
+and health is never manually reset between observations. Initial optimistic health
+and a successful mutation response are insufficient. Health changes are restricted
+to the inspected, owned disposable Kong. Disabled exposure installs no application
+ingress; enabled exposure without routes invents no API request.
+
+All applicable checks share one window of at most 60 seconds, measured from before
+the artifact container starts. Each probe uses only the remaining budget.
+Transient startup may recover within that window; persistent degradation or invalid
+responses exhaust it without a receipt. The application log retains unmet conditions
+and observed Kong transitions, and the existing bounded owned cleanup still runs.
+The generic gate never invokes a business endpoint, authentication flow, GraphQL
+query or message. REST, authenticated and state-changing route declarations are
+valid. Configuration readback does not prove execution of route matching or
+authentication. User/Wallet distribution scenarios continue to own their functional
+requests and messaging checks against the same immutable image ID; ordinary
+startup and HTTP during broker outages keep their separate contract.
+
 Only successfully executed images are archived. `validated.json` records source,
 selection, IDs, target platform, Docker host architecture and native/emulated
 execution. A failing selection produces no approval receipt. Publication waits

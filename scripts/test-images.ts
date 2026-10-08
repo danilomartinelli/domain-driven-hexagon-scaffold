@@ -22,10 +22,24 @@ for (const platform of platforms) {
       name: 'publication',
       command: ['bun', 'test', './scripts/tests/publication-images.test.ts'],
     },
+    {
+      name: 'publication-readiness',
+      command: [
+        'bun',
+        'test',
+        './scripts/tests/publication-readiness.test.ts',
+        '--concurrent',
+        '--max-concurrency=3',
+      ],
+    },
     { name: 'build', command: ['bun', 'test', './scripts/tests/oci.test.ts'] },
     {
       name: 'user',
-      command: ['bun', 'run', 'nx', 'run', 'user:test-distribution'],
+      command: [
+        'bun',
+        'test',
+        './scripts/tests/publication-startup-preservation.test.ts',
+      ],
     },
     {
       name: 'wallet',
