@@ -19,6 +19,7 @@ import { appWorkspace, generate, run } from './app-generator-fixture';
 import { operationsDatabaseFixture } from './operations-database-fixture';
 import { availablePort } from '../lib/environments';
 import { stateSchema } from '../lib/operations-config';
+import { transitionSchema } from '../lib/operations-transition';
 import type { DeploymentPlan } from '../lib/operations-plan';
 import {
   backupApplication,
@@ -1818,6 +1819,107 @@ function topology(fixture: Awaited<ReturnType<typeof operationsFixture>>) {
   };
 }
 
+test('apply restarts retained databases after shutdown and recovers a failed gateway reload', async () => {
+  const fixture = await operationsFixture();
+  await withCleanup(async () => {
+    const { deploymentPath, select, review, sql } = topology(fixture);
+    await fixture.ops('prepare');
+    await fixture.ops('migrate', 'user');
+    await fixture.ops('migrate', 'wallet');
+    await fixture.ops('start');
+    const compatible = await fixture.variant('compatible');
+    const retained = fixture.state().retained;
+    await fixture.ops('down');
+    select({ user: compatible, wallet: fixture.images.wallet });
+    const restarted = await review();
+    expect(
+      restarted.preview.migrations.every(
+        ({ history }) => history === 'unavailable',
+      ),
+    ).toBe(true);
+    expect(restarted.result.code, restarted.result.stderr).toBe(0);
+    expect(fixture.state().retained).toEqual(retained);
+    expect(await sql('user', 'SELECT count(*) FROM operations_marker')).toBe(
+      '0',
+    );
+
+    // A stopped existing database must also be started before rejecting an older image.
+    await fixture.compose(['stop', 'postgres-user']);
+    select(fixture.images);
+    const older = await review();
+    expect(older.result.code).not.toBe(0);
+    expect(older.result.stderr).toContain(
+      'its database already applied migrations unknown to the selected image',
+    );
+    expect(await sql('user', 'SELECT count(*) FROM operations_marker')).toBe(
+      '0',
+    );
+
+    // Both supported recovery commands must retain a pending gateway reload.
+    for (const recovery of ['continue', 'apply']) {
+      // Removal and listener selection complete before a real bind failure in Kong.
+      const port = await availablePort();
+      const occupied = {
+        name: `ddh-gateway-conflict-${randomUUID()}`,
+        owner: randomUUID(),
+      };
+      await withCleanup(async () => {
+        await fixture.execute([
+          'docker',
+          'run',
+          '-d',
+          '--name',
+          occupied.name,
+          '--label',
+          `dev.starter.owner=${occupied.owner}`,
+          '-p',
+          `127.0.0.1:${String(port)}:5000`,
+          'registry:2',
+        ]);
+        select({ user: compatible });
+        const desired = JSON.parse(
+          readFileSync(deploymentPath, 'utf8'),
+        ) as Record<string, unknown>;
+        writeFileSync(
+          deploymentPath,
+          JSON.stringify({ ...desired, https: { bind: '127.0.0.1', port } }),
+        );
+        const blocked = await review();
+        expect(blocked.result.code).not.toBe(0);
+        expect(blocked.result.stderr).toContain('- ingress: completed');
+        if (recovery === 'continue')
+          expect(blocked.result.stderr).toContain('- remove wallet: completed');
+        expect(blocked.result.stderr).toContain('- reconcile: failed');
+      }, [() => removeOwnedContainer(occupied)]);
+      if (recovery === 'continue') await fixture.ops('continue');
+      else {
+        const replacement = await review();
+        expect(replacement.preview.services.recreate).toEqual(['gateway']);
+        expect(
+          replacement.preview.interruptions.map(({ service }) => service),
+        ).toEqual(['gateway']);
+        expect(replacement.result.code, replacement.result.stderr).toBe(0);
+      }
+      expect(fixture.state().pendingDeployment).toBeUndefined();
+      const status = (path: string) =>
+        fixture.execute([
+          'curl',
+          '--silent',
+          '--show-error',
+          '--cacert',
+          join(fixture.directory, 'secrets', 'tls.crt'),
+          '--output',
+          '/dev/null',
+          '--write-out',
+          '%{http_code}',
+          `https://127.0.0.1:${String(port)}${path}`,
+        ]);
+      await until(async () => (await status('/v1/users')) === '200');
+      expect(await status('/v1/wallets/by-user/removed')).toBe('404');
+    }
+  }, [fixture.cleanup]);
+}, 300_000);
+
 test('operators apply reviewed topology changes and reactivate retained resources with their identities, data and accepted work', async () => {
   const fixture = await operationsFixture();
   const sibling = join(fixture.directory, 'sibling');
@@ -2088,7 +2190,20 @@ test('operators apply reviewed topology changes and reactivate retained resource
           persistence: true,
           messaging: true,
           exposure: true,
-          routes: ['rest', 'graphql'],
+          routes: [
+            {
+              name: 'rest',
+              paths: ['~/v1/wallets/by-user/[^/]+$'],
+              methods: ['GET'],
+              stripPath: false,
+            },
+            {
+              name: 'graphql',
+              paths: ['~/wallet/graphql/?$'],
+              stripPath: true,
+              upstreamPath: '/graphql',
+            },
+          ],
         },
         to: {
           persistence: true,
@@ -2607,26 +2722,47 @@ test('a multi-application apply stops after a later failure and explicit continu
       ),
     );
     select({ user: degradedUser, wallet: finalWallet });
-    await fixture.compose(['stop', 'rabbitmq']);
-    const degraded = await review();
-    expect(degraded.code).not.toBe(0);
-    expect(degraded.stderr).toContain('messaging verification pending');
-    expect(progress()).toEqual([
-      'promote:user:verification-pending',
-      'promote:wallet:not-started',
-      'reconcile::not-started',
+    // Apply starts stopped dependencies. Keep the broker healthy but deny new
+    // candidate connections until the operator repairs its credentials.
+    const degradedHistory = await withCleanup(async () => {
+      await fixture.compose([
+        'exec',
+        '-T',
+        'rabbitmq',
+        'rabbitmqctl',
+        'change_password',
+        'scaffold',
+        'unavailable-during-apply',
+      ]);
+      const degraded = await review();
+      expect(degraded.code).not.toBe(0);
+      expect(degraded.stderr).toContain('messaging verification pending');
+      expect(progress()).toEqual([
+        'promote:user:verification-pending',
+        'promote:wallet:not-started',
+        'reconcile::not-started',
+      ]);
+      expect(applied('wallet')?.image).toBe(nextWallet);
+      await until(() =>
+        fixture.request('/v1/users').then(
+          () => true,
+          () => false,
+        ),
+      );
+      expect(await fixture.request('/v1/users')).toEqual(users);
+      return history('user');
+    }, [
+      () =>
+        fixture.compose([
+          'exec',
+          '-T',
+          'rabbitmq',
+          'sh',
+          '-ec',
+          'rabbitmqctl change_password scaffold "$(cat /run/secrets/broker-password)"',
+        ]),
     ]);
-    expect(applied('wallet')?.image).toBe(nextWallet);
-    await until(() =>
-      fixture.request('/v1/users').then(
-        () => true,
-        () => false,
-      ),
-    );
-    expect(await fixture.request('/v1/users')).toEqual(users);
-    const degradedHistory = await history('user');
     expect(degradedHistory).toContain('1990000000013_operations-degraded');
-    await fixture.compose(['start', 'rabbitmq']);
     const resumed = await fixture.ops('continue');
     expect(resumed).toContain('- promote wallet: completed');
     expect(fixture.state().pendingDeployment).toBeUndefined();
@@ -2713,6 +2849,20 @@ test('a multi-application apply stops after a later failure and explicit continu
       image: degradedUser,
       migration: { image: sleepyUser, result: 'interrupted' },
     });
+    const interruptedTransitions = readdirSync(fixture.directory)
+      .filter((file) => file.startsWith('transition-'))
+      .map((file) =>
+        transitionSchema.parse(
+          JSON.parse(readFileSync(join(fixture.directory, file), 'utf8')),
+        ),
+      )
+      .filter((transition) => transition.deployment === interrupted);
+    expect(interruptedTransitions).toMatchObject([
+      {
+        status: 'interrupted',
+        migration: { outcome: 'interrupted', completedAt: null },
+      },
+    ]);
     expect(
       await sql(
         'user',

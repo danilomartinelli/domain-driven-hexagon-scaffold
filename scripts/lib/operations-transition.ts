@@ -18,6 +18,7 @@ export const transitionSchema = z.object({
       'running',
       'completed',
       'failed',
+      'interrupted',
       'not-applicable',
       'compatibility-reviewed',
     ]),

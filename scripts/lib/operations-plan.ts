@@ -20,7 +20,7 @@ interface Capabilities {
   persistence: boolean;
   messaging: boolean;
   exposure: boolean;
-  routes: string[];
+  routes: NonNullable<ApplicationDeclaration['routes']>;
 }
 type SelectedApplication = Capabilities & {
   application: string;
@@ -107,7 +107,7 @@ function capabilities({
     persistence,
     messaging,
     exposure,
-    routes: (routes ?? []).map((route) => route.name),
+    routes: routes ?? [],
   };
 }
 
@@ -157,6 +157,8 @@ export function deploymentPlan(input: {
   /** Each retained database's applied migrations; undefined when unreadable now. */
   histories: Readonly<Record<string, readonly string[] | undefined>>;
   secretFiles: readonly string[];
+  /** An incomplete deployment may have applied routing changes without reloading Kong. */
+  gatewayReloadPending?: boolean;
 }): DeploymentPlan {
   const { state, desired } = input;
   const applied = new Map(
@@ -229,7 +231,8 @@ export function deploymentPlan(input: {
   if (
     before.has('gateway') &&
     after.has('gateway') &&
-    (recreate.size > 0 ||
+    (input.gatewayReloadPending ||
+      recreate.size > 0 ||
       ingress(applied.values(), state.applied.https) !==
         ingress(requested.values(), desired.https))
   )
@@ -297,7 +300,8 @@ export function deploymentPlan(input: {
       changes.removals.length ||
       changes.images.length ||
       changes.capabilities.length ||
-      changes.ingress,
+      changes.ingress ||
+      recreate.has('gateway'),
     ),
     applied: {
       https: state.applied.https ?? null,

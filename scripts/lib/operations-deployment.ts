@@ -43,6 +43,8 @@ export const deploymentRecordSchema = z.strictObject({
   /** The applied selection the deployment started from, as operator evidence. */
   baseline: selection,
   steps: z.array(stepSchema),
+  /** Pending ingress reload survives failed reconciliation and operator restarts. */
+  gatewayReloadPending: z.boolean().optional(),
   attempts: z.array(
     z.strictObject({
       operation: z.enum(['apply', 'continue']),
@@ -55,6 +57,22 @@ export const deploymentRecordSchema = z.strictObject({
   supersededBy: z.uuid().nullable(),
 });
 export type DeploymentRecord = z.infer<typeof deploymentRecordSchema>;
+
+/** Read the durable reload obligation, including progress from older records. */
+export function requiresGatewayReload(record: DeploymentRecord): boolean {
+  if (record.gatewayReloadPending !== undefined)
+    return record.gatewayReloadPending;
+  // Removed declarations are no longer applied, so older records require a
+  // conservative reload after removals until a later promotion confirms it.
+  let pending = false;
+  for (const step of record.steps) {
+    if (step.status === 'not-started') continue;
+    if (step.kind === 'ingress' || step.kind === 'remove') pending = true;
+    else if (step.kind === 'promote' && step.status === 'completed')
+      pending = false;
+  }
+  return pending;
+}
 
 /**
  * Order a reviewed plan: a new ingress first, then removals, then one promotion

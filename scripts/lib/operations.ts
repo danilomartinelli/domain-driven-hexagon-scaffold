@@ -20,6 +20,7 @@ import {
   deploymentRecordSchema,
   deploymentSteps,
   deploymentSummary,
+  requiresGatewayReload,
   type DeploymentRecord,
   type DeploymentStep,
 } from './operations-deployment';
@@ -415,6 +416,15 @@ export async function runOperations(args: string[]): Promise<void> {
         },
         histories,
         secretFiles: existsSync(secrets) ? readdirSync(secrets) : [],
+        gatewayReloadPending: state.pendingDeployment
+          ? requiresGatewayReload(
+              deploymentRecordSchema.parse(
+                readJson(
+                  join(directory, `apply-${state.pendingDeployment}.json`),
+                ),
+              ),
+            )
+          : false,
       }),
     };
   };
@@ -1099,10 +1109,7 @@ export async function runOperations(args: string[]): Promise<void> {
             ...current,
             applied: { ...current.applied, applications: promoted() },
           });
-          if (
-            target.declaration.persistence &&
-            !previous?.declaration.persistence
-          ) {
+          if (target.declaration.persistence) {
             await compose([
               'up',
               '-d',
@@ -1111,9 +1118,10 @@ export async function runOperations(args: string[]): Promise<void> {
               '60',
               `postgres-${application}`,
             ]);
-            await provision(application);
+            if (!previous?.declaration.persistence)
+              await provision(application);
           }
-          if (target.declaration.messaging && !brokerActive) {
+          if (target.declaration.messaging) {
             await compose([
               'up',
               '-d',
@@ -1122,7 +1130,7 @@ export async function runOperations(args: string[]): Promise<void> {
               '60',
               'rabbitmq',
             ]);
-            await verifyBroker(target);
+            if (!brokerActive) await verifyBroker(target);
           }
           if (target.declaration.persistence) {
             record.migrationStatus = await migrate(target, 'status');
@@ -1147,7 +1155,7 @@ export async function runOperations(args: string[]): Promise<void> {
             try {
               await migrateUp(target, 'apply');
             } catch (error) {
-              record.migration.outcome = 'failed';
+              record.migration.outcome = failure();
               throw error;
             }
             record.migration = { outcome: 'completed', completedAt: now() };
@@ -1166,7 +1174,7 @@ export async function runOperations(args: string[]): Promise<void> {
           writeJson(statePath, current);
           await verifyCandidate(target, record, recordPath);
         } catch (error) {
-          if (!unverified(record.status)) record.status = 'failed';
+          if (!unverified(record.status)) record.status = failure();
           record.error =
             'No automatic database reversal. Inspect status and retained transition evidence before recovery.';
           throw error;
@@ -1223,13 +1231,25 @@ export async function runOperations(args: string[]): Promise<void> {
       };
       deployment.attempts.push(attempt);
       deployment.status = 'applying';
+      deployment.gatewayReloadPending = requiresGatewayReload(deployment);
       writeJson(path, deployment);
       const https = deployment.desired.https ?? undefined;
-      let gatewayStale = false;
       let stopped: string[] = [];
       try {
         for (const step of deployment.steps) {
           if (step.status === 'completed') continue;
+          // Persist the obligation before changing the applied selection; even
+          // an interruption between that change and step completion must reload.
+          if (
+            step.kind === 'ingress' ||
+            (step.kind === 'remove' &&
+              current.applied.applications.some(
+                (entry) =>
+                  entry.declaration.name === step.application &&
+                  entry.declaration.exposure,
+              ))
+          )
+            deployment.gatewayReloadPending = true;
           step.status = 'running';
           writeJson(path, deployment);
           try {
@@ -1237,13 +1257,8 @@ export async function runOperations(args: string[]): Promise<void> {
               current.applied.https = https;
               writeJson(statePath, current);
               saveCompose();
-              gatewayStale = true;
             } else if (step.kind === 'remove' && step.application) {
-              const removed = current.applied.applications.find(
-                (entry) => entry.declaration.name === step.application,
-              );
               await removeApplication(step.application);
-              gatewayStale ||= Boolean(removed?.declaration.exposure);
             } else if (step.kind === 'promote') {
               const target = step.application
                 ? artifacts.get(step.application)
@@ -1251,9 +1266,10 @@ export async function runOperations(args: string[]): Promise<void> {
               if (!target) throw new Error('Promotion has no desired image');
               await promote(deployment, step, target);
               // Candidate verification reloads the gateway from the applied selection.
-              gatewayStale = false;
+              deployment.gatewayReloadPending = false;
             } else {
-              stopped = await reconcile(https, gatewayStale);
+              stopped = await reconcile(https, deployment.gatewayReloadPending);
+              deployment.gatewayReloadPending = false;
             }
           } catch (error) {
             const lastId = step.transitions.at(-1);
@@ -1432,6 +1448,8 @@ export async function runOperations(args: string[]): Promise<void> {
           images: appliedImages(current.applied.applications),
         },
         steps: deploymentSteps(applying.plan),
+        gatewayReloadPending:
+          applying.plan.services.recreate.includes('gateway'),
         attempts: [],
         supersededBy: null,
       };
