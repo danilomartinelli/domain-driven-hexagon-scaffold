@@ -73,7 +73,13 @@ for (const platform of platforms) {
     },
     {
       name: 'capabilities',
-      command: ['bun', 'test', './scripts/tests/image-capabilities.test.ts'],
+      command: [
+        'bun',
+        'test',
+        './scripts/tests/image-capabilities.test.ts',
+        '--concurrent',
+        '--max-concurrency=3',
+      ],
     },
   ];
   for (const suite of suites) {

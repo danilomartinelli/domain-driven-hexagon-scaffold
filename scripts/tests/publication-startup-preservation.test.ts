@@ -11,6 +11,8 @@ test('ordinary OCI startup preserves application-owned HTTP and durable delivery
       '--',
       'bun',
       'test',
+      '--preload',
+      './scripts/tests/fixtures/transient-gateway-timeout.ts',
       './scripts/tests/distribution-user.test.ts',
     ],
     {
@@ -26,6 +28,12 @@ test('ordinary OCI startup preserves application-owned HTTP and durable delivery
           `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`,
       },
     },
+  );
+  expect(result.stdout).toContain(
+    'Injected one application-owned gateway request timeout',
+  );
+  expect(result.stdout).toContain(
+    'Observed usable application-owned HTTP before migrations',
   );
   expect(result.code, result.stdout + result.stderr).toBe(0);
 }, 660_000);
