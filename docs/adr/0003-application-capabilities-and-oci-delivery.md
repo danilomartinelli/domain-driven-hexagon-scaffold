@@ -107,6 +107,20 @@ startup during broker outages and the existing tests of that behavior. The
 [delivery design](../scaffold-design.md#publication-validation-boundaries)
 records these accepted boundaries; the implementation status below records their delivery.
 
+## Distribution scenario discovery approved on 2026-10-09
+
+Preparation and the full image suite discover optional distribution scenarios
+through each selected application's `test-distribution` target in the resolved Nx
+graph. After artifact approval, the target receives the approved platform image
+ID and platform and must execute that image. The contract is documented, not
+runtime-enforced; no mandatory scenario interface is added. Missing targets are
+logged and continue with approval alone. Failing targets withhold the approval
+receipt. Discovery follows build and approval so interruption phases are retained.
+
+User and Wallet own their image shutdown scenarios in these targets, with two
+sequential commands and separate disposable environments. Image-only cases skip
+on plain host distribution runs. The light CI image subset remains unchanged.
+
 ## Implementation status
 
 The identity and MIT metadata standardization and bounded rename command from
@@ -179,13 +193,30 @@ messaging consumer. The existing full local gate and CI passed without detecting
 these cases. The correction in #81 adds a common approval gate for each immutable
 image before application-owned scenarios. It validates capability-aware readiness,
 installed routing and observed Kong target recovery within a shared 60-second
-window. Public-command OCI regressions cover custom routes, retained/empty routing,
+window. Initial public-command OCI regressions covered custom routes, retained/empty routing,
 consumer/publisher roles, unavailable dependencies, invalid responses, gateway
 faults and deadline enforcement. CI's light image gate runs both reproduced-defect
 regressions on native Linux AMD64 and ARM64, and the on-demand full image suite
-runs every case; ordinary startup remains separate from approval, preserving
+runs the live cases; ordinary startup remains separate from approval, preserving
 HTTP and durable messaging during broker outages. See the
 [publication contract](../publication.md#validation-and-artifact-transfer).
+Issue #85 moves artifact approval into a production module with explicit runtime,
+Kong and clock ports, real adapters and the internal approval command. Preparation
+owns image transfer and the unchanged receipt. The capabilities package owns the
+shared readiness snapshot parser and producer type. Candidate verification uses
+the same parse: inconsistent snapshots become unknown messaging and remain pending,
+without changing the HTTP-serving policy. The image test runtime reuses the real
+adapter and keeps test-only privilege and fault assertions in scenarios.
+
+Schema/capability mismatch, deadline and dropped-mutation cases now run against
+that module with an in-memory runtime/Kong and manual clock; their expensive live
+versions are removed. Custom authenticated routes, real messaging recovery and
+unavailability, exposure choices, and Kong listener/routing faults remain live.
+Parser and approval tests run in the light/unit gates; live cases remain in the
+full image suite. The discovered targets replace the fixed User/Wallet list in
+preparation and full image execution, retaining each application's shutdown
+isolation and the light CI selection.
+
 This implementation does not establish registry publication or deployment.
 
 The [Compose reference operations](../operations.md) are implemented (#63):

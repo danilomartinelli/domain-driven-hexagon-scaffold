@@ -2,6 +2,8 @@
 
 This scaffold generates independent applications, demonstrated by the User and
 Wallet examples and their messaging, and operates their single-host installations.
+Scaffold delivery covers how each application's images are approved, published and
+verified in an installation.
 
 ## Language
 
@@ -73,3 +75,53 @@ _Avoid_: promotion (for the record)
 An explicit resumption of an incomplete promotion or topology deployment that
 never repeats completed migrations.
 _Avoid_: retry, resume
+
+### Scaffold delivery
+
+**Artifact**:
+The published, immutable image of one application, identified by its registry
+digest and covering every supported platform.
+_Avoid_: Release, image (when the published unit is meant)
+
+**Platform image**:
+One architecture's build of an application's image, identified by its local image
+ID before publication.
+_Avoid_: Artifact (for a single architecture)
+
+**Image contract**:
+The behavior every platform image must exhibit regardless of its business logic:
+it runs on its target platform, separates migration and runtime privileges, keeps
+its listener private and stops within its shutdown grace.
+_Avoid_: Executable contract, capability fixture
+
+**Artifact approval**:
+The decision that a platform image meets the image contract and technical readiness
+in disposable infrastructure. An artifact is published only when all its platform
+images are approved.
+_Avoid_: Publication validation, image validation, publication readiness
+
+**Distribution scenario**:
+An application-owned test of its distribution's business and lifecycle behavior;
+during publication preparation it runs against an approved platform image.
+_Avoid_: Application-owned scenario, distribution verification, functional scenario
+
+**Approval receipt**:
+The record of a preparation in which every selected platform image received
+artifact approval; a failed or interrupted preparation has none.
+_Avoid_: Validation result
+
+**Technical readiness**:
+The state in which an application serves private HTTP, its declared gateway routing
+reaches it and every applicable messaging role is ready.
+_Avoid_: Functional readiness, health
+
+**Readiness snapshot**:
+An application's aggregate report of its lifecycle and the readiness of each
+declared capability, with disabled capabilities reported as not applicable.
+_Avoid_: Health response, health status
+
+**Candidate verification**:
+The check that a candidate selected by a promotion runs with ready HTTP and
+applicable messaging; unavailable messaging leaves it serving with verification
+pending instead of failing it.
+_Avoid_: Artifact approval, candidate validation

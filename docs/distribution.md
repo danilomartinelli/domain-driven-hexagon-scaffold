@@ -103,7 +103,17 @@ accept `user.create` without Wallet. Wallet looks up absence, consumes a fixed
 `user.created` envelope and exposes the committed Wallet through both APIs.
 
 The checks also reject a sibling migration selector and runtime migration
-credentials, inspect committed database state, and clean owned resources. Both
+credentials, inspect committed database state, and clean owned resources.
+User and Wallet targets each run two sequential commands in separate disposable
+environments: business scenarios, then image shutdown scenarios. The latter skip
+when no image is selected, preserving plain host distribution checks.
+
+During preparation and the full image suite, the resolved Nx graph selects each
+application's optional `test-distribution` target after artifact approval. Targets
+receive `DDH_VALIDATED_IMAGE` (immutable image ID) and `DDH_IMAGE_PLATFORM` and must
+execute that platform image. This is a documented target contract, not runtime
+enforcement. Missing targets are logged; their applications need approval alone.
+Failing scenarios withhold the approval receipt. Both
 component suites independently provision the capabilities declared by their selected app;
 cross-database permission checks belong to distributed E2E. Local `check:full`
 includes distribution verification; CI executes OCI images separately. No live
@@ -156,7 +166,8 @@ bun run test:images --platform=linux/arm64   # one target for focused feedback
 bun run test:images:light                   # CI subset: build, reproduced defects, startup
 ```
 
-These uncached checks reuse the User/Wallet distribution fixtures with real
+These uncached checks discover application distribution targets, including the
+User/Wallet fixtures with real
 PostgreSQL and RabbitMQ, execute business requests through Kong, reject direct
 host access, exercise drain/deadline/restart outcomes and execute all eight
 capability combinations as generated images. Their containers have no checkout

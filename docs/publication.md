@@ -71,15 +71,21 @@ Unknown names and empty discovery fail. There is no fixed selection list.
 Each native Ubuntu runner builds its Linux architecture (`amd64` or `arm64`)
 through the [local image contract](distribution.md#linux-oci-images): a frozen
 target-Linux install and an independent runtime/migration dependency closure.
-Validation fixes the image ID before execution. User and Wallet reuse their
-distribution and shutdown scenarios; other applications run the declaration-driven
-image capability fixture, including applicable owning migrations, readiness,
-startup and shutdown. Validation uses disposable owned test infrastructure and
-temporary credentials. Runtime containers have no checkout mounts.
+Preparation fixes the platform image ID before execution. Artifact approval is
+implemented in `scripts/lib/artifact-approval.ts`, with explicit image, declaration,
+environment and platform inputs, a monotonic clock and Docker/Kong adapters. The
+internal `publication.ts approve` command runs only in a disposable environment
+selecting exactly that application. It does not read an image-selection flag.
 
-Before application-owned scenarios, every selected image passes the common
-technical approval gate in disposable owned infrastructure. It checks private
-HTTP readiness and validates the aggregate response's application identity,
+Every selected platform image first passes the image contract: target Linux
+architecture, applicable owner migration up/status, refusal of another application
+selector and runtime migration credentials, no migration interface without
+persistence, a private listener and successful stop with Docker's 20-second grace.
+Approval uses owned disposable infrastructure and temporary credentials. Runtime
+containers have no checkout mounts.
+
+Before distribution scenarios, every selected image passes technical readiness.
+It checks private HTTP readiness and parses the readiness snapshot's application identity,
 lifecycle, database capability and consumer/publisher states. Enabled messaging
 requires at least one applicable role, with every applicable role ready and
 connected; disabled messaging requires both roles to be not applicable and needs
@@ -95,19 +101,30 @@ and a successful mutation response are insufficient. Health changes are restrict
 to the inspected, owned disposable Kong. Disabled exposure installs no application
 ingress; enabled exposure without routes invents no API request.
 
-All applicable checks share one window of at most 60 seconds, measured from before
-the artifact container starts. Each probe uses only the remaining budget.
+All technical readiness checks share one window of at most 60 seconds, measured
+from before the platform image container starts. Each probe uses only the remaining budget.
 Transient startup may recover within that window; persistent degradation or invalid
-responses exhaust it without a receipt. The application log retains unmet conditions
-and observed Kong transitions, and the existing bounded owned cleanup still runs.
+responses exhaust it without a receipt. The verdict contains ordered, distinct
+unmet conditions or elapsed time and observed Kong transitions. The application
+log retains that evidence, and bounded owned cleanup always runs.
 The generic gate never invokes a business endpoint, authentication flow, GraphQL
 query or message. REST, authenticated and state-changing route declarations are
 valid. Configuration readback does not prove execution of route matching or
-authentication. User/Wallet distribution scenarios continue to own their functional
-requests and messaging checks against the same immutable image ID; ordinary
-startup and HTTP during broker outages keep their separate contract.
+authentication.
 
-Only successfully executed images are archived. `validated.json` records source,
+After approval, preparation reads the resolved Nx graph and runs the selected
+application project's optional `test-distribution` target. It supplies
+`DDH_VALIDATED_IMAGE` (the exact immutable image ID) and `DDH_IMAGE_PLATFORM`.
+The target contract requires execution of that image; tooling does not inspect
+or enforce the target's implementation. A missing target is logged and approval
+alone suffices. A failing target prevents the approval receipt. Discovery occurs
+after image build and approval, preserving build/validation interruption phases.
+User and Wallet own their business, messaging and image shutdown scenarios in
+these targets. Ordinary startup and HTTP during broker outages keep their
+separate contract.
+
+Only approved platform images whose discovered distribution scenarios succeed
+are archived. `validated.json` records source,
 selection, IDs, target platform, Docker host architecture and native/emulated
 execution. A failing selection produces no approval receipt. Publication waits
 for **both complete architecture jobs**, loads their archives without rebuilding,
@@ -166,7 +183,12 @@ operator actions.
 ## Evidence boundaries
 
 `check:full` executes local images on both architectures, including one/all
-discovery with generated applications and a deliberate startup failure. CI runs
+discovery with generated applications, absence of scenarios, User scenarios and
+failures that withhold the approval receipt. Fast tests exercise the production
+approval module with in-memory adapters and a manual clock: schema/capability
+mismatches, deadlines, image contract failures, Kong proof, cancellation and
+cleanup. Shared parser tests cover readiness snapshots and candidate verification
+keeps inconsistent messaging snapshots pending. CI runs
 the light image subset: image build, the two reproduced readiness defects and
 ordinary startup. Workflow
 checks cover the manual trigger, validation barrier, package permission and
