@@ -165,7 +165,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/distribution-user.test.ts && bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/distribution-shutdown.test.ts",
+        "command": "bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/distribution-user.test.ts && if [ -n \"$DDH_VALIDATED_IMAGE\" ] || [ -n \"$DDH_IMAGE_PLATFORM\" ]; then bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/distribution-shutdown.test.ts; fi",
         "cwd": "."
       }
     }

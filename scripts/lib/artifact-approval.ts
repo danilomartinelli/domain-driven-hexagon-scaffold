@@ -73,13 +73,14 @@ export async function approveArtifact(input: {
     let failed = unmet.size > 0;
     const started = clock.now();
     const deadline = started + READINESS_WINDOW_MS;
-    const budget = () => {
+    const remainingWindow = () => {
       signal?.throwIfAborted();
       const remaining = Math.floor(deadline - clock.now());
       if (remaining <= 0)
         throw new Error('Technical readiness window exhausted (60000 ms)');
-      return Math.min(2000, remaining);
+      return remaining;
     };
+    const budget = () => Math.min(2000, remainingWindow());
     let running = false;
     let ready = false;
     let elapsedMs = 0;
@@ -94,11 +95,11 @@ export async function approveArtifact(input: {
     if (running) {
       for (const check of [
         async () => {
-          if (await runtime.publishedPorts(budget()))
+          if (await runtime.publishedPorts(remainingWindow()))
             throw new Error('Runtime container publishes host ports');
         },
         async () => {
-          if (await runtime.hostReachable(budget()))
+          if (await runtime.hostReachable(remainingWindow()))
             throw new Error('Application port is reachable from the host');
         },
       ]) {

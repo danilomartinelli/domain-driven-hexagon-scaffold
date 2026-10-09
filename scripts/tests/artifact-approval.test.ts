@@ -2,6 +2,7 @@ import { rejects } from 'node:assert/strict';
 import { expect, test } from 'bun:test';
 import { approveArtifact } from '../lib/artifact-approval';
 import { runKongApproval } from './kong-approval-fixture';
+import { runSlowPortApproval } from './image-approval-fixture';
 import {
   approvalFixture,
   MemoryKong,
@@ -14,6 +15,72 @@ test('artifact approval owns the verdict and cleans the approved platform image 
     status: 'approved',
     evidence: { platform: 'linux/arm64', elapsedMs: 0 },
   });
+  expect(fixture.state.cleaned).toBe(true);
+  expect(fixture.state.running).toBe(false);
+});
+
+test('artifact approval accepts a slow Docker port inspection within the readiness window', async () => {
+  const result = await runSlowPortApproval();
+  expect(result.code, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    verdict: { status: 'approved' },
+    cleaned: true,
+  });
+}, 15_000);
+
+test('one-shot inspections share the remaining window while readiness probes keep their per-attempt cap', async () => {
+  const fixture = approvalFixture();
+  fixture.state.startDelay = 5000;
+  const timeouts: number[] = [];
+  const inspect = (timeout: number) => {
+    timeouts.push(timeout);
+    fixture.clock.elapsed += Math.min(3000, timeout);
+    if (timeout < 3000) throw new Error('Inspection timed out');
+  };
+  fixture.runtime.publishedPorts = (timeout) => {
+    inspect(timeout);
+    return Promise.resolve('');
+  };
+  fixture.runtime.hostReachable = (timeout) => {
+    inspect(timeout);
+    return Promise.resolve(false);
+  };
+  const probe = fixture.runtime.probe;
+  const probes: number[] = [];
+  fixture.runtime.probe = (path, timeout) => {
+    probes.push(timeout);
+    return probe(path, timeout);
+  };
+  expect(await approveArtifact(fixture)).toMatchObject({
+    status: 'approved',
+    evidence: { elapsedMs: 11_000 },
+  });
+  expect(timeouts).toEqual([55_000, 52_000]);
+  expect(probes).toEqual([2000, 2000]);
+  expect(fixture.state.cleaned).toBe(true);
+});
+
+test('one-shot inspections cannot extend an exhausted readiness window', async () => {
+  const fixture = approvalFixture();
+  fixture.state.startDelay = 59_000;
+  let hostChecks = 0;
+  let probes = 0;
+  fixture.runtime.publishedPorts = (timeout) => {
+    fixture.clock.elapsed += timeout;
+    return Promise.reject(new Error('Port inspection timed out'));
+  };
+  fixture.runtime.hostReachable = () => {
+    hostChecks++;
+    return Promise.resolve(false);
+  };
+  fixture.runtime.probe = () => {
+    probes++;
+    return Promise.resolve(fixture.state.http);
+  };
+  expect(await approveArtifact(fixture)).toMatchObject({ status: 'rejected' });
+  expect(fixture.clock.now()).toBe(60_000);
+  expect(hostChecks).toBe(0);
+  expect(probes).toBe(0);
   expect(fixture.state.cleaned).toBe(true);
   expect(fixture.state.running).toBe(false);
 });
