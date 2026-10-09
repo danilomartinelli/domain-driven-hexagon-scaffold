@@ -456,6 +456,7 @@ export function operationsPromotion({
         if (signal.aborted) {
           record.status = 'interrupted';
           if (
+            target.declaration.persistence &&
             record.verification.outcome === 'not-started' &&
             record.migration.completedAt === null
           ) {

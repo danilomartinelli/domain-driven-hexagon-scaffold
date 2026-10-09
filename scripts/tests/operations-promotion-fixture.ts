@@ -113,6 +113,10 @@ else if (args[0] === 'ps') {
   console.log(JSON.stringify({image: service.image, process: 'running'}));
 } else if (args[0] === 'compose') {
   const command = args[args.indexOf('--file') + 2];
+  if (command === control.composeSignal?.command && args.includes(control.composeSignal.service)) {
+    process.kill(process.ppid, control.composeSignal.signal);
+    await Bun.sleep(30_000);
+  }
   if (command === 'up') {
     if (args.at(-1).startsWith('postgres-')) save('database.json', 'running');
     if (args.at(-1) === 'gateway') {

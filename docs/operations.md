@@ -353,10 +353,12 @@ steps. Changed capabilities/routes appear in `plan`; this bounded updater reject
 them instead of silently discarding state. Apply them through a
 [reviewed plan](#apply-a-reviewed-plan).
 
-A signal records `interrupted` consistently in the Transition, its migration
-outcome and the Applied state; topology Promotions also record the same status in
-their deployment step. Completed migrations remain committed during an interrupted
-verification and Continuation does not repeat them.
+A signal records `interrupted` in the Transition and, for topology Promotions,
+in its deployment step. An interruption before verification marks unfinished
+migration work as `interrupted` in the Transition and Applied state only when
+persistence is enabled. Nonpersistent Candidates retain `not-applicable` without
+adding migration evidence to the Applied state. Completed migrations remain
+committed during interrupted verification, and Continuation does not repeat them.
 
 A failed migration exits nonzero, records a failed transition and migration outcome
 and leaves the prior image applied with its server stopped. It never promotes the

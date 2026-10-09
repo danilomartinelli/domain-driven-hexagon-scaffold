@@ -717,6 +717,68 @@ function promotionCase() {
 }
 
 for (const kind of ['apply', 'update', 'rollback'] as const) {
+  for (const command of kind === 'apply' ? ['stop', 'up', 'run'] : ['stop']) {
+    test(`${kind} preserves non-persistent migration evidence when interrupted during ${command}`, async () => {
+      const before = {
+        image: digest('user', 'a'),
+        declaration: declaration('user', {
+          persistence: false,
+          messaging: false,
+          exposure: false,
+        }),
+      };
+      const target = {
+        image: digest('user', 'b'),
+        declaration: { ...before.declaration, messaging: command !== 'stop' },
+        migrations: [],
+      };
+      const fixture = promotionFixture(installation([before]), {
+        https: undefined,
+        applications: [target],
+      });
+      try {
+        fixture.save('control.json', {
+          composeSignal: {
+            command,
+            service: command === 'up' ? 'rabbitmq' : 'app-user',
+            signal: 'SIGTERM',
+          },
+        });
+        const result = await fixture.promote(kind, target);
+        expect(result.code, result.stderr).toBe(143);
+        expect(fixture.transitions()).toMatchObject([
+          {
+            status: 'interrupted',
+            migration: { outcome: 'not-applicable', completedAt: null },
+            verification: { outcome: 'not-started' },
+          },
+        ]);
+        expect(fixture.state().applied.applications[0]).toEqual(before);
+        const preview = await fixture.ops('plan');
+        expect(preview.code, preview.stderr).toBe(0);
+        const plan = JSON.parse(preview.stdout) as DeploymentPlan;
+        expect(plan.applied.applications[0].migration).toBe('unrecorded');
+        expect(plan.migrations).toEqual([]);
+        expect(
+          fixture.calls().some((args) => args.includes('migration:up')),
+        ).toBe(false);
+        if (kind === 'apply') {
+          const deployment = fixture.deployment(
+            fixture.state().pendingDeployment ?? 'missing',
+          );
+          expect(
+            deployment.steps.find((step) => step.kind === 'promote')?.status,
+          ).toBe('interrupted');
+          expect(deployment.attempts.at(-1)?.outcome).toBe('interrupted');
+        }
+      } finally {
+        fixture.cleanup();
+      }
+    });
+  }
+}
+
+for (const kind of ['apply', 'update', 'rollback'] as const) {
   for (const [signal, code] of [
     ['SIGINT', 130],
     ['SIGTERM', 143],
