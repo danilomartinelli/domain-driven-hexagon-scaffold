@@ -222,7 +222,6 @@ export class RabbitUserCommandConsumer {
       { ...data, id: randomUUID(), eventId, createdAt },
       { correlationId, causationId: commandId, timestamp: createdAt.getTime() },
     );
-    signal.throwIfAborted();
     const response: UserCreateResponse = {
       type: 'user.create.result',
       version: 1,
