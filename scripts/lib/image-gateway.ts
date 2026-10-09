@@ -6,7 +6,7 @@ import {
   type EnvironmentManifest,
 } from '../../database/environment';
 import { runCommand } from './command';
-import { gatewayConfiguration } from './gateway';
+import { gatewayConfiguration, gatewayNames } from './gateway';
 
 const entity = z.looseObject({ id: z.string(), name: z.string() });
 const collection = z.object({
@@ -92,28 +92,15 @@ export async function privateImageGateway(
   };
   const read = async (path: string): Promise<unknown> =>
     (await request(path)).json();
-  const config = JSON.parse(gatewayConfiguration(manifest, true)) as {
-    upstreams: {
-      healthchecks: {
-        active: { healthy: { http_statuses?: number[] } };
-        passive?: unknown;
-      };
-    }[];
-  };
-  for (const upstream of config.upstreams) {
-    upstream.healthchecks.active.healthy.http_statuses = [200];
-    upstream.healthchecks.passive = {
-      healthy: { successes: 0 },
-      unhealthy: { http_failures: 0, tcp_failures: 0, timeouts: 0 },
-    };
-  }
+  const config = gatewayConfiguration(manifest, true, undefined, 'approval');
   await request('/config', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ config: JSON.stringify(config) }),
+    body: JSON.stringify({ config }),
   });
   const routes = app.exposure ? (app.routes ?? []) : [];
-  const upstreamName = `app-${app.name}`;
+  const namesFor = gatewayNames(app, manifest.applicationPorts[app.name]);
+  const upstreamName = namesFor.upstream;
   let observed:
     { target: string; address: string; unhealthy: boolean } | undefined;
   let recovered = false;
@@ -121,10 +108,15 @@ export async function privateImageGateway(
     const services = collection.parse(await read('/services')).data;
     const installed = collection.parse(await read('/routes')).data;
     const upstreams = collection.parse(await read('/upstreams')).data;
-    const names = routes.map((route) => `${app.name}--${route.name}`).sort();
-    for (const [kind, entries] of [
-      ['services', services],
-      ['routes', installed],
+    const serviceNames = routes
+      .map((route) => namesFor.routes[route.name].service)
+      .sort();
+    const routeNames = routes
+      .map((route) => namesFor.routes[route.name].route)
+      .sort();
+    for (const [kind, entries, names] of [
+      ['services', services, serviceNames],
+      ['routes', installed, routeNames],
     ] as const)
       if (!isDeepStrictEqual(entries.map((entry) => entry.name).sort(), names))
         throw new Error(`Kong installed ${kind} do not match declared routing`);
@@ -136,11 +128,13 @@ export async function privateImageGateway(
     )
       throw new Error('Kong installed upstreams do not match exposure');
     for (const route of routes) {
-      const name = `${app.name}--${route.name}`;
-      const service = services.find((entry) => entry.name === name);
+      const name = namesFor.routes[route.name].route;
+      const service = services.find(
+        (entry) => entry.name === namesFor.routes[route.name].service,
+      );
       const installedRoute = installed.find((entry) => entry.name === name);
       z.object({
-        host: z.literal(upstreamName),
+        host: z.literal(namesFor.privateHost),
         port: z.literal(manifest.applicationPorts[app.name]),
         protocol: z.literal('http'),
         path: z.literal(route.upstreamPath ?? null),
@@ -216,8 +210,7 @@ export async function privateImageGateway(
         throw new Error('Kong requires exactly the selected artifact target');
       const [target] = targets;
       if (
-        target.target !==
-          `${upstreamName}:${String(manifest.applicationPorts[app.name])}` ||
+        target.target !== namesFor.target ||
         target.data.addresses.length !== 1
       )
         throw new Error(
