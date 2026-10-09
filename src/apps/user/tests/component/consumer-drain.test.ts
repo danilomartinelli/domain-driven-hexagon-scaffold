@@ -11,10 +11,10 @@ for (const shutdown of [false, true]) {
       await stopUser();
       const worker = startConsumerWorker('past-deadline');
       await withCleanup(async () => {
-        await worker.waitFor('User command consumer connected.');
+        await worker.waitFor('consumer.connected');
         await send(channel, replies, baseline);
         await worker.waitFor('CHECKPOINT:past-deadline');
-        await worker.waitFor('User command delivery failed;', 20000);
+        await worker.waitFor('consumer.failed', 20000);
         if (shutdown) worker.process.kill('SIGTERM');
         await Bun.sleep(750);
         if (shutdown) expect(worker.output()).not.toContain('CONSUMER:stopped');

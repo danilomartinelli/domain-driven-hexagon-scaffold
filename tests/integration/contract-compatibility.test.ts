@@ -91,7 +91,7 @@ async function inspect(additive = false) {
 
 test('retained v1 outbox and failures survive independent compatible protocol implementation transitions', async () => {
   assertTestEnvironment();
-  await until(() => wallet.output.includes('Wallet messaging connected.'));
+  await until(() => wallet.output.includes('consumer.connected'));
   await user.stop();
   await getTestDatabase().query(sql.unsafe`
     INSERT INTO user_outbox (event_id, envelope)
@@ -126,7 +126,7 @@ test('retained v1 outbox and failures survive independent compatible protocol im
       messageId: retained.eventId,
       correlationId: retained.correlationId,
       headers: {
-        'x-failure-reason': 'baseline-fixture-quarantine',
+        'failure-reason': 'baseline-fixture-quarantine',
         trace: 'retained-trace',
       },
     };
@@ -198,7 +198,7 @@ test('retained v1 outbox and failures survive independent compatible protocol im
     await wallet.stop();
     expect((await channel.checkQueue(failureQueue)).messageCount).toBe(3);
     await wallet.start(consumerPreload);
-    await until(() => wallet.output.includes('Wallet messaging connected.'));
+    await until(() => wallet.output.includes('consumer.connected'));
     await observe(await create('both-additive@example.com'));
     // Roll User back independently: missing optional fields remain accepted.
     await user.stop();

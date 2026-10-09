@@ -121,7 +121,11 @@ test('eligible retained copies replay unchanged only to Wallet and repeated repl
       persistent: true,
       messageId: 'replay-message',
       correlationId: 'replay-correlation',
-      headers: { trace: 'original-trace' },
+      headers: {
+        trace: 'original-trace',
+        'wallet-failure-reason': 'legacy-rejection',
+        'x-failure-reason': 'older-rejection',
+      },
     };
     channel.sendToQueue('wallet.user-created.failed', Buffer.from('{skip'), {
       persistent: true,
@@ -160,7 +164,11 @@ test('eligible retained copies replay unchanged only to Wallet and repeated repl
       messageId: 'replay-message',
       correlationId: 'replay-correlation',
       deliveryMode: 2,
-      headers: { trace: 'original-trace' },
+      headers: {
+        trace: 'original-trace',
+        'wallet-failure-reason': 'legacy-rejection',
+        'x-failure-reason': 'older-rejection',
+      },
     });
     channel.nack(delivered, false, true);
     await startWallet();

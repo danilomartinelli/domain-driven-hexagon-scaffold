@@ -105,7 +105,7 @@ test('invalid payloads, unsupported commands and missing reply metadata are reta
         deliveryMode: 2,
         headers: {
           'producer-note': 'preserved',
-          'user-command-failure-reason':
+          'failure-reason':
             index === bodies.length - 1
               ? 'invalid-command-properties'
               : 'invalid-or-unsupported-user-create',
@@ -129,7 +129,7 @@ test('outbox failure rolls back User and leaves the command unacknowledged for r
     await owner.query('REVOKE INSERT ON user_outbox FROM user_runtime');
     await withCleanup(async () => {
       await send(channel, replies, baseline);
-      await until(() => userOutput().includes('User command delivery failed;'));
+      await until(() => userOutput().includes('consumer.failed'));
       await stopUser();
       expect((await owner.query('SELECT * FROM users')).rows).toEqual([]);
       expect((await owner.query('SELECT * FROM user_outbox')).rows).toEqual([]);
@@ -191,7 +191,7 @@ test('consumer reconnects after unavailable startup and disconnect while HTTP an
             .expect(200)
         ).body,
       ).toMatchObject({ data: { findUsers: { count: 0 } } });
-      await until(() => userOutput().includes('User commands reconnect in'));
+      await until(() => userOutput().includes('consumer.retry'));
       expect(await channel.get(replies, { noAck: true })).toBe(false);
       gate.allow();
       await expectCreatedReply('startup recovery', replies);
@@ -225,7 +225,7 @@ test('publisher and APIs continue while command topology fails; consumer recover
     await channel.deleteExchange('user.commands');
     await channel.assertExchange('user.commands', 'fanout', { durable: true });
     await startUser({ RABBITMQ_PORT: String(brokerOptions.port) });
-    await until(() => userOutput().includes('User commands reconnect in'));
+    await until(() => userOutput().includes('consumer.retry'));
     await channel.assertQueue('wallet.user-created', { durable: true });
     await channel.purgeQueue('wallet.user-created');
     await getHttpServer()
@@ -238,9 +238,7 @@ test('publisher and APIs continue while command topology fails; consumer recover
       ) as unknown,
     ).toHaveProperty('type', 'user.created');
     await channel.deleteExchange('user.commands');
-    await until(() =>
-      userOutput().includes('User command consumer connected.'),
-    );
+    await until(() => userOutput().includes('consumer.connected'));
     await send(channel, replies, baseline);
     expect(
       JSON.parse(
@@ -248,9 +246,7 @@ test('publisher and APIs continue while command topology fails; consumer recover
       ) as unknown,
     ).toHaveProperty('result.id');
     await channel.deleteQueue('user.create');
-    await until(
-      () => userOutput().split('User command consumer connected.').length >= 3,
-    );
+    await until(() => userOutput().split('consumer.connected').length >= 3);
     await send(channel, replies, {
       ...baseline,
       data: { ...baseline.data, email: 'after-cancellation@example.com' },
@@ -315,15 +311,11 @@ test.each(['open', 'closed'] as const)(
 
 test('an unroutable failure copy is retried instead of discarding the invalid command', async () => {
   await withCommands(async (channel, replies) => {
-    await until(() =>
-      userOutput().includes('User command consumer connected.'),
-    );
+    await until(() => userOutput().includes('consumer.connected'));
     await channel.deleteQueue('user.create.failed');
     const invalid = { ...baseline, version: 99 };
     await send(channel, replies, invalid);
-    await until(
-      () => userOutput().split('User command consumer connected.').length >= 3,
-    );
+    await until(() => userOutput().split('consumer.connected').length >= 3);
     expect(
       (await receive(channel, 'user.create.failed')).content.toString(),
     ).toBe(JSON.stringify(invalid));

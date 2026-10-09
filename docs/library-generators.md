@@ -140,7 +140,7 @@ src/apps/telemetry/
   composition/app.module.ts   # registered factories and readiness probes
   database/                   # persistence: runtime pool module and migrations/README.md
   application/message-handler.ts  # messaging: plain handler port and explicit identity
-  adapters/                   # messaging transport and exposure's GraphQL status
+  adapters/                   # messaging consumer and exposure's GraphQL status
   tests/unit/                 # infrastructure-free native tests
   tests/component/            # separately selected live tests
 ```
@@ -169,7 +169,7 @@ separately in the gateway. Without exposure, `/graphql` does not exist.
 With messaging, HTTP health endpoints work with the broker down; RabbitMQ
 reconnects with bounded exponential delay. Invalid or unsupported envelopes are
 confirmed into `<queue>.failed` before acknowledgement, preserving available
-identity, content metadata, headers and an `x-failure-reason`. Handlers return a
+identity, content metadata, headers and an `failure-reason`. Handlers return a
 permanent `{ accepted: false, reason }` rejection or throw for a transient retry.
 Timed-out operations remain tracked until they settle, before this instance
 reconnects or finishes draining. Use atomic idempotency for redelivery across

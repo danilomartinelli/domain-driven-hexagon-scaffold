@@ -42,7 +42,7 @@ function publicationFailures(): Record<string, unknown>[] {
     .slice(0, -1)
     .filter((line) => line.trim())
     .map((line) => z.record(z.string(), z.unknown()).parse(JSON.parse(line)))
-    .filter((record) => record.operation === 'outbox.failed');
+    .filter((record) => record.operation === 'publisher.failed');
 }
 
 async function withBroker(
@@ -76,7 +76,7 @@ async function pending(): Promise<boolean> {
 async function startConnected(port = String(options.port)): Promise<void> {
   await stopUser();
   await startUser({ RABBITMQ_PORT: port });
-  await until(() => userOutput().includes('User publisher connected.'));
+  await until(() => userOutput().includes('Publisher connected.'));
 }
 
 async function take(channel: Channel): Promise<GetMessage> {
@@ -134,9 +134,10 @@ test.each(['connection', 'selection'] as const)(
       for (const record of failures) {
         expect(record).toMatchObject({ level: 'warn', service: 'user' });
         expect(record.message).toEqual(
-          expect.stringContaining('User publication uncertain'),
+          expect.stringContaining('Publisher failed.'),
         );
-        expect(record.error).toHaveProperty('message');
+        expect(record.errorType).toEqual(expect.any(String));
+        expect(record).not.toHaveProperty('error');
         expect(record).not.toHaveProperty('eventId');
         expect(record).not.toHaveProperty('correlationId');
       }
@@ -162,7 +163,7 @@ test('a mandatory routing return leaves committed work pending even when the bro
       'user.created.v1',
     );
     await getHttpServer().post('/v1/users').send(profile).expect(201);
-    await until(() => userOutput().includes('publication uncertain'));
+    await until(() => userOutput().includes('Publisher failed.'));
     await stopUser();
     expect(await pending()).toBe(true);
     expect((await channel.checkQueue('wallet.user-created')).messageCount).toBe(
@@ -189,7 +190,7 @@ test.each(['timeout', 'shutdown'] as const)(
         expect(await pending()).toBe(true);
         const original = await take(channel);
         if (interruption === 'timeout')
-          await until(() => userOutput().includes('publication uncertain'));
+          await until(() => userOutput().includes('Publisher failed.'));
         await stopUser();
         expect(await pending()).toBe(true);
         expect(gate.attempts()).toBeLessThanOrEqual(2);
@@ -209,7 +210,7 @@ test('broker success followed by a failed completion write retains work and perm
     await withCleanup(async () => {
       await startConnected();
       await getHttpServer().post('/v1/users').send(profile).expect(201);
-      await until(() => userOutput().includes('publication uncertain'));
+      await until(() => userOutput().includes('Publisher failed.'));
       await stopUser();
       expect(await pending()).toBe(true);
       original = await take(channel);
@@ -217,9 +218,7 @@ test('broker success followed by a failed completion write retains work and perm
       expect(failures.length).toBeGreaterThan(0);
       for (const record of failures)
         expect(record).toMatchObject({
-          message: expect.stringContaining(
-            'User publication uncertain',
-          ) as unknown,
+          message: expect.stringContaining('Publisher failed.') as unknown,
           eventId: original.properties.messageId as unknown,
           correlationId: original.properties.correlationId as unknown,
         });

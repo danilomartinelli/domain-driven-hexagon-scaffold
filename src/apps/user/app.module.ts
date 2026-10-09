@@ -118,8 +118,8 @@ const parts = composeApplication<ModuleMetadata>(
           database: async () => {
             await pool.query(sql.unsafe`SELECT id FROM users LIMIT 0`);
           },
-          consumer: () => consumer.diagnostics.snapshot(),
-          publisher: () => publisher.diagnostics.snapshot(),
+          consumer: () => consumer.snapshot(),
+          publisher: () => publisher.snapshot(),
           backlog: () => new SlonikUserOutbox(pool).backlog(),
         }),
       inject: [DATABASE_POOL, RabbitUserCommandConsumer, RabbitOutboxPublisher],

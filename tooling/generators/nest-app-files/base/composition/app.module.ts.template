@@ -94,14 +94,14 @@ const messaging = declaration.messaging ? await import('../adapters/rabbitmq.tra
         pool?: DatabasePool,
 //#endif
 //#if messaging
-        transport?: RabbitTransport,
+        consumer?: RabbitTransport,
 //#endif
       ) => new ServiceHealth(declaration, {
 //#if persistence
         ...(pool ? { database: async () => { const { sql } = await import('slonik'); await pool.query(sql.unsafe`SELECT 1`); } } : {}),
 //#endif
 //#if messaging
-        ...(transport ? { consumer: () => transport.diagnostics.snapshot() } : {}),
+        ...(consumer ? { consumer: () => consumer.snapshot() } : {}),
 //#endif
       }),
     },
@@ -109,9 +109,9 @@ const messaging = declaration.messaging ? await import('../adapters/rabbitmq.tra
 })
 //#if messaging
 export class AppModule implements OnApplicationBootstrap, BeforeApplicationShutdown {
-  constructor(@Optional() @Inject(MESSAGING_TRANSPORT) private readonly transport?: RabbitTransport) {}
-  onApplicationBootstrap(): void { this.transport?.start(); }
-  async beforeApplicationShutdown(): Promise<void> { await this.transport?.stop(); }
+  constructor(@Optional() @Inject(MESSAGING_TRANSPORT) private readonly consumer?: RabbitTransport) {}
+  onApplicationBootstrap(): void { this.consumer?.start(); }
+  async beforeApplicationShutdown(): Promise<void> { await this.consumer?.stop(); }
 }
 //#else
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest requires a decorated module class.

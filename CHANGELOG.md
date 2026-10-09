@@ -7,6 +7,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Changed
 
+- User, Wallet and generated consumers share `@starter/rabbitmq/consumer`; the
+  User outbox publisher uses `@starter/rabbitmq/publisher`. Both roles expose
+  readiness through `snapshot()`; the diagnostics entry point is now private.
+  Retention now uses `failure-reason`, `original-exchange`,
+  `original-routing-key` and `original-redelivered`, replacing the
+  `user-command-*`, `wallet-*` and `x-failure-reason` schemas. Already retained
+  deliveries keep their old headers; inspection and replay remain compatible.
+  `command.*`, `wallet.event.failed` and `wallet.event.retained` lifecycle logs
+  now use `consumer.*`, with service, queue, identity and error class only.
+  `outbox.connected` and `outbox.failed` become `publisher.connected` and
+  `publisher.failed`; `outbox.confirmed` and `outbox.published` stay unchanged.
+  See the [messaging contracts](docs/rabbitmq.md) for the operation names and drain semantics.
+
 - Compose operations treat `deployment.json` as the desired selection for an
   installation's lifetime. `state.json` (version 2) records applied images with
   separate migration and startup outcomes and the retained owned resources; version 1
@@ -32,9 +45,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Fixed
 
-- Unify Candidate Promotion so interrupted updates retain consistent evidence,
-  older images require compatibility-reviewed rollback, and User/Wallet consumers
-  keep timed-out transactions in flight through reconnect and shutdown.
+- Unify Candidate Promotion so interrupted updates retain consistent evidence
+  and older images require compatibility-reviewed rollback.
+- User and Wallet shutdown and reconnection now await accepted handlers even
+  after delivery deadlines expire; the outer 15-second shutdown bound remains.
 
 - Keep timed-out generated message handlers tracked through drain, retain permanent payload rejections and preserve failure metadata.
 - Expose parallel Nx runner validation as an uncached focused target and run it in CI.

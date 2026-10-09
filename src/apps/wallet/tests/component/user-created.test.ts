@@ -45,7 +45,7 @@ test('a confirmed RabbitMQ event eventually creates a zero-balance Wallet throug
 test('concurrent deliveries across consumers create one Wallet and never replace its existing balance', async () => {
   const worker = startConsumerWorker();
   await withCleanup(async () => {
-    await worker.waitFor('Wallet messaging connected.');
+    await worker.waitFor('consumer.connected');
     await withBroker(async (channel) => {
       for (let i = 0; i < 12; i++) {
         await publish(
@@ -175,7 +175,7 @@ test('an unroutable failure publication does not ACK the source and recovers thr
       if (!failure) throw new Error('Missing retained delivery');
       expect(failure.content.toString()).toBe(body);
       expect(failure.properties.headers).toMatchObject({
-        'wallet-original-redelivered': true,
+        'original-redelivered': true,
       });
       channel.ack(failure);
       expect(await channel.get(destination.queue, { noAck: false })).toBe(
@@ -192,8 +192,9 @@ test('broker authentication failure logs its diagnostic while HTTP remains avail
   await stopWallet();
   await startWallet({ RABBITMQ_PASSWORD: 'invalid-test-password' });
   await eventually(() => {
-    expect(walletOutput()).toContain('Wallet messaging unavailable');
-    expect(walletOutput()).toContain('ACCESS_REFUSED');
+    expect(walletOutput()).toContain('consumer.unavailable');
+    expect(walletOutput()).toContain('errorType');
+    expect(walletOutput()).not.toContain('ACCESS_REFUSED');
     return Promise.resolve();
   }, 2_000);
   expect(
@@ -221,7 +222,7 @@ test('a database failure preserves oversized envelope identities when AMQP prope
           .map((line) =>
             z.record(z.string(), z.unknown()).parse(JSON.parse(line)),
           )
-          .filter((record) => record.operation === 'wallet.event.failed');
+          .filter((record) => record.operation === 'consumer.failed');
         expect(failures.length).toBeGreaterThan(0);
         for (const record of failures) {
           expect(record).toMatchObject({
@@ -229,10 +230,10 @@ test('a database failure preserves oversized envelope identities when AMQP prope
             messageId: eventId,
             correlationId,
           });
-          expect(record.error).toHaveProperty(
-            'cause.constraint',
-            'test_reject_wallet',
+          expect(record.errorType).toBe(
+            'CheckIntegrityConstraintViolationError',
           );
+          expect(record).not.toHaveProperty('error');
         }
         return Promise.resolve();
       }, 2_000);
@@ -282,8 +283,11 @@ test('a database failure logs its diagnostic and delivery identity, rolls back a
         correlationId: 'correlation-retry',
       });
       await eventually(() => {
-        expect(walletOutput()).toContain('Wallet delivery failed');
-        expect(walletOutput()).toContain('test_reject_wallet');
+        expect(walletOutput()).toContain('consumer.failed');
+        expect(walletOutput()).toContain(
+          'CheckIntegrityConstraintViolationError',
+        );
+        expect(walletOutput()).not.toContain('test_reject_wallet');
         expect(walletOutput()).toContain('delivery-retry');
         expect(walletOutput()).toContain('correlation-retry');
         return Promise.resolve();
@@ -383,7 +387,7 @@ test.each(['before-commit', 'after-commit'])(
     await stopWallet();
     const worker = startConsumerWorker(phase);
     await withCleanup(async () => {
-      await worker.waitFor('Wallet messaging connected.');
+      await worker.waitFor('consumer.connected');
       await withBroker(async (channel) => {
         const body = userCreated('event-crash', 'user-crash');
         await publish(channel, body);
@@ -507,8 +511,8 @@ test('invalid and unsupported messages are durably retained unchanged and do not
       expect(failure.properties.expiration).toBeUndefined();
       expect(failure.properties.headers).toMatchObject({
         traceparent: 'original-trace',
-        'wallet-failure-reason': 'invalid-or-unsupported-user-created',
-        'wallet-original-routing-key': 'user.created.v1',
+        'failure-reason': 'invalid-or-unsupported-user-created',
+        'original-routing-key': 'user.created.v1',
       });
       channel.ack(failure);
     }

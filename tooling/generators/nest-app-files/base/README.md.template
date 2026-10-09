@@ -96,7 +96,8 @@ environment; startup never migrates.
 
 Register message handlers in a group factory's `providers`, then return their
 injection tokens in that factory's `handlers`. Declare `messaging` and any other
-required capability in the group registration. Each AMQP message uses a JSON
+required capability in the group registration. `@starter/rabbitmq/consumer` owns
+the adapter's sessions, confirmations, retention and drain. Each AMQP message uses a JSON
 `{ "pattern": "your.versioned.pattern", "data": ... }` envelope and nonempty AMQP
 `messageId` and `correlationId` properties. The adapter passes those identities
 explicitly to the handler. Resolve `undefined` after committing effects. Return
@@ -106,13 +107,13 @@ transient failures that should be retried.
 
 Invalid envelopes and rejected payloads are retained byte-for-byte in
 `<queue>.failed`, with publisher confirmation before ACK. Available identities,
-content metadata and headers are preserved independently; `x-failure-reason`
+content metadata and headers are preserved independently; `failure-reason`
 records `invalid-json`, `invalid-envelope`, `missing-identity`, `unknown-pattern`
 or the handler's rejection reason. Original expiration is omitted so inspection
 evidence survives. The retention log includes the same reason and identities.
 
 The 10-second handling deadline ends the AMQP session without acknowledging
-uncertain work. It cannot cancel application effects: the transport waits for
+uncertain work. It cannot cancel application effects: the consumer waits for
 the actual operation to settle before reconnecting or completing `stop()`.
 A stuck handler keeps this instance unavailable until it settles or the process
 is restarted. Other instances can receive redelivery after connection loss;

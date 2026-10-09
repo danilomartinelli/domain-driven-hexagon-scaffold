@@ -125,7 +125,7 @@ try {
 The consumer ACKs only after a local commit (or business rejection) and a
 routed, broker-confirmed response. Invalid commands receive no RPC response:
 the original bytes and identity/reply properties are copied persistently to
-`user.create.failed`, with `user-command-failure-reason` and original exchange /
+`user.create.failed`, with `failure-reason` and original exchange /
 routing-key headers. Expiration is omitted so inspection work is retained.
 Only a routed, confirmed failure copy permits acknowledgement of the original.
 There is no automatic consumer on the inspection queue.
@@ -149,14 +149,15 @@ Use the RabbitMQ management UI for the selected environment (its assigned
 management port is in the environment manifest). Inspect `user.create`,
 `user.create.failed` and the producer reply queue, including ready versus
 unacknowledged counts. For **Get messages**, select requeue to preserve evidence.
-Read `user-command-failure-reason`, `messageId`, `correlationId` and the original
+Read `failure-reason`, `messageId`, `correlationId` and the original
 bytes. Correct the producer contract before sending a new command; unsupported
 versions need a compatible consumer. Use the [failure-queue commands](failure-queues.md)
 for scoped local inspection and explicit replay with unchanged identity and reply routing.
 
-Logs distinguish `User command consumer connected`, `User command committed`,
+Logs distinguish `consumer.connected`, `user.create.committed`,
 business rejection, retained validation failure and delivery recovery. Publisher
-logs remain independent. Inspect `user_outbox.envelope` by `causationId` or
+logs remain independent; see the [shared lifecycle operations](rabbitmq.md#retention-and-logs).
+Inspect `user_outbox.envelope` by `causationId` or
 `correlationId` using User owner credentials; `published_at IS NULL` means
 pending publication, and a non-null value does not prove Wallet processing.
 

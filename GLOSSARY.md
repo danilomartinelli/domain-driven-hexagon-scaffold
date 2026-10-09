@@ -1,7 +1,7 @@
 # Domain-Driven Hexagon Scaffold
 
 This scaffold generates independent applications, demonstrated by the User and
-Wallet examples, and operates their single-host installations.
+Wallet examples and their messaging, and operates their single-host installations.
 
 ## Language
 
@@ -13,6 +13,26 @@ A profile identified by a unique email address, with an address and a role.
 **Wallet**:
 A balance associated with a user's identity. Each user has at most one wallet;
 the wallet can remain after the user profile is removed.
+
+### Messaging
+
+**Messaging role**:
+A RabbitMQ responsibility an application takes on: consumer or publisher.
+Readiness is judged separately for each role the application uses.
+_Avoid_: Worker, transport
+
+**Consumer**:
+The messaging role that receives deliveries addressed to an application's own queue.
+_Avoid_: Worker, transport, listener
+
+**Publisher**:
+The messaging role that sends an application's pending integration events to the broker.
+_Avoid_: Worker, transport
+
+**Failure queue**:
+A durable queue where an application keeps deliveries it could not accept,
+unchanged, for operator inspection and replay.
+_Avoid_: Dead-letter queue, DLQ
 
 ### Operations
 

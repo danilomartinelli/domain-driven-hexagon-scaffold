@@ -67,7 +67,7 @@ test('SIGTERM with a missing confirmation leaves publication durably pending wit
     expect(
       eventLogs(user).some(
         ({ operation, correlationId }) =>
-          operation === 'outbox.failed' &&
+          operation === 'publisher.failed' &&
           correlationId === 'confirmation-timeout',
       ),
     ).toBe(true);

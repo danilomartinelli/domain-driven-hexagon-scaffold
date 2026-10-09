@@ -1,7 +1,10 @@
-import { connect, type ConfirmChannel, type ConsumeMessage } from 'amqplib';
-import { setTimeout as delay } from 'node:timers/promises';
 import type { LoggerPort } from '@starter/core/logger';
-import { MessagingDiagnostics } from '@starter/rabbitmq/diagnostics';
+import {
+  RabbitConsumer,
+  type ConsumerContext,
+  type ConsumerOutcome,
+  type Delivery,
+} from '@starter/rabbitmq/consumer';
 import { z } from 'zod';
 import type { MessageHandler } from '../application/message-handler';
 
@@ -11,246 +14,73 @@ const identity = z.object({
   correlationId: z.string().min(1),
 });
 
-function logIdentity(message: ConsumeMessage): {
-  eventId?: string;
-  correlationId?: string;
-} {
-  const text = z.string().min(1);
-  const event = text.safeParse(message.properties.messageId);
-  const correlation = text.safeParse(message.properties.correlationId);
-  return {
-    ...(event.success ? { eventId: event.data } : {}),
-    ...(correlation.success ? { correlationId: correlation.data } : {}),
-  };
-}
-
-async function within<T>(
-  operation: Promise<T>,
-  milliseconds = 5_000,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => {
-          reject(new Error('Messaging operation timed out'));
-        }, milliseconds);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** HTTP startup does not await the broker. Failed work remains unacknowledged. */
-export class RabbitTransport {
-  readonly diagnostics = new MessagingDiagnostics();
-  private readonly shutdown = new AbortController();
-  private task?: Promise<void>;
-  private retryMs = 250;
-
+/** The shared consumer owns sessions, confirmations, retention and drain. */
+export class RabbitTransport extends RabbitConsumer {
   constructor(
-    private readonly config: { broker: string; queue: string },
-    private readonly handlers: readonly MessageHandler[],
-    private readonly logger: LoggerPort,
-  ) {}
-
-  start(): void {
-    this.task ??= this.run();
-  }
-
-  async stop(): Promise<void> {
-    this.diagnostics.unavailable();
-    this.shutdown.abort();
-    await this.task;
-  }
-
-  private async run(): Promise<void> {
-    const { signal } = this.shutdown;
-    while (!signal.aborted) {
-      try {
-        await this.session();
-      } catch {
-        // Connection errors may contain credentials. Log operation identity only.
-        this.logger.warn(
-          'Messaging unavailable; unacknowledged deliveries remain recoverable.',
-          {
-            service: '__name__',
-            operation: 'consumer.unavailable',
-          },
-        );
-      }
-      if (this.shutdown.signal.aborted) break;
-      this.diagnostics.retry(this.retryMs);
-      await delay(this.retryMs, undefined, { signal }).catch(() => undefined);
-      this.retryMs = Math.min(this.retryMs * 2, 10_000);
-    }
-  }
-
-  private async session(): Promise<void> {
-    const { signal } = this.shutdown;
-    const connection = await connect(this.config.broker, { timeout: 2_000 });
-    const ended = Promise.withResolvers<undefined>();
-    const inFlight = new Set<Promise<void>>();
-    const session = new AbortController();
-    const end = () => {
-      session.abort();
-      this.diagnostics.unavailable();
-      ended.resolve(undefined);
-    };
-    const drain = () => {
-      ended.resolve(undefined);
-    };
-    connection.on('error', end);
-    connection.on('close', end);
-    connection.on('blocked', () => {
-      this.diagnostics.setBlocked(true);
-    });
-    connection.on('unblocked', () => {
-      this.diagnostics.setBlocked(false);
-    });
-    signal.addEventListener('abort', drain, { once: true });
-    try {
-      signal.throwIfAborted();
-      const channel = await within(connection.createConfirmChannel());
-      channel.on('error', end);
-      channel.on('close', end);
-      channel.on('return', end);
-      await within(channel.assertQueue(this.config.queue, { durable: true }));
-      await within(
-        channel.assertQueue(`${this.config.queue}.failed`, { durable: true }),
-      );
-      await within(channel.prefetch(4));
-      const subscription = await within(
-        channel.consume(
-          this.config.queue,
-          (message) => {
-            if (!message) {
-              end();
-              return;
-            }
-            if (signal.aborted || session.signal.aborted) return;
-            const operation = this.process(channel, message);
-            const acknowledgement = within(operation, 10_000)
-              .then(() => {
-                if (!session.signal.aborted) {
-                  channel.ack(message);
-                  this.retryMs = 250;
-                }
-              })
-              .catch(() => {
-                // Handler errors can contain payloads or credentials; retain identity only.
-                this.logger.warn(
-                  'Message handling failed; delivery remains unacknowledged.',
-                  {
-                    service: '__name__',
-                    operation: 'consumer.failed',
-                    ...logIdentity(message),
-                  },
-                );
-                end();
-              });
-            // A deadline cannot cancel application effects. Keep the real operation
-            // in the drain set and finish it before this instance can reconnect.
-            const draining = Promise.allSettled([
-              operation,
-              acknowledgement,
-            ]).then(() => {
-              inFlight.delete(draining);
-            });
-            inFlight.add(draining);
-          },
-          { noAck: false },
-        ),
-      );
-      this.diagnostics.available(!signal.aborted && !session.signal.aborted);
-      await ended.promise;
-      if (signal.aborted && !session.signal.aborted) {
-        await within(channel.cancel(subscription.consumerTag));
-        await Promise.allSettled(inFlight);
-        await within(channel.close());
-      }
-    } finally {
-      end();
-      signal.removeEventListener('abort', drain);
-      await within(connection.close()).catch(() => undefined);
-      await Promise.allSettled(inFlight);
-    }
-  }
-
-  private async process(
-    channel: ConfirmChannel,
-    message: ConsumeMessage,
-  ): Promise<void> {
-    let body: unknown;
-    try {
-      body = JSON.parse(message.content.toString()) as unknown;
-    } catch {
-      await this.retain(channel, message, 'invalid-json');
-      return;
-    }
-    const parsed = envelope.safeParse(body);
-    if (!parsed.success) {
-      await this.retain(channel, message, 'invalid-envelope');
-      return;
-    }
-    const metadata = identity.safeParse(message.properties);
-    if (!metadata.success) {
-      await this.retain(channel, message, 'missing-identity');
-      return;
-    }
-    const handler = this.handlers.find(
-      (entry) => entry.pattern === parsed.data.pattern,
-    );
-    if (!handler) {
-      await this.retain(channel, message, 'unknown-pattern');
-      return;
-    }
-    const { messageId: eventId, correlationId } = metadata.data;
-    const rejection = await handler.handle(parsed.data.data, {
-      eventId,
-      correlationId,
-    });
-    if (rejection?.accepted === false) {
-      await this.retain(channel, message, rejection.reason);
-      return;
-    }
-    this.logger.log('Message handler completed.', {
+    config: { broker: string; queue: string },
+    handlers: readonly MessageHandler[],
+    logger: LoggerPort,
+  ) {
+    super({
+      connection: config.broker,
+      queue: config.queue,
+      failureQueue: `${config.queue}.failed`,
+      prefetch: 4,
+      deliveryDeadlineMs: 10_000,
       service: '__name__',
-      operation: 'consumer.completed',
-      eventId,
-      correlationId,
+      logger,
+      handler: (delivery, context) =>
+        dispatch(delivery, context, handlers, logger),
     });
   }
+}
 
-  private async retain(
-    channel: ConfirmChannel,
-    message: ConsumeMessage,
-    reason: string,
-  ): Promise<void> {
-    // Preserve bytes and available metadata. Expiration must not delete inspection evidence.
-    const properties = message.properties;
-    const text = (value: unknown) => {
-      const parsed = z.string().min(1).safeParse(value);
-      return parsed.success ? parsed.data : undefined;
-    };
-    channel.sendToQueue(`${this.config.queue}.failed`, message.content, {
-      persistent: true,
-      mandatory: true,
-      messageId: text(properties.messageId),
-      correlationId: text(properties.correlationId),
-      contentType: text(properties.contentType),
-      contentEncoding: text(properties.contentEncoding),
-      type: text(properties.type),
-      headers: { ...properties.headers, 'x-failure-reason': reason },
-    });
-    await within(channel.waitForConfirms());
-    this.logger.warn('Invalid or unsupported message retained.', {
-      service: '__name__',
-      operation: 'consumer.retained',
-      reason,
-      ...logIdentity(message),
-    });
+async function dispatch(
+  message: Delivery,
+  context: ConsumerContext,
+  handlers: readonly MessageHandler[],
+  logger: LoggerPort,
+): Promise<ConsumerOutcome> {
+  context.identify({
+    eventId:
+      typeof message.properties.messageId === 'string'
+        ? message.properties.messageId
+        : undefined,
+  });
+  let body: unknown;
+  try {
+    body = JSON.parse(message.content.toString()) as unknown;
+  } catch {
+    return { status: 'retained', reason: 'invalid-json' };
   }
+  const parsed = envelope.safeParse(body);
+  if (!parsed.success) {
+    return { status: 'retained', reason: 'invalid-envelope' };
+  }
+  const metadata = identity.safeParse(message.properties);
+  if (!metadata.success) {
+    return { status: 'retained', reason: 'missing-identity' };
+  }
+  const handler = handlers.find(
+    (entry) => entry.pattern === parsed.data.pattern,
+  );
+  if (!handler) {
+    return { status: 'retained', reason: 'unknown-pattern' };
+  }
+  const { messageId: eventId, correlationId } = metadata.data;
+  context.identify({ eventId, correlationId });
+  const rejection = await handler.handle(parsed.data.data, {
+    eventId,
+    correlationId,
+  });
+  if (rejection?.accepted === false) {
+    return { status: 'retained', reason: rejection.reason };
+  }
+  logger.log('Message handler completed.', {
+    service: '__name__',
+    operation: 'consumer.completed',
+    eventId,
+    correlationId,
+  });
+  return { status: 'completed' };
 }

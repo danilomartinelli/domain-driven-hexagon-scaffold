@@ -169,7 +169,7 @@ test('Wallet persistence failure preserves User and recovers without a partial W
   let id = '';
   await withCleanup(async () => {
     id = await create();
-    await until(() => wallet.output.includes('Wallet delivery failed'));
+    await until(() => wallet.output.includes('consumer.failed'));
     expect(
       await getTestDatabase().any(sql.unsafe`SELECT id FROM users`),
     ).toEqual([{ id }]);
@@ -248,7 +248,7 @@ test('publication completion failure duplicates delivery with stable identity an
   await withCleanup(async () => {
     id = await create();
     first = await observe(id);
-    await until(() => user.output.includes('publication uncertain'));
+    await until(() => user.output.includes('Publisher failed.'));
     await user.stop();
     expect(await published()).toBe(false);
   }, [
