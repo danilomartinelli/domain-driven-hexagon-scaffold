@@ -4,7 +4,6 @@
   "properties": {
     "name": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
       "$default": { "$source": "argv", "index": 0 },
       "description": "Unique application name under src/apps."
     },

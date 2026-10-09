@@ -8,6 +8,10 @@ import type { Options } from 'amqplib';
 import request from 'supertest';
 import { z } from 'zod';
 import {
+  environmentPrefix,
+  runtimeRole,
+} from '@starter/capabilities/declaration';
+import {
   assertTestEnvironment,
   readEnvironmentFile,
 } from '../../database/environment';
@@ -99,7 +103,7 @@ export async function withDistribution(
   const db = manifest.databases[0];
   const directory = mkdtempSync(join(tmpdir(), `starter-${app}-delivery-`));
   const artifact = join(directory, app);
-  const prefix = `${app.toUpperCase()}_`;
+  const prefix = `${environmentPrefix(app)}_`;
   const runtime: Record<string, string> = {
     PATH: process.env.PATH ?? '',
     NODE_ENV: 'production',
@@ -225,7 +229,7 @@ export async function withDistribution(
     expect(migrated, migrated.stderr).toMatchObject({ code: 0 });
     await image?.assertRuntimePrivileges();
     const denied = await migrate('up', {
-      [`${prefix}DB_MIGRATION_USERNAME`]: `${app}_runtime`,
+      [`${prefix}DB_MIGRATION_USERNAME`]: runtimeRole(app),
       [`${prefix}DB_MIGRATION_PASSWORD`]: runtime[`${prefix}DB_PASSWORD`],
     });
     expect(denied.code).toBe(1);

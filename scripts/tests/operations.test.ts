@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -20,7 +21,10 @@ import {
   stateSchema,
   type InstallationState,
 } from '../lib/operations-config';
-import { operationsCompose } from '../lib/operations-compose';
+import {
+  operationsCompose,
+  provisionDatabase,
+} from '../lib/operations-compose';
 import {
   deploymentPlan,
   matchesReviewedPlan,
@@ -60,6 +64,23 @@ function secretState(directory: string): InstallationState {
     retained: { databases: [] },
   };
 }
+
+test.each(['user', 'wallet', 'order-history'])(
+  'application contract names preserve installation output for %s',
+  (name) => {
+    const state = secretState('/fixture');
+    state.applied.applications[0].declaration.name = name;
+    const output = {
+      compose: operationsCompose(state, false),
+      provisioning: provisionDatabase(name),
+      inventory: retainResources(state, state.applied.applications),
+    };
+    // Freeze complete rendered settings, SQL and identities before centralizing names.
+    expect(
+      createHash('sha256').update(JSON.stringify(output)).digest('hex'),
+    ).toMatchSnapshot();
+  },
+);
 
 for (const [version, inconsistent] of [
   [1, false],

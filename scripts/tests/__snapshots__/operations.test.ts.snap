@@ -1,0 +1,7 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`application contract names preserve installation output for user 1`] = `"ec52c9d484a7f26475f5e51582cff2d9498571015edef188ec56cdfbedc18817"`;
+
+exports[`application contract names preserve installation output for wallet 1`] = `"87d541d12f3adf35fb206829f21f62e5373e7bc1000d73ebabb043b77d401b26"`;
+
+exports[`application contract names preserve installation output for order-history 1`] = `"d7da95f54f3b60f4ad7181876bde603d855bac994a5e0d16d85fe839e0bb3571"`;

@@ -121,6 +121,28 @@ User and Wallet own their image shutdown scenarios in these targets, with two
 sequential commands and separate disposable environments. Image-only cases skip
 on plain host distribution runs. The light CI image subset remains unchanged.
 
+## Owned identities and application contract names approved on 2026-10-09
+
+An application's environment prefix and runtime role are application contract names:
+one naming rule, owned by the declaration package and shared by the generator,
+artifacts and every environment. Artifacts and migration SQL embed the runtime role,
+so no installation or prepared environment may choose another one.
+
+Database, volume, service, owner role, secret and broker names are owned identities
+of one installation or prepared environment. They are derived once, when first
+provisioned, recorded in that inventory and read from it afterwards; they are never
+re-derived from a declaration. A later naming rule therefore applies only to new
+resources and cannot silently rename durable state.
+
+Existing naming differences are retained identities, not drift to correct. Prepared
+environments keep hyphenated database names and their superuser as migration
+identity, and development ones keep `<app>-postgres` volumes; the Compose reference
+keeps underscored database names, `postgres-<app>` volumes and a dedicated owner role.
+Renaming either side would orphan or migrate durable data. One module derives required
+services and process settings from either inventory; each environment still renders
+the deliberate differences recorded in the consequences above. Implementation is
+tracked separately and is not claimed by this section.
+
 ## Implementation status
 
 The identity and MIT metadata standardization and bounded rename command from

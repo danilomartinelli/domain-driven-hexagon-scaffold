@@ -113,3 +113,8 @@ export function environmentPrefix(name: string): string {
     throw new Error(`Invalid application name: ${name}`);
   return name.replaceAll('-', '_').toUpperCase();
 }
+
+/** `order-history` migrations grant privileges to `order_history_runtime`. */
+export function runtimeRole(name: string): string {
+  return `${environmentPrefix(name).toLowerCase()}_runtime`;
+}
