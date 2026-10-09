@@ -284,9 +284,9 @@ test('publisher failure identity follows each claim and retry backoff resets onl
   );
 }, 30_000);
 
-test('a confirmed claim completed after broker loss resets reconnection backoff', async () => {
+test('a confirmed claim completed after broker loss clears failure identity and resets reconnection backoff', async () => {
   await withRabbitmq(
-    async ({ gate, connection, queue, exchange, logger, roles }) => {
+    async ({ gate, connection, queue, exchange, logger, records, roles }) => {
       const confirmed = Promise.withResolvers<undefined>();
       const finish = Promise.withResolvers<undefined>();
       let calls = 0;
@@ -301,7 +301,11 @@ test('a confirmed claim completed after broker loss resets reconnection backoff'
           calls++;
           if (calls === 1) throw new Error('Selection failed');
           if (calls !== 2) return false;
-          await publish({ body: Buffer.from('confirmed'), messageId: 'event' });
+          await publish({
+            body: Buffer.from('confirmed'),
+            messageId: 'event',
+            correlationId: 'trace',
+          });
           confirmed.resolve(undefined);
           await finish.promise;
           return true;
@@ -320,6 +324,13 @@ test('a confirmed claim completed after broker loss resets reconnection backoff'
           expect(publisher.snapshot().retries).toBe(2);
         });
         expect(publisher.snapshot().retryDelayMs).toBe(250);
+        const failures = records.filter(
+          (record) => record.operation === 'publisher.failed',
+        );
+        expect(failures).toHaveLength(2);
+        expect(failures[1]).not.toHaveProperty('eventId');
+        expect(failures[1]).not.toHaveProperty('messageId');
+        expect(failures[1]).not.toHaveProperty('correlationId');
         gate.allow();
         await eventually(() => {
           expect(publisher.snapshot().connected).toBe(true);

@@ -96,6 +96,7 @@ export class RabbitPublisher {
             type: publication.type,
           });
         });
+        identity = {};
         if (completed) session.completed();
         else
           await delay(250, undefined, { signal: session.accepting }).catch(
