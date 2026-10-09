@@ -17,6 +17,10 @@ import type { PlatformImageRuntime } from './artifact-approval/ports';
 
 /** Owns Docker placement and command containers for one exact platform image. */
 export interface DockerImageRuntime extends PlatformImageRuntime {
+  /** Capture shutdown diagnostics before the stopped container is removed. */
+  stop: (options?: {
+    captureLogs?: boolean;
+  }) => Promise<{ code: number; logs?: string }>;
   start: (
     timeout?: number,
     overrides?: Record<string, string>,
@@ -209,7 +213,7 @@ export function dockerImageRuntime(options: {
         .object({ status: z.number(), body: z.unknown() })
         .parse(JSON.parse(stdout));
     },
-    stop: async () => {
+    stop: async ({ captureLogs = false } = {}) => {
       if (!running) return { code: 0 };
       await successful(['docker', 'stop', '--time=20', name], 25_000);
       const code = Number(
@@ -223,10 +227,13 @@ export function dockerImageRuntime(options: {
           ])
         ).trim(),
       );
+      const logs = captureLogs
+        ? await command(['docker', 'logs', name])
+        : undefined;
       await removeOwnedContainer({ name, owner: manifest.owner });
       owned.delete(name);
       running = false;
-      return { code };
+      return { code, logs: logs ? logs.stdout + logs.stderr : undefined };
     },
     cleanup: () =>
       withCleanup(

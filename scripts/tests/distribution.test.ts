@@ -16,8 +16,41 @@ import { tcpGate } from './tcp-gate';
 import { withCleanup } from './cleanup';
 import { appWorkspace, generate, run } from './app-generator-fixture';
 import { withApp } from './app-runtime-fixture';
+import { runDistributionRuntimeProbe } from './distribution-runtime-fixture';
 
 const root = new URL('../../', import.meta.url).pathname;
+
+for (const app of ['user', 'wallet'] as const)
+  for (const platform of [undefined, '', 'linux/amd64'])
+    test(`distribution fixture ${app} uses a supplied image with ${platform === undefined ? 'absent' : platform || 'empty'} platform`, async () => {
+      const result = await runDistributionRuntimeProbe({
+        mode: 'selection',
+        app,
+        platform,
+      });
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        `Selected image sha256:${'a'.repeat(64)} on ${platform || `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`}`,
+      );
+      expect(result.stdout).not.toContain('Host package selected');
+    });
+
+for (const expectedExit of [0, [0, 1]])
+  test(`image shutdown includes application logs for unexpected exit with ${JSON.stringify(expectedExit)}`, async () => {
+    const result = await runDistributionRuntimeProbe({
+      mode: 'shutdown',
+      app: 'user',
+      expectedExit,
+    });
+    expect(result.code, result.stderr).toBe(0);
+    const observation = z
+      .object({ error: z.string(), removed: z.boolean() })
+      .parse(JSON.parse(result.stdout.trim().split('\n').at(-1) ?? ''));
+    expect(observation.removed).toBe(true);
+    expect(observation.error).toContain('shutdown drain started');
+    expect(observation.error).toContain('shutdown deadline exceeded');
+    expect(observation.error).toContain('7');
+  });
 
 for (const app of ['user', 'wallet'])
   for (const scenario of [

@@ -34,7 +34,7 @@ export async function imageRuntime(
   cwd: string,
 ): Promise<ImageRuntime> {
   const platform =
-    process.env.DDH_IMAGE_PLATFORM ??
+    process.env.DDH_IMAGE_PLATFORM ||
     `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`;
   const supplied = process.env.DDH_VALIDATED_IMAGE;
   if (supplied && !/^sha256:[a-f0-9]{64}$/.test(supplied))
@@ -84,10 +84,11 @@ export async function imageRuntime(
   return {
     url: `http://127.0.0.1:${String(manifest.gateway?.proxyPort)}`,
     stop: async (expectedExit: number | number[] = 0) => {
-      const stopped = await adapter.stop();
+      const stopped = await adapter.stop({ captureLogs: true });
       await adapter.cleanup();
       expect(
         Array.isArray(expectedExit) ? expectedExit : [expectedExit],
+        stopped.logs,
       ).toContain(stopped.code);
     },
     assertRuntimePrivileges: async () => {

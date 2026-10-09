@@ -158,7 +158,7 @@ export async function withDistribution(
           },
         );
   await withCleanup(async () => {
-    if (process.env.DDH_IMAGE_PLATFORM) {
+    if (process.env.DDH_VALIDATED_IMAGE || process.env.DDH_IMAGE_PLATFORM) {
       image = await imageRuntime(app, manifest, runtime, migration, directory);
     } else {
       const packaged = await runCommand(

@@ -90,6 +90,20 @@ For documentation-only changes, format the affected files, run `bun run check:do
 and verify changed commands. Targeted checks remain the development loop; see
 [developer checks](docs/developer-checks.md) for focused suites and the scope of each gate.
 
+Treat the light gate's three-minute budget as a hard limit: run it with a
+180-second deadline, interrupt it if that deadline expires, and report the
+unfinished check. Never run Docker, component, distribution, E2E, preservation
+or workspace mutation suites concurrently with it. Do not extend the deadline
+or start broader suites to compensate for a slow or failed light gate.
+
+For a localized fix, start with the regression that reproduces it and focused
+lint/types, then run the light gate. Broader validation is on demand or justified
+by a concrete behavior changed in the diff. A file under `scripts/` or an Nx
+affected-project list alone does not require every live suite. Explain the
+specific risk an additional suite covers, and run it separately from the light
+gate. Diagnostics-only and test-fixture changes do not automatically require
+the complete component, distribution or preservation suites.
+
 ### Review before commit
 
 Review the intended staged changes, including new files, before committing.
