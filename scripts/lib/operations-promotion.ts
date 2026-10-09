@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { withCleanup } from './cleanup';
-import { backupApplication } from './operations-backup';
+import type { InstallationRuntime } from './installation-runtime';
 import {
   readJson,
   writeJson,
@@ -15,17 +15,11 @@ import {
   type Transition,
 } from './operations-transition';
 import {
-  probeApplication,
+  verificationClock,
+  type VerificationClock,
   waitForCandidate,
   type ApplicationRuntime,
 } from './operations-verification';
-import {
-  provisionApplication,
-  verifyBrokerAccess,
-  refreshOperationsGateway,
-  type OperationsCommand,
-  type OneShot,
-} from './operations-services';
 
 export interface CompatibilityReview {
   application: string;
@@ -85,9 +79,8 @@ export function pendingCandidate(
 /** The only writer of Transitions and pending Candidates, using the existing operator primitives. */
 export function operationsPromotion({
   store,
-  compose,
-  execute,
-  oneShot,
+  runtime,
+  clock = verificationClock,
   signal,
   diagnostics,
 }: {
@@ -96,9 +89,8 @@ export function operationsPromotion({
     save: () => void;
     saveCompose: (state?: InstallationState) => void;
   };
-  compose: OperationsCommand;
-  execute: OperationsCommand;
-  oneShot: OneShot;
+  runtime: InstallationRuntime;
+  clock?: VerificationClock;
   signal: AbortSignal;
   diagnostics: { logPath: string };
 }): {
@@ -132,16 +124,6 @@ export function operationsPromotion({
     if (entry) Object.assign(entry, outcome);
     store.save();
   };
-  const migrate = (target: Artifact, command: 'up' | 'status') =>
-    oneShot(`migrate-${target.declaration.name}`, [
-      'run',
-      `migration:${command}`,
-    ]);
-  const provision = (application: string) =>
-    provisionApplication(compose, application);
-  const verifyBroker = (target: Artifact) =>
-    verifyBrokerAccess(oneShot, target);
-  const refreshGateway = () => refreshOperationsGateway(current, compose);
   const verifyCandidate = async (
     selected: Artifact,
     record: Transition,
@@ -161,15 +143,10 @@ export function operationsPromotion({
     });
     let observed: ApplicationRuntime | null = null;
     try {
-      const before = await probeApplication(selected, compose, execute);
+      const before = await runtime.observeCandidate(selected);
       if (before.process !== 'running' || before.image !== selected.image) {
         try {
-          await compose([
-            'up',
-            '-d',
-            '--no-deps',
-            `app-${selected.declaration.name}`,
-          ]);
+          await runtime.startCandidate(selected);
         } catch {
           // Docker may create a container before its client fails. Observe the
           // candidate through the same deadline before deciding whether to stop it.
@@ -180,62 +157,42 @@ export function operationsPromotion({
       // messaging remains degraded. A gateway failure must not skip candidate checks.
       let gatewayReady = true;
       try {
-        await refreshGateway();
+        await runtime.refreshGateway();
       } catch {
         gatewayReady = false;
       }
-      const runtime = await waitForCandidate(
-        selected,
-        compose,
-        execute,
+      const observation = await waitForCandidate(
+        () => runtime.observeCandidate(selected),
         (runtime) => {
           observed = runtime;
           record.runtime = runtime;
           writeJson(recordPath, record);
         },
         signal,
+        clock,
       );
-      if (runtime.process !== 'running' || runtime.http === 'not_ready') {
+      if (
+        observation.process !== 'running' ||
+        observation.http === 'not_ready'
+      ) {
         record.status = 'verification-failed';
         record.verification = {
           outcome: 'failed',
           reason:
-            runtime.process !== 'running' ? 'process-failed' : 'http-failed',
+            observation.process !== 'running'
+              ? 'process-failed'
+              : 'http-failed',
         };
-        // The application owns its 15-second shutdown; Compose grants 20 seconds.
         await withCleanup(
-          () =>
-            compose(
-              [
-                'logs',
-                '--no-color',
-                '--tail',
-                '200',
-                `app-${selected.declaration.name}`,
-              ],
-              15_000,
-              true,
-            ),
-          [
-            () =>
-              compose(
-                ['stop', '--timeout', '20', `app-${selected.declaration.name}`],
-                30_000,
-                true,
-              ),
-          ],
+          () => runtime.collectCandidateDiagnostics(selected.declaration.name),
+          [() => runtime.stopFailedCandidate(selected.declaration.name)],
         );
-        record.runtime = await probeApplication(
-          selected,
-          compose,
-          execute,
-          true,
-        );
+        record.runtime = await runtime.observeCandidate(selected, true);
         throw new Error(
           `Candidate stopped after verification deadline. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
         );
       }
-      if (runtime.http !== 'ready') {
+      if (observation.http !== 'ready') {
         record.verification.reason = 'http-unknown';
         throw new Error(
           `Candidate verification pending: HTTP probe unavailable. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
@@ -247,7 +204,7 @@ export function operationsPromotion({
           `Candidate verification pending: gateway unavailable. Diagnostic: ${diagnostics.logPath}`,
         );
       }
-      if (!['ready', 'not_applicable'].includes(runtime.messaging)) {
+      if (!['ready', 'not_applicable'].includes(observation.messaging)) {
         record.status = 'verification-pending';
         record.verification = {
           outcome: 'pending',
@@ -374,44 +331,26 @@ export function operationsPromotion({
           applied: { ...current.applied, applications: promoted() },
         });
         if (kind === 'apply' && target.declaration.persistence) {
-          await compose([
-            'up',
-            '-d',
-            '--wait',
-            '--wait-timeout',
-            '60',
-            `postgres-${application}`,
-          ]);
-          if (!previous?.declaration.persistence) await provision(application);
+          await runtime.startDatabase(application);
+          if (!previous?.declaration.persistence)
+            await runtime.provisionDatabase(application);
         }
         if (kind === 'apply' && target.declaration.messaging) {
-          await compose([
-            'up',
-            '-d',
-            '--wait',
-            '--wait-timeout',
-            '60',
-            'rabbitmq',
-          ]);
-          if (!brokerActive) await verifyBroker(target);
+          await runtime.startBroker();
+          if (!brokerActive) await runtime.verifyBroker(target);
         }
         if (target.declaration.persistence) {
-          record.migrationStatus = await migrate(target, 'status');
-          const unknown = [
-            ...record.migrationStatus.matchAll(/^missing file\t(.+)$/gm),
-          ].map(([, migration]) => migration);
+          const { evidence, unknown } = await runtime.inspectMigrations(target);
+          record.migrationStatus = evidence;
           if (kind !== 'rollback' && unknown.length)
             throw olderImageError(application, unknown);
         }
-        if (previous)
-          await compose(['stop', '--timeout', '20', `app-${application}`]);
+        if (previous) await runtime.stopApplication(application);
         if (target.declaration.persistence) {
           if (databaseExisted)
-            record.backup = await backupApplication(
-              current,
+            record.backup = await runtime.backup(
               previous?.declaration.persistence ? previous : target,
               join(directory, 'backups', `${application}-${id}.dump`),
-              compose,
             );
           if (kind === 'rollback') {
             record.status = 'compatibility-reviewed';
@@ -422,7 +361,7 @@ export function operationsPromotion({
             record.migration.outcome = 'running';
             writeJson(recordPath, record);
             try {
-              await migrate(target, 'up');
+              await runtime.migrate(target);
             } catch (error) {
               record.migration.outcome = failure();
               recordOutcome(application, {

@@ -6,7 +6,10 @@ import { applicationDeclarationSchema } from '@starter/capabilities/declaration'
 import { runCommand, type CommandResult } from './command';
 import { withCleanup } from './cleanup';
 import { operationsDiagnostics } from './operations-diagnostics';
-import { probeApplication } from './operations-verification';
+import {
+  probeApplication,
+  dockerInstallationRuntime,
+} from './operations-docker-runtime';
 import {
   deploymentRecordSchema,
   deploymentSteps,
@@ -717,9 +720,12 @@ export async function runOperations(args: string[]): Promise<void> {
         },
         saveCompose,
       },
-      compose,
-      execute,
-      oneShot,
+      runtime: dockerInstallationRuntime({
+        current,
+        compose,
+        execute,
+        oneShot,
+      }),
       signal: controller.signal,
       diagnostics,
     });
