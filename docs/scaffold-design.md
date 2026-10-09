@@ -429,8 +429,9 @@ Implementation must provide evidence of:
   migrated state. Verify explicit continuation, completed migrations not repeated,
   and no automatic image or database rollback.
 
-Use focused checks during implementation and the repository's full Docker-backed
-gate before declaring code ready, following [developer checks](developer-checks.md).
+Use focused checks during implementation and the repository's light pre-commit
+gate before declaring code ready; the full Docker-backed gate runs on demand,
+following [developer checks](developer-checks.md).
 Record local validation, remote CI, registry publication and actual deployment as
 separate results. No production environment or registry publication is performed
 by accepting this design.

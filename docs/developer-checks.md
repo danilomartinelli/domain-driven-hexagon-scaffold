@@ -4,7 +4,7 @@
 
 Use the Bun version pinned in `.bun-version` and install ripgrep (`rg`) and
 `make` on `PATH` (on macOS: `brew install ripgrep`; the Xcode command line tools
-supply `make`). The bounded search helper and its pre-commit tests require
+supply `make`). The bounded search helper and its `check:workspace` tests require
 ripgrep; the workflow guardrails dry-run the Makefile. Installation runs the `prepare`
 script to install Husky for this checkout. Confirm the installed tools before
 the first test, formatter or Nx task:
@@ -23,29 +23,32 @@ repeat it after dependency or lockfile changes.
 
 ## Gates
 
-Git commits run lint-staged with the
-existing Prettier configuration, then `check:code` (lint, types, architecture and
-core/package tests), then staged Markdown validation. When dependency manifests or Bun lockfiles are staged, the
-hook also audits them against the registry. The hook runs without Docker. A
-failure blocks the commit. The hook does not run Docker suites automatically.
+Git commits run lint-staged with the existing Prettier configuration, then the
+light gate, `check:light`: lint, types, architecture, core/package tests, staged
+Markdown validation and workflow guardrails. When dependency manifests or Bun
+lockfiles are staged, it also audits them against the registry. The light gate
+runs without Docker and must finish within three minutes; keep Docker suites and
+workspace mutation regressions out of it. A failure blocks the commit.
 
 Continuous integration runs `bun run check:ci` on pull requests and pushes to
 `master`: lint, types, architecture, unit tests, documentation, formatting and
-workflow guardrails, with a five-minute job limit. Native AMD64 and ARM64 OCI
-image checks run in parallel with it, with a fifteen-minute limit per architecture.
+workflow guardrails, with a five-minute job limit. Native AMD64 and ARM64 light OCI
+image checks (`test:images:light`: image build, the two reproduced
+publication-readiness defects and ordinary User OCI startup) run in parallel with
+it, with a fifteen-minute limit per architecture.
 The `check` job required by the `protect-master` ruleset is a one-minute result
 gate: it fails unless quality and both image architectures succeed, including
 when a dependency is cancelled or skipped. Queue time is outside job timeouts;
 the OCI exception determines the overall workflow duration.
 
-Expensive workspace mutation regressions (`check:workspace`) and Docker-backed
-runner lifecycle, [Compose operations](operations.md), distributed E2E, component
-and distribution suites run in the mandatory local `check:full` gate before commit.
+The `check:workspace` guardrail and mutation suites and the Docker-backed
+runner lifecycle, [Compose operations](operations.md), distributed E2E, component,
+distribution and image suites run in the local `check:full` gate, on demand.
 The lifecycle suite includes broker/gateway cleanup, parallel Nx application
 runners, environment preservation, declaration-selected topologies and private
 development watch/debugging. These suites remain available for focused feedback;
-they are no longer repeated as separate CI steps. Green CI is not evidence that
-the full local gate was executed.
+they are no longer repeated as separate CI steps. Neither the light gate nor
+green CI is evidence that the full local gate was executed.
 
 To collect evidence such as individual test names (for example the seven
 Gherkin cases), run `AGENT=0 bun run check:full`: Bun's
@@ -53,14 +56,16 @@ Gherkin cases), run `AGENT=0 bun run check:full`: Bun's
 failures and totals under coding agents. Live `run-many` scripts print every
 task's output, including each provisioned run's `Result:` line.
 
-Before committing code, configuration or dependency changes, and before declaring
-them ready, run `bun run check:full` (`make check`) with Docker running. Its scope
-is the suites below. Documentation-only changes
+Code, configuration and dependency changes require the light gate, which the
+pre-commit hook runs. Run `bun run check:full` (`make check`) with Docker running
+when you want the complete local evidence; it is not required before committing.
+Its scope is the suites below. Documentation-only changes
 require formatting of the affected files, `bun run check:docs`, and verification
 of changed commands. The focused commands below remain available during development.
 The [migration evidence map](migration-evidence.md) links each delivered
 requirement to the suites that exercise it.
 
+- **Light gate** (`bun run check:light`): Lint, types, architecture, unit tests, staged documentation references, staged dependency audit and workflow guardrails; the pre-commit gate, budgeted at three minutes
 - **Fast gate** (`bun run check`): Formatting, documentation references and `check:code`
 - **CI quality gate** (`bun run check:ci`): Lint, types, architecture, unit tests, documentation, formatting and workflow guardrails; excludes the expensive workspace mutation suite
 - **Full gate** (`bun run check:full`): Fast gate, conditional dependency audit, runner lifecycle tests, provisioned application E2E, service component suites isolated distribution verification and Linux image execution
@@ -147,8 +152,8 @@ application startup exercise independently built applications. Capability
 declaration changes also require `test-runner:test-selection`: these declarations
 are discovered from disk and their dependency is not represented by Nx imports.
 
-The complete `test:tooling` suite belongs to the full gate. This focused feedback
-precedes the full gate and does not replace it.
+The complete `test:tooling` suite belongs to the on-demand full gate. The light
+gate runs no Docker suites and does not replace this focused feedback.
 
 When changing application behavior, E2E coverage or runner code, run
 `bun run nx run test-runner:test-preservation` before staged review. This test
@@ -168,9 +173,11 @@ last output and the existing `run.log` path every 30 seconds. Timeout diagnostic
 name the command label and budget; arguments and environment values are omitted.
 
 Once focused checks pass, stage and format the intended changes, then complete
-both staged reviews and resolve their findings. Run the full gate above only
-after the final reviewed snapshot is ready. Changes after that gate require
-affected checks, another review and final validation of the new snapshot.
+both staged reviews and resolve their findings. Commit only the final reviewed
+snapshot; the pre-commit hook runs the light gate on it. Changes after that gate
+require affected checks, another review and final validation of the new snapshot.
+Run the full gate when the complete local evidence is wanted, after the final
+reviewed snapshot is ready.
 Operational guides describe test coverage without copying execution totals,
 so adding a regression does not
 require updating those guides unless the coverage changes.
@@ -253,8 +260,8 @@ The [quality reference](quality-reference.md) holds the background contracts beh
 these gates: documentation reference checks, workspace and dependency guardrails,
 compatible tooling versions, type and lint contracts, and architecture rules.
 
-Run every applicable check above, including the live suite, before declaring code
-ready. `bun run test`, `test:unit`, `test:watch` and `test:cov` run every project's
+Run the applicable focused checks above and the light gate before declaring code
+ready; the live suites run on demand. `bun run test`, `test:unit`, `test:watch` and `test:cov` run every project's
 unit suite. `test:debug` runs only User unit tests; use
 `bun run nx run <project>:test-debug` for another suite. Bare `bun test` retains its
 `src/packages/core/tests` default. The E2E preload is opt-in via the live commands. Nx orchestrates this baseline.

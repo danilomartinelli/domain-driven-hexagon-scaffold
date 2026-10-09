@@ -11,7 +11,8 @@ focused feedback. Use `bun run nx`; direct `npx nx` bypasses repository settings
 - Unit feedback: `bun run test:unit`, or an existing project's `test` target.
   Bare `bun test` only discovers `src/packages/core/tests`.
 - Code feedback: focused lint/typecheck targets and `bun run lint:boundaries`.
-- Final code validation: `bun run check:full`, with Docker running.
+- Final code validation: `bun run check:light`, which the pre-commit hook runs.
+  `bun run check:full` (Docker) runs the complete local suites on demand.
 - Documentation-only work: format changed files, run `bun run check:docs` and
   verify changed commands.
 - Live behavior: `bun run test:e2e` owns provision/migrate/seed/test/cleanup;
@@ -24,7 +25,7 @@ focused feedback. Use `bun run nx`; direct `npx nx` bypasses repository settings
 - Application or E2E changes: follow the preservation selection in
   [focused feedback](../../../docs/developer-checks.md#focused-feedback).
 
-Affected runs are focused feedback, not a replacement for the full gate. Use
+Affected runs are focused feedback, not a replacement for the light gate. Use
 `origin/master` as the comparison base and include unstaged/new files when that
 is the task's scope. Use `--skip-nx-cache` when fresh execution evidence is needed.
 Live targets are intentionally uncached. Use `&&` for sequential checks, or

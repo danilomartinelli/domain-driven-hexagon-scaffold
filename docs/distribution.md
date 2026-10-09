@@ -153,6 +153,7 @@ and immutable digests without deploying an environment.
 ```sh
 bun run test:images                         # execute both supported architectures
 bun run test:images --platform=linux/arm64   # one target for focused feedback
+bun run test:images:light                   # CI subset: build, reproduced defects, startup
 ```
 
 These uncached checks reuse the User/Wallet distribution fixtures with real
@@ -165,9 +166,9 @@ host architecture and native versus emulated execution.
 On 2026-10-05, User and Wallet executed on `linux/arm64` natively and
 `linux/amd64` through emulation on an ARM64 Docker host. Both exercised owned
 migration/status/rollback, REST/GraphQL, messaging and restart. The generated
-capability matrix also executed on both architectures. CI uses native Ubuntu runners
-for each architecture; a green build alone is not execution evidence. The full
-local gate includes both image execution paths.
+capability matrix also executed on both architectures. CI runs the light subset on
+native Ubuntu runners for each architecture; a green build alone is not execution
+evidence. The on-demand full local gate includes every image suite on both paths.
 
 ## Operate a Compose host
 

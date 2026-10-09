@@ -158,7 +158,8 @@ apply_patch hooks; format those paths explicitly before review.
 Run lint-staged before pinning the review snapshot as required by
 [code-review](../../.agents/skills/code-review/SKILL.md). Reviewers receive the same
 immutable comparison and return findings to the parent; formatting must finish
-before the snapshot is captured. Full code validation remains `bun run check:full`.
+before the snapshot is captured. The pre-commit hook then runs the light gate,
+`bun run check:light`; `bun run check:full` remains available on demand.
 
 Codex has no configured native LSP adapter. Its equivalent supports semantic
 definitions and references through the installed TypeScript language service:

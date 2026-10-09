@@ -16,6 +16,6 @@ Fixes #
 
 ## Checks
 
-- [ ] Code, configuration or dependency changes: `bun run check:full` passes
+- [ ] Code, configuration or dependency changes: `bun run check:light` passes (the pre-commit hook runs it)
 - [ ] Documentation-only changes: affected files are formatted, `bun run check:docs` passes and changed commands are verified
 - [ ] Documentation is updated for changed behavior or commands

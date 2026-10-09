@@ -20,17 +20,18 @@ validation steps apply to human contributors as well as coding agents.
 
 | Change                              | Before committing and opening a pull request                                    |
 | ----------------------------------- | ------------------------------------------------------------------------------- |
-| Code, configuration or dependencies | `bun run check:full` or `make check` (Docker must be running)                   |
+| Code, configuration or dependencies | `bun run check:light` (the pre-commit hook runs it on every commit)             |
 | Documentation only                  | Format the affected files, run `bun run check:docs` and verify changed commands |
 
-The pre-commit hook runs formatting, `check:code` and staged documentation
-checks, plus the dependency audit when dependency files are staged. It does not
-run Docker suites automatically: run the full local gate before committing code,
-configuration or dependency changes. Continuous integration runs `bun run check:ci`
-with a five-minute limit, alongside native OCI checks limited to fifteen minutes
-per architecture. The required `check` status waits for both. Workspace mutation,
-runner lifecycle, operations, E2E, component and distribution suites remain
-mandatory in the local full gate. See [developer checks](docs/developer-checks.md) for each suite.
+The pre-commit hook runs formatting and then `check:light`: lint, types,
+architecture, unit tests, staged documentation, the dependency audit when
+dependency files are staged and workflow guardrails, within a three-minute budget.
+It needs no Docker. Continuous integration runs `bun run check:ci` with a
+five-minute limit, alongside the light native OCI checks (`test:images:light`)
+limited to fifteen minutes per architecture. The required `check` status waits for both. The `check:workspace`
+guardrail and mutation suites, runner lifecycle, operations, E2E, component, distribution and image suites run
+on demand in the local full gate, `bun run check:full` or `make check` (Docker must
+be running). See [developer checks](docs/developer-checks.md) for each suite.
 
 ## Pull requests
 

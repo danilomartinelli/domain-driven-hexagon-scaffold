@@ -101,6 +101,17 @@ function resolvedProjects() {
   return projects;
 }
 
+/** Suites no automatic gate (hook or CI) runs; `check:full` runs them on demand. */
+const onDemandSuites = [
+  'check:workspace',
+  'test:tooling',
+  'test:operations',
+  'test:e2e',
+  'test:component',
+  'test:distribution',
+  'test:images',
+];
+
 /** Package scripts a command runs through `bun run <script>`, excluding the Nx wrapper. */
 function invokedScripts(
   packageScripts: Record<string, string>,
@@ -178,8 +189,14 @@ test('CI budgets quality and OCI separately and keeps the required check closed 
       ],
     },
   });
+  // CI runs the light image subset; check:full keeps every image suite.
   expect(images.steps.flatMap(({ run }) => run ?? '')).toContain(
-    'bun run test:images --platform=${{ matrix.platform }}',
+    'bun run test:images:light --platform=${{ matrix.platform }}',
+  );
+  const runner = (await resolvedProjects())['test-runner'].data.targets;
+  expect(runner?.['test-images-light']?.cache).toBe(false);
+  expect(runner?.['test-images-light']?.options?.command).toBe(
+    'bun scripts/test-images.ts --light',
   );
   expect(check['timeout-minutes']).toBe(1);
   expect(quality.needs).toBeUndefined();
@@ -217,6 +234,9 @@ test('CI budgets quality and OCI separately and keeps the required check closed 
   const commands = quality.steps.flatMap(({ run }) => run ?? '');
   expect(commands).toContain('bun run check:ci');
   const packageScripts = await readPackageScripts();
+  expect(packageScripts['test:images:light']).toBe(
+    'bun run nx run test-runner:test-images-light',
+  );
   const ci = commands.flatMap((command) =>
     invokedScripts(packageScripts, command).flatMap((script) =>
       reachable(packageScripts, script),
@@ -232,16 +252,7 @@ test('CI budgets quality and OCI separately and keeps the required check closed 
   ])
     expect(ci, suite).toContain(suite);
   const full = reachable(packageScripts, 'check:full');
-  for (const suite of [
-    'check:workspace',
-    'audit:changed',
-    'test:tooling',
-    'test:operations',
-    'test:e2e',
-    'test:component',
-    'test:distribution',
-    'test:images',
-  ]) {
+  for (const suite of [...onDemandSuites, 'audit:changed']) {
     expect(ci, suite).not.toContain(suite);
     expect(full, suite).toContain(suite);
   }
@@ -445,6 +456,26 @@ test('required native, component, system and distribution suites are not empty',
     ).not.toEqual([]);
   }
 }, 60_000);
+
+test('the pre-commit hook runs the light gate, which reaches no Docker or workspace mutation suite', async () => {
+  const hook = await Bun.file(join(root, '.husky/pre-commit')).text();
+  expect(hook.trim().split('\n')).toEqual([
+    'bun --bun lint-staged',
+    'bun run check:light',
+  ]);
+  const packageScripts = await readPackageScripts();
+  const light = reachable(packageScripts, 'check:light');
+  for (const suite of ['lint', 'typecheck', 'lint:boundaries', 'test:unit'])
+    expect(light, suite).toContain(suite);
+  // Documents and dependency manifests are validated as staged for the commit.
+  for (const command of [
+    'bun run check:docs --staged',
+    'bun run audit:changed --staged',
+    'bun test ./scripts/tests/workflow.test.ts',
+  ])
+    expect(packageScripts['check:light']).toContain(command);
+  for (const suite of onDemandSuites) expect(light, suite).not.toContain(suite);
+});
 
 test('editor tasks invoke existing package scripts', async () => {
   const tasks = z

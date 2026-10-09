@@ -165,8 +165,10 @@ operator actions.
 
 ## Evidence boundaries
 
-`check:full` and CI execute local images on both architectures, including one/all
-discovery with generated applications and a deliberate startup failure. Workflow
+`check:full` executes local images on both architectures, including one/all
+discovery with generated applications and a deliberate startup failure. CI runs
+the light image subset: image build, the two reproduced readiness defects and
+ordinary startup. Workflow
 checks cover the manual trigger, validation barrier, package permission and
 absence of deployment commands. Registry-boundary tests exercise rejection and
 write ordering with a test double; they do not prove GHCR publication or visibility.

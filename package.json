@@ -37,6 +37,7 @@
     "prepare": "husky",
     "check:code": "bun run check:workspace && bun run lint && bun run typecheck && bun run lint:boundaries && bun run test:unit",
     "check": "bun run check:code && bun run check:docs && bun run format:check",
+    "check:light": "bun run lint && bun run typecheck && bun run lint:boundaries && bun run test:unit && bun run check:docs --staged && bun run audit:changed --staged && bun test ./scripts/tests/workflow.test.ts",
     "check:ci": "bun run lint && bun run typecheck && bun run lint:boundaries && bun run test:unit && bun run check:docs && bun run format:check && bun test ./scripts/tests/workflow.test.ts",
     "check:full": "bun run check && bun run audit:changed && bun run test:tooling && bun run test:operations && bun run test:e2e && bun run test:component && bun run test:distribution && bun run test:images",
     "migration:create": "bun run nx run database:migration-create",
@@ -71,6 +72,7 @@
     "env:inspect": "bun --no-env-file scripts/environment-cli.ts inspect",
     "image:build": "bun --no-env-file scripts/image.ts",
     "test:images": "bun run nx run test-runner:test-images",
+    "test:images:light": "bun run nx run test-runner:test-images-light",
     "ops": "bun --no-env-file scripts/operations.ts",
     "test:operations": "bun run nx run test-runner:test-operations"
   },

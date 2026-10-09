@@ -181,8 +181,9 @@ image before application-owned scenarios. It validates capability-aware readines
 installed routing and observed Kong target recovery within a shared 60-second
 window. Public-command OCI regressions cover custom routes, retained/empty routing,
 consumer/publisher roles, unavailable dependencies, invalid responses, gateway
-faults and deadline enforcement. The required image gate runs these checks on
-Linux AMD64 and ARM64; ordinary startup remains separate from approval, preserving
+faults and deadline enforcement. CI's light image gate runs both reproduced-defect
+regressions on native Linux AMD64 and ARM64, and the on-demand full image suite
+runs every case; ordinary startup remains separate from approval, preserving
 HTTP and durable messaging during broker outages. See the
 [publication contract](../publication.md#validation-and-artifact-transfer).
 This implementation does not establish registry publication or deployment.

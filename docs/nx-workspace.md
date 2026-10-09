@@ -216,6 +216,7 @@ bun run nx graph --file=.context/project-graph.json
 bun run nx run core:test
 bun run nx run user:typecheck
 bun run check
+bun run check:light
 bun run check:full
 ```
 
@@ -232,6 +233,7 @@ bun run check:full
 | `test:e2e`, `test:e2e:prepared`                                          | `e2e:e2e`, `e2e:e2e-prepared`                                                              |
 | `test:distribution`                                                      | Both applications’ uncached `test-distribution` targets                                    |
 | `test:images`                                                            | `test-runner:test-images`; execute the independent Linux artifacts on both architectures   |
+| `test:images:light`                                                      | `test-runner:test-images-light`; CI subset: build, reproduced readiness defects, startup   |
 | `test:component`                                                         | Every `test-component` target (`generators`, `user` and `wallet`)                          |
 | `test:tooling`                                                           | `test-runner:test-live`                                                                    |
 | `test:operations`                                                        | `test-runner:test-operations`; Compose bootstrap, planning, updates, rollback and recovery |
@@ -265,7 +267,7 @@ targets or workspace fixtures; the full local runner lifecycle suite includes it
 
 `bun run nx run test-runner:test-broker` runs the pinned-image healthcheck and
 container-ownership regressions without provisioning application databases.
-This uncached subset is included in the mandatory local `test:tooling` gate.
+This uncached subset is included in the on-demand local `test:tooling` suite.
 `bun run nx run test-runner:test-gateway` selects the existing environment tests
 for loaded gateway upstreams, target overrides, occupied proxy/Admin ports and
 failed-setup cleanup. This uncached subset runs locally; `test:tooling`
