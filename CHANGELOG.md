@@ -32,6 +32,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Fixed
 
+- Unify Candidate Promotion so interrupted updates retain consistent evidence,
+  older images require compatibility-reviewed rollback, and User/Wallet consumers
+  keep timed-out transactions in flight through reconnect and shutdown.
+
 - Keep timed-out generated message handlers tracked through drain, retain permanent payload rejections and preserve failure metadata.
 - Expose parallel Nx runner validation as an uncached focused target and run it in CI.
 

@@ -6,26 +6,30 @@ import { applicationDeclarationSchema } from '@starter/capabilities/declaration'
 import { runCommand, type CommandResult } from './command';
 import { withCleanup } from './cleanup';
 import { operationsDiagnostics } from './operations-diagnostics';
-import {
-  probeApplication,
-  waitForCandidate,
-  type ApplicationRuntime,
-} from './operations-verification';
-import {
-  transitionSchema,
-  unverified,
-  type Transition,
-} from './operations-transition';
+import { probeApplication } from './operations-verification';
 import {
   deploymentRecordSchema,
   deploymentSteps,
   deploymentSummary,
   requiresGatewayReload,
   type DeploymentRecord,
-  type DeploymentStep,
 } from './operations-deployment';
 import { verifyEnvironmentOwnership } from './ownership';
-import { operationsCompose, provisionDatabase } from './operations-compose';
+import { operationsCompose } from './operations-compose';
+import {
+  provisionApplication,
+  verifyBrokerAccess,
+  refreshOperationsGateway,
+} from './operations-services';
+import {
+  operationsPromotion,
+  pendingCandidate,
+  unknownMigrations,
+  olderImageError,
+  incompleteVerificationError,
+  IncompletePromotion,
+  type CompatibilityReview,
+} from './operations-promotion';
 import {
   appliedMigrations,
   assessRecovery,
@@ -42,7 +46,6 @@ import {
   newInstallation,
   readInstallation,
   readJson,
-  retainResources,
   sameHttps,
   sameImages,
   selectDesiredImage,
@@ -115,19 +118,6 @@ export async function runOperations(args: string[]): Promise<void> {
   // Recorded inventory, not the desired selection, identifies what commands operate.
   const installation = readInstallation(requestedDirectory);
   const directory = installation.directory;
-  const transitionPath = (id: string) =>
-    join(directory, `transition-${id}.json`);
-  const incompleteVerificationError = (application: string) =>
-    new Error(
-      `Continue or roll back ${application} before further promotions; verification is incomplete`,
-    );
-  const olderImageError = (
-    application: string,
-    migrations: readonly string[],
-  ) =>
-    new Error(
-      `${application}: its database already applied migrations unknown to the selected image (${migrations.join(', ')}); return to an older image only through the compatibility-reviewed rollback command`,
-    );
   const diagnostics = operationsDiagnostics(directory, action);
   const lock = join(directory, '.operation-lock');
   try {
@@ -465,7 +455,7 @@ export async function runOperations(args: string[]): Promise<void> {
       ),
     );
     for (const application of promoted)
-      if (state.pendingTransitions?.[application])
+      if (pendingCandidate(state, application))
         throw incompleteVerificationError(application);
     for (const { application, unknownToImage } of plan.migrations)
       if (promoted.has(application) && unknownToImage?.length)
@@ -494,13 +484,13 @@ export async function runOperations(args: string[]): Promise<void> {
         artifacts.push(await artifact(app, image));
       state = newInstallation(config.name, directory, artifacts, config.https);
     }
-    const pendingId = name ? state.pendingTransitions?.[name] : undefined;
-    const pendingPath = pendingId ? transitionPath(pendingId) : undefined;
-    const pending = pendingPath
-      ? transitionSchema.parse(readJson(pendingPath))
-      : undefined;
-    if (pending && ['update', 'start', 'migrate', 'restore'].includes(action))
-      throw incompleteVerificationError(pending.application);
+    const pendingId = name ? pendingCandidate(state, name) : undefined;
+    if (
+      pendingId &&
+      name &&
+      ['update', 'start', 'migrate', 'restore'].includes(action)
+    )
+      throw incompleteVerificationError(name);
     if (
       !name &&
       action === 'start' &&
@@ -509,11 +499,7 @@ export async function runOperations(args: string[]): Promise<void> {
       throw new Error(
         'Continue or roll back pending applications before starting the complete installation',
       );
-    if (
-      action === 'continue' &&
-      name &&
-      (!pending || name !== pending.application)
-    )
+    if (action === 'continue' && name && !pendingId)
       throw new Error('Select the application with a pending transition');
     if (action === 'continue' && !name && !state.pendingDeployment)
       throw new Error(
@@ -669,22 +655,10 @@ export async function runOperations(args: string[]): Promise<void> {
           },
         }),
       );
-    /** Create absent identities and verify every supplied password against retained ones. */
     const provision = (application: string) =>
-      compose([
-        'exec',
-        '-T',
-        `postgres-${application}`,
-        'sh',
-        '-ec',
-        provisionDatabase(application),
-      ]);
-    /** Authenticate with the server's own broker configuration; the password never reaches a command line. */
+      provisionApplication(compose, application);
     const verifyBroker = (messenger: Artifact) =>
-      oneShot(`app-${messenger.declaration.name}`, [
-        '-e',
-        "import {connect} from 'amqplib'; import {configurationValue} from '@starter/nest-support/configuration'; try { const c=await connect({hostname:process.env.RABBITMQ_HOST,port:5672,username:process.env.RABBITMQ_USERNAME,password:configurationValue('RABBITMQ_PASSWORD'),vhost:process.env.RABBITMQ_VHOST},{timeout:2000});await c.close(); } catch { process.exit(1); }",
-      ]);
+      verifyBrokerAccess(oneShot, messenger);
     const probe = async (selected: Artifact): Promise<string> =>
       compose([
         'exec',
@@ -734,193 +708,21 @@ export async function runOperations(args: string[]): Promise<void> {
         }),
       );
     };
-    const refreshGateway = async () => {
-      if (
-        current.applied.applications.some((entry) => entry.declaration.exposure)
-      )
-        await compose([
-          'up',
-          '-d',
-          '--no-deps',
-          '--force-recreate',
-          '--wait',
-          '--wait-timeout',
-          '60',
-          'gateway',
-        ]);
-    };
-    const verifyCandidate = async (
-      selected: Artifact,
-      record: Transition,
-      recordPath: string,
-    ) => {
-      record.status = 'verifying';
-      record.verification = { outcome: 'pending', reason: 'readiness' };
-      writeJson(recordPath, record);
-      recordOutcome(selected.declaration.name, {
-        startup: {
-          operation: record.action,
-          image: selected.image,
-          readiness: 'full',
-          result: 'pending',
-          at: now(),
+    const refreshGateway = () => refreshOperationsGateway(current, compose);
+    const promotion = operationsPromotion({
+      store: {
+        current,
+        save: () => {
+          writeJson(statePath, current);
         },
-      });
-      let observed: ApplicationRuntime | null = null;
-      try {
-        const before = await probeApplication(selected, compose, execute);
-        if (before.process !== 'running' || before.image !== selected.image) {
-          try {
-            await compose([
-              'up',
-              '-d',
-              '--no-deps',
-              `app-${selected.declaration.name}`,
-            ]);
-          } catch {
-            // Docker may create a container before its client fails. Observe the
-            // candidate through the same deadline before deciding whether to stop it.
-            record.error = `Candidate startup command failed; inspect ${diagnostics.logPath}`;
-          }
-        }
-        // Load ingress before the final readiness observation, including when
-        // messaging remains degraded. A gateway failure must not skip candidate checks.
-        let gatewayReady = true;
-        try {
-          await refreshGateway();
-        } catch {
-          gatewayReady = false;
-        }
-        const runtime = await waitForCandidate(
-          selected,
-          compose,
-          execute,
-          (runtime) => {
-            observed = runtime;
-            record.runtime = runtime;
-            writeJson(recordPath, record);
-          },
-          controller.signal,
-        );
-        if (runtime.process !== 'running' || runtime.http === 'not_ready') {
-          record.status = 'verification-failed';
-          record.verification = {
-            outcome: 'failed',
-            reason:
-              runtime.process !== 'running' ? 'process-failed' : 'http-failed',
-          };
-          // The application owns its 15-second shutdown; Compose grants 20 seconds.
-          await withCleanup(
-            () =>
-              compose(
-                [
-                  'logs',
-                  '--no-color',
-                  '--tail',
-                  '200',
-                  `app-${selected.declaration.name}`,
-                ],
-                15_000,
-                true,
-              ),
-            [
-              () =>
-                compose(
-                  [
-                    'stop',
-                    '--timeout',
-                    '20',
-                    `app-${selected.declaration.name}`,
-                  ],
-                  30_000,
-                  true,
-                ),
-            ],
-          );
-          record.runtime = await probeApplication(
-            selected,
-            compose,
-            execute,
-            true,
-          );
-          throw new Error(
-            `Candidate stopped after verification deadline. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
-          );
-        }
-        if (runtime.http !== 'ready') {
-          record.verification.reason = 'http-unknown';
-          throw new Error(
-            `Candidate verification pending: HTTP probe unavailable. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
-          );
-        }
-        if (!gatewayReady) {
-          record.verification.reason = 'gateway';
-          throw new Error(
-            `Candidate verification pending: gateway unavailable. Diagnostic: ${diagnostics.logPath}`,
-          );
-        }
-        if (!['ready', 'not_applicable'].includes(runtime.messaging)) {
-          record.status = 'verification-pending';
-          record.verification = {
-            outcome: 'pending',
-            reason: 'messaging-degraded',
-          };
-          throw new Error(
-            `Candidate HTTP remains available; messaging verification pending. Continue or roll back explicitly. Diagnostic: ${diagnostics.logPath}`,
-          );
-        }
-        record.status = 'verified';
-        record.verification = { outcome: 'verified', reason: '' };
-        record.error = '';
-        writeJson(recordPath, record);
-        if (current.pendingTransitions) {
-          current.pendingTransitions = Object.fromEntries(
-            Object.entries(current.pendingTransitions).filter(
-              ([application]) => application !== selected.declaration.name,
-            ),
-          );
-          if (!Object.keys(current.pendingTransitions).length)
-            delete current.pendingTransitions;
-        }
-        writeJson(join(directory, 'state.json'), current);
-        console.log(
-          `Transition verified: ${selected.declaration.name} ${selected.image}`,
-        );
-      } catch (error) {
-        if (record.status === 'verifying') {
-          record.status = 'verification-pending';
-          record.verification = {
-            outcome: 'pending',
-            reason: controller.signal.aborted
-              ? 'interrupted'
-              : record.verification.reason,
-          };
-        }
-        throw error;
-      } finally {
-        recordOutcome(selected.declaration.name, {
-          startup: {
-            operation: record.action,
-            image: selected.image,
-            readiness: 'full',
-            result: controller.signal.aborted
-              ? 'interrupted'
-              : record.verification.outcome === 'verified'
-                ? 'verified'
-                : record.verification.outcome === 'failed'
-                  ? 'failed'
-                  : 'pending',
-            at: now(),
-          },
-        });
-        record.attempts.push({
-          diagnostic: diagnostics.logPath,
-          runtime: observed,
-          ...record.verification,
-        });
-        writeJson(recordPath, record);
-      }
-    };
+        saveCompose,
+      },
+      compose,
+      execute,
+      oneShot,
+      signal: controller.signal,
+      diagnostics,
+    });
     const deploymentPath = (id: string) => join(directory, `apply-${id}.json`);
     const ownedLabels = [
       '--filter',
@@ -1003,190 +805,9 @@ export async function runOperations(args: string[]): Promise<void> {
         `app-${application}`,
         ...(entry.declaration.persistence ? [`postgres-${application}`] : []),
       ]);
-      // A reviewed removal withdraws, but keeps, an unverified candidate's record.
-      const withdrawn = current.pendingTransitions?.[application];
-      if (withdrawn) {
-        const path = transitionPath(withdrawn);
-        writeJson(path, {
-          ...transitionSchema.parse(readJson(path)),
-          status: 'withdrawn',
-          error:
-            'Removed by a reviewed topology deployment; durable state retained.',
-        });
-        const remaining = Object.entries(
-          current.pendingTransitions ?? {},
-        ).filter(([candidate]) => candidate !== application);
-        if (remaining.length)
-          current.pendingTransitions = Object.fromEntries(remaining);
-        else delete current.pendingTransitions;
-      }
+      promotion.withdraw(application);
       writeJson(statePath, current);
       saveCompose();
-    };
-    /**
-     * Provision, migrate and verify one added or changed application. A promoted
-     * candidate is only verified again; completed migrations are never repeated.
-     */
-    const promote = async (
-      deployment: DeploymentRecord,
-      step: DeploymentStep,
-      target: Artifact,
-    ) => {
-      const application = target.declaration.name;
-      const previous = current.applied.applications.find(
-        (entry) => entry.declaration.name === application,
-      );
-      const lastId = step.transitions.at(-1);
-      const pendingTransition = current.pendingTransitions?.[application];
-      if (pendingTransition && pendingTransition !== lastId)
-        throw incompleteVerificationError(application);
-      if (lastId) {
-        const lastPath = transitionPath(lastId);
-        const last = transitionSchema.parse(readJson(lastPath));
-        if (
-          previous?.image === target.image &&
-          last.candidateImage === target.image &&
-          ['completed', 'not-applicable'].includes(last.migration.outcome)
-        ) {
-          if (last.status !== 'verified')
-            await verifyCandidate(target, last, lastPath);
-          return;
-        }
-      }
-      const id = randomUUID();
-      const recordPath = transitionPath(id);
-      const record: Transition = {
-        action: 'apply',
-        application,
-        previousImage: previous?.image ?? null,
-        candidateImage: target.image,
-        compatibilityReview: null,
-        status: 'provisioning',
-        migrationStatus: '',
-        migration: {
-          outcome: target.declaration.persistence
-            ? 'not-started'
-            : 'not-applicable',
-          completedAt: null,
-        },
-        runtime: null,
-        verification: { outcome: 'not-started', reason: '' },
-        attempts: [],
-        backup: '',
-        error: '',
-        diagnostic: diagnostics.logPath,
-        deployment: deployment.id,
-      };
-      writeJson(recordPath, record);
-      step.transitions.push(id);
-      writeJson(deploymentPath(deployment.id), deployment);
-      let migration: AppliedApplication['migration'];
-      const promoted = (): AppliedApplication[] => {
-        const entry: AppliedApplication = {
-          ...previous,
-          ...target,
-          ...(migration ? { migration } : {}),
-        };
-        return previous
-          ? current.applied.applications.map((candidate) =>
-              candidate === previous ? entry : candidate,
-            )
-          : [...current.applied.applications, entry];
-      };
-      const databaseExisted = current.retained.databases.some(
-        (entry) => entry.application === application,
-      );
-      const brokerActive = current.applied.applications.some(
-        (entry) => entry.declaration.messaging,
-      );
-      await withCleanup(async () => {
-        try {
-          // Identities are recorded before their volumes exist, so a later
-          // failure cannot strand inspection, shutdown or reactivation.
-          current.retained = retainResources(current, [target]);
-          writeJson(statePath, current);
-          saveCompose({
-            ...current,
-            applied: { ...current.applied, applications: promoted() },
-          });
-          if (target.declaration.persistence) {
-            await compose([
-              'up',
-              '-d',
-              '--wait',
-              '--wait-timeout',
-              '60',
-              `postgres-${application}`,
-            ]);
-            if (!previous?.declaration.persistence)
-              await provision(application);
-          }
-          if (target.declaration.messaging) {
-            await compose([
-              'up',
-              '-d',
-              '--wait',
-              '--wait-timeout',
-              '60',
-              'rabbitmq',
-            ]);
-            if (!brokerActive) await verifyBroker(target);
-          }
-          if (target.declaration.persistence) {
-            record.migrationStatus = await migrate(target, 'status');
-            const unknown = [
-              ...record.migrationStatus.matchAll(/^missing file\t(.+)$/gm),
-            ].map(([, migration]) => migration);
-            if (unknown.length) throw olderImageError(application, unknown);
-          }
-          if (previous)
-            await compose(['stop', '--timeout', '20', `app-${application}`]);
-          if (target.declaration.persistence) {
-            if (databaseExisted)
-              record.backup = await backupApplication(
-                current,
-                previous?.declaration.persistence ? previous : target,
-                join(directory, 'backups', `${application}-${id}.dump`),
-                compose,
-              );
-            record.status = 'migrating';
-            record.migration.outcome = 'running';
-            writeJson(recordPath, record);
-            try {
-              await migrateUp(target, 'apply');
-            } catch (error) {
-              record.migration.outcome = failure();
-              throw error;
-            }
-            record.migration = { outcome: 'completed', completedAt: now() };
-            migration = {
-              operation: 'apply',
-              image: target.image,
-              result: 'committed',
-              at: record.migration.completedAt ?? now(),
-            };
-          }
-          record.status = 'promoting';
-          writeJson(recordPath, record);
-          current.applied.applications = promoted();
-          current.pendingTransitions ??= {};
-          current.pendingTransitions[application] = id;
-          writeJson(statePath, current);
-          await verifyCandidate(target, record, recordPath);
-        } catch (error) {
-          if (!unverified(record.status)) record.status = failure();
-          record.error =
-            'No automatic database reversal. Inspect status and retained transition evidence before recovery.';
-          throw error;
-        }
-      }, [
-        () => {
-          writeJson(recordPath, record);
-        },
-        () => {
-          saveCompose();
-        },
-      ]);
     };
     /**
      * Stop infrastructure the applied selection no longer derives, then reload
@@ -1264,7 +885,20 @@ export async function runOperations(args: string[]): Promise<void> {
                 ? artifacts.get(step.application)
                 : undefined;
               if (!target) throw new Error('Promotion has no desired image');
-              await promote(deployment, step, target);
+              const lastId = step.transitions.at(-1);
+              if (!lastId || !(await promotion.continue(target, lastId))) {
+                const id = randomUUID();
+                await promotion.promote({
+                  kind: 'apply',
+                  id,
+                  candidate: target,
+                  deployment: deployment.id,
+                  recordAttempt: (transitionId) => {
+                    step.transitions.push(transitionId);
+                    writeJson(path, deployment);
+                  },
+                });
+              }
               // Candidate verification reloads the gateway from the applied selection.
               deployment.gatewayReloadPending = false;
             } else {
@@ -1272,15 +906,8 @@ export async function runOperations(args: string[]): Promise<void> {
               deployment.gatewayReloadPending = false;
             }
           } catch (error) {
-            const lastId = step.transitions.at(-1);
-            const transition = lastId
-              ? transitionSchema.parse(readJson(transitionPath(lastId))).status
-              : '';
-            step.status = controller.signal.aborted
-              ? 'interrupted'
-              : unverified(transition)
-                ? transition
-                : 'failed';
+            step.status =
+              error instanceof IncompletePromotion ? error.status : failure();
             throw error;
           }
           step.status = 'completed';
@@ -1518,18 +1145,10 @@ export async function runOperations(args: string[]): Promise<void> {
     } else if (action === 'continue') {
       assessRecovery(directory, options.get('assessment'));
       const selected = requiredApp();
-      if (
-        !pending ||
-        !pendingPath ||
-        selected.image !== pending.candidateImage ||
-        !['completed', 'not-applicable', 'compatibility-reviewed'].includes(
-          pending.migration.outcome,
-        )
-      )
+      if (!(await promotion.continue(selected)))
         throw new Error(
           'Continuation requires the selected candidate and a confirmed migration outcome',
         );
-      await verifyCandidate(selected, pending, pendingPath);
       rmSync(join(directory, 'recovery.json'), { force: true });
     } else if (action === 'inspect' || action === 'replay') {
       const selected = requiredApp();
@@ -1603,7 +1222,7 @@ export async function runOperations(args: string[]): Promise<void> {
         throw new Error(
           'Capability/route changes require a separately planned resource transition; review them with plan. Image updates preserve the applied topology',
         );
-      let compatibilityReview: unknown = null;
+      let compatibilityReview: CompatibilityReview | undefined;
       if (action === 'rollback') {
         const file = options.get('compatibility');
         if (!file)
@@ -1629,6 +1248,21 @@ export async function runOperations(args: string[]): Promise<void> {
             'Database migration history changed since the compatibility review',
           );
       }
+      if (action === 'update' && candidate.declaration.persistence) {
+        const history = await appliedHistory(
+          current.project,
+          candidate.declaration.name,
+        );
+        const packaged = await packagedMigrations(
+          candidate.declaration.name,
+          candidate.image,
+        );
+        if (history) {
+          const unknown = unknownMigrations(history, packaged);
+          if (unknown.length)
+            throw olderImageError(candidate.declaration.name, unknown);
+        }
+      }
       // The request becomes desired before the environment changes; the applied
       // outcomes below, not this selection, record whether it succeeded.
       selectDesiredImage(
@@ -1636,104 +1270,16 @@ export async function runOperations(args: string[]): Promise<void> {
         previous.declaration.name,
         candidate.image,
       );
-      const id = randomUUID();
-      const recordPath = transitionPath(id);
-      const record: Transition = {
-        action,
-        application: previous.declaration.name,
-        previousImage: previous.image,
-        candidateImage: candidate.image,
-        compatibilityReview,
-        status: 'preparing',
-        migrationStatus: '',
-        migration: {
-          outcome: candidate.declaration.persistence
-            ? 'not-started'
-            : 'not-applicable',
-          completedAt: null,
-        },
-        runtime: null,
-        verification: { outcome: 'not-started', reason: '' },
-        attempts: [],
-        backup: '',
-        error: '',
-        diagnostic: diagnostics.logPath,
-      };
-      writeJson(recordPath, record);
-      const promoted = () =>
-        current.applied.applications.map((entry) =>
-          entry.declaration.name === previous.declaration.name
-            ? { ...entry, ...candidate }
-            : entry,
-        );
-      await withCleanup(async () => {
-        try {
-          saveCompose({
-            ...current,
-            applied: { ...current.applied, applications: promoted() },
-          });
-          if (candidate.declaration.persistence)
-            record.migrationStatus = await migrate(candidate, 'status');
-          // A short per-application maintenance window prevents writes during schema transition.
-          await compose([
-            'stop',
-            '--timeout',
-            '20',
-            `app-${previous.declaration.name}`,
-          ]);
-          if (candidate.declaration.persistence) {
-            record.backup = await backupApplication(
-              current,
-              previous,
-              join(
-                directory,
-                'backups',
-                `${previous.declaration.name}-${id}.dump`,
-              ),
-              compose,
-            );
-            record.status =
-              action === 'update' ? 'migrating' : 'compatibility-reviewed';
-            writeJson(recordPath, record);
-            if (action === 'update') {
-              record.migration.outcome = 'running';
-              writeJson(recordPath, record);
-              try {
-                await migrateUp(candidate, 'update');
-              } catch (error) {
-                record.migration.outcome = 'failed';
-                throw error;
-              }
-              record.migration = {
-                outcome: 'completed',
-                completedAt: new Date().toISOString(),
-              };
-            } else {
-              record.migration.outcome = 'compatibility-reviewed';
-            }
-          }
-          record.status = 'promoting';
-          writeJson(recordPath, record);
-          // Only successful migrations can select the candidate for application startup.
-          current.applied.applications = promoted();
-          current.pendingTransitions ??= {};
-          current.pendingTransitions[candidate.declaration.name] = id;
-          writeJson(join(directory, 'state.json'), current);
-          await verifyCandidate(candidate, record, recordPath);
-        } catch (error) {
-          if (!unverified(record.status)) record.status = 'failed';
-          record.error =
-            'No automatic database reversal. Inspect status and retained transition evidence before recovery.';
-          throw error;
-        }
-      }, [
-        () => {
-          writeJson(recordPath, record);
-        },
-        () => {
-          saveCompose();
-        },
-      ]);
+      const request = { id: randomUUID(), candidate };
+      if (action === 'rollback') {
+        if (!compatibilityReview)
+          throw new Error('Rollback requires a compatibility review');
+        await promotion.promote({
+          ...request,
+          kind: 'rollback',
+          compatibilityReview,
+        });
+      } else await promotion.promote({ ...request, kind: 'update' });
     } else {
       throw new Error('Operation is not implemented');
     }

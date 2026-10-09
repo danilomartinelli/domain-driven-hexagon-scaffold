@@ -10,7 +10,20 @@ export const transitionSchema = z.object({
   previousImage: imageDigest.nullable(),
   candidateImage: imageDigest,
   compatibilityReview: z.unknown(),
-  status: z.string(),
+  status: z.enum([
+    'preparing',
+    'provisioning',
+    'migrating',
+    'compatibility-reviewed',
+    'promoting',
+    'verifying',
+    'verified',
+    'verification-pending',
+    'verification-failed',
+    'failed',
+    'interrupted',
+    'withdrawn',
+  ]),
   migrationStatus: z.string(),
   migration: z.object({
     outcome: z.enum([

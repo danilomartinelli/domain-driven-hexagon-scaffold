@@ -44,7 +44,7 @@ const timestamp = z.iso.datetime();
 const appliedApplicationSchema = artifactSchema.extend({
   migration: z
     .strictObject({
-      operation: z.enum(['migrate', 'update', 'apply', 'restore']),
+      operation: z.enum(['migrate', 'update', 'rollback', 'apply', 'restore']),
       image: imageDigest,
       result: z.enum(['committed', 'restored', 'failed', 'interrupted']),
       at: timestamp,

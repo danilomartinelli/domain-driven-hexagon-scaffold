@@ -140,11 +140,8 @@ export class RabbitUserCommandConsumer {
                 return;
               }
               if (accepting.aborted) return;
-              const processing = within(
-                this.process(channel, message, signal),
-                signal,
-                15_000,
-              )
+              const operation = this.process(channel, message, signal);
+              const acknowledgement = within(operation, signal, 15_000)
                 .then(() => {
                   signal.throwIfAborted();
                   channel.ack(message);
@@ -164,11 +161,16 @@ export class RabbitUserCommandConsumer {
                     },
                   );
                   end();
-                })
-                .finally(() => {
-                  inFlight.delete(processing);
                 });
-              inFlight.add(processing);
+              // A deadline cannot cancel the transaction; retain both its work
+              // and acknowledgement until reconnect or shutdown can safely finish.
+              const draining = Promise.allSettled([
+                operation,
+                acknowledgement,
+              ]).then(() => {
+                inFlight.delete(draining);
+              });
+              inFlight.add(draining);
             },
             { noAck: false },
           );

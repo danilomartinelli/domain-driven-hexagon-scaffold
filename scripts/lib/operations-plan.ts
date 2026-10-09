@@ -8,6 +8,7 @@ import {
   type DeploymentConfig,
   type InstallationState,
 } from './operations-config';
+import { unknownMigrations } from './operations-promotion';
 
 /** A desired image after isolated inspection, with its packaged migrations in order. */
 export interface PlannedArtifact extends Artifact {
@@ -397,9 +398,7 @@ export function deploymentPlan(input: {
               image,
               history: 'read' as const,
               applicable: migrations.filter((name) => !history.includes(name)),
-              unknownToImage: history.filter(
-                (name) => !migrations.includes(name),
-              ),
+              unknownToImage: unknownMigrations(history, migrations),
             }
           : {
               application: declaration.name,

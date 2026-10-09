@@ -1157,6 +1157,20 @@ test('operators bootstrap digest-selected HTTPS applications and repeat preparat
           migration: { image: interruptedImage, result: 'interrupted' },
         });
         expect(desiredUser()).toBe(interruptedImage);
+        const transitions = readdirSync(fixture.directory)
+          .filter((file) => file.startsWith('transition-'))
+          .map((file) =>
+            transitionSchema.parse(
+              JSON.parse(readFileSync(join(fixture.directory, file), 'utf8')),
+            ),
+          )
+          .filter((record) => record.candidateImage === interruptedImage);
+        expect(transitions.length).toBeGreaterThan(0);
+        for (const transition of transitions)
+          expect(transition).toMatchObject({
+            status: 'interrupted',
+            migration: { outcome: 'interrupted', completedAt: null },
+          });
       } finally {
         if (updater.exitCode === null) updater.kill('SIGTERM');
         await updater.exited;
