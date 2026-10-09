@@ -15,13 +15,40 @@ code, creates handlers or substitutes business behavior.
 }
 ```
 
-At the composition boundary, pass these registrations to
-`composeApplication` from `@starter/capabilities/composition`, together with
-factories keyed by the same integration and group names. The generated
-`composition/app.module.ts` provides this structure. Each functionality factory
-returns Nest module metadata (`imports`, `providers`, `controllers`); generated
-messaging applications also accept `handlers`, the injection tokens of registered
-message handlers. Domain entities and use cases keep their plain TypeScript ports.
+At the composition boundary, import `composeApplicationModule` from
+`@starter/nest-support/composition` and call it with the application directory and
+`{ integrations, groups }` factories. It reads the
+application declaration and registrations once, checks compatibility and the exact
+factory binding through the framework-free `composeApplication`, then awaits the
+selected integrations followed by functionality groups. Factories may be synchronous
+or asynchronous and return Nest metadata (`imports`, `providers`, `controllers`).
+The generated `composition/app.module.ts` exports this dynamic module directly;
+User and Wallet import it into their own module, which retains their HTTP conventions.
+
+The persistence integration must return `database: { inject, useFactory }`, whose
+factory supplies an asynchronous database probe. This is required by its type and
+checked again during composition. User and Wallet query their owned tables to prove
+schema and runtime grants; the generated probe checks connectivity. Other parts
+cannot register a database probe. A part can register `consumer` and `publisher`
+provider tokens, and a `backlog: { inject, useFactory }` returning an asynchronous
+source of pending count and oldest age. Roles structurally supply `start()`,
+`stop()` and `snapshot()`; nest-support imports no RabbitMQ adapter.
+
+Composition rejects duplicate roles, messaging without a role (or a role without
+messaging) and a backlog without a publisher before any provider is instantiated.
+These are plain author errors; packaged preflight continues checking selections
+without loading Nest or factories. Register roles in the same part as their
+providers. Their readiness always comes from those instances; composition starts
+them in registration order and drains them in parallel, idempotently on close.
+
+Groups may declare `handlers`, the injection tokens of their message handlers.
+The shared `MESSAGE_HANDLERS` token supplies their instances to the consumer even
+though the messaging integration is composed before those groups. Handler types
+remain application-owned. The module mounts health endpoints and exports only
+`ApplicationReadiness` for injectable, read-only `snapshot()` access; probes,
+construction and lifecycle state are internal. Bootstrap calls `installShutdown(app)`
+from `@starter/nest-support/operations` with no callback. Domain entities and use
+cases keep their plain TypeScript ports.
 
 The complete selection and factory binding are checked before any factory runs.
 An enabled capability without a prepared integration fails with an instruction to
@@ -122,7 +149,9 @@ reviews separately.
 
 ## Executable evidence
 
-The distribution and generator suites execute real source and delivered startup,
+The nest-support in-process composition tests exercise health responses, rejected
+compositions, handler injection and role start/stop through the public entry in
+`test:unit` and the light gate. The distribution and generator suites execute real source and delivered startup,
 including TCP sentinels proving rejected configurations do not contact dependencies.
 The selection suite rejects incompatible Wallet changes while retaining existing
 inventory and durable work. The operations suite selects a deliberately

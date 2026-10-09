@@ -137,7 +137,7 @@ src/apps/telemetry/
   composition.json            # prepared integrations and functionality requirements
   main.ts                     # bootstrap and shared bounded shutdown
   configs/environment.ts      # TELEMETRY_* readers of enabled capabilities only
-  composition/app.module.ts   # registered factories and readiness probes
+  composition/app.module.ts   # author-owned integrations and functionality groups
   database/                   # persistence: runtime pool module and migrations/README.md
   application/message-handler.ts  # messaging: plain handler port and explicit identity
   adapters/                   # messaging consumer and exposure's GraphQL status
@@ -146,9 +146,14 @@ src/apps/telemetry/
 ```
 
 The private manifest has `exports: {}` and the project has `scope:telemetry` and
-`type:app` tags. No application becomes a shared library. Composition reads
-`application.json` and passes it to the shared readiness probes, which reject a
-declaration that does not match the supplied database and messaging probes.
+`type:app` tags. No application becomes a shared library. The root calls
+`composeApplicationModule` from `@starter/nest-support/composition`, which reads
+and checks the declaration and registrations once before evaluating factories.
+It owns the health endpoints, readiness and messaging-role lifecycle. The
+persistence factory requires a connectivity probe; the messaging factory lazily
+loads `RabbitMessageConsumer` from `adapters/rabbitmq.consumer.ts` and registers
+its provider token. The entry point calls `installShutdown(app)` without a callback.
+
 Business REST/GraphQL adapters, including the GraphQL module, are composed only
 while the declaration enables exposure.
 Liveness never probes dependencies. HTTP readiness considers the lifecycle and,
@@ -158,7 +163,9 @@ See [probe semantics](recovery.md#independent-operational-signals).
 
 Composition binds the functionality groups registered in `composition.json` to
 factories in `functionality`. Factories return module metadata and, with messaging,
-handler injection tokens. The generated group list and factory map start empty;
+`handlers` injection tokens. The consumer receives their instances through
+`MESSAGE_HANDLERS`; the operational status resolver injects the read-only
+`ApplicationReadiness` provider. The generated group list and factory map start empty;
 add requirements and bindings together as behavior is introduced. The shared
 [compatibility check](application-compatibility.md) rejects unmet requirements
 before adapters or environment changes, including from an independent image.

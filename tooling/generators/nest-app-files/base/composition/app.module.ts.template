@@ -1,49 +1,56 @@
-import {
 //#if messaging
-  Inject,
-  Logger,
-  Optional,
-  type BeforeApplicationShutdown,
-  type InjectionToken,
-  type OnApplicationBootstrap,
+import { Logger } from '@nestjs/common';
 //#endif
-  Module,
-  type ModuleMetadata,
-} from '@nestjs/common';
+import {
+  composeApplicationModule,
+  type ApplicationFactories,
+//#if messaging
+  MESSAGE_HANDLERS,
+//#endif
+} from '@starter/nest-support/composition';
 //#if persistence
 import type { DatabasePool } from 'slonik';
 import { DATABASE_POOL } from '../configs/tokens';
 //#endif
-import { composeApplication, preflightApplication, readApplicationComposition } from '@starter/capabilities/composition';
-import { HealthController, ServiceHealth } from '@starter/nest-support/operations';
 //#if messaging
 import type { MessageHandler } from '../application/message-handler';
-import type { RabbitTransport } from '../adapters/rabbitmq.transport';
-import { MESSAGING_TRANSPORT } from '../configs/tokens';
 import { messagingOptions } from '../configs/environment';
 //#endif
 
 const directory = new URL('../', import.meta.url);
-const declaration = preflightApplication(directory);
 
-//#if messaging
-type Functionality = ModuleMetadata & { handlers?: InjectionToken<MessageHandler>[] };
-//#else
-type Functionality = ModuleMetadata;
-//#endif
 // Register requirements in composition.json and bind the same group name here.
 // Factories compose adapters; domain/ and application/ remain framework-free.
-const functionality: Record<string, () => Functionality> = {};
-const parts = await Promise.all(composeApplication<Functionality | Promise<Functionality>>(declaration, readApplicationComposition(directory), {
+const functionality: ApplicationFactories['groups'] = {};
+export const AppModule = await composeApplicationModule(directory, {
   integrations: {
 //#if persistence
     persistence: async () => {
       const { DatabaseModule } = await import('../database/database.module');
-      return { imports: [DatabaseModule] };
+      return {
+        imports: [DatabaseModule],
+        database: {
+          inject: [DATABASE_POOL],
+          useFactory: (pool: DatabasePool) => async () => {
+            const { sql } = await import('slonik');
+            await pool.query(sql.unsafe`SELECT 1`);
+          },
+        },
+      };
     },
 //#endif
 //#if messaging
-    messaging: () => ({}),
+    messaging: async () => {
+      const { RabbitMessageConsumer } = await import('../adapters/rabbitmq.consumer');
+      return {
+        providers: [{
+          provide: RabbitMessageConsumer,
+          inject: [MESSAGE_HANDLERS],
+          useFactory: (handlers: MessageHandler[]) => new RabbitMessageConsumer(messagingOptions(), handlers, new Logger('Messaging')),
+        }],
+        consumer: RabbitMessageConsumer,
+      };
+    },
 //#endif
 //#if exposure
     exposure: async () => {
@@ -58,62 +65,4 @@ const parts = await Promise.all(composeApplication<Functionality | Promise<Funct
 //#endif
   },
   groups: functionality,
-}).map((part) => Promise.resolve(part)));
-//#if messaging
-const handlers = parts.flatMap((part) => part.handlers ?? []);
-const messaging = declaration.messaging ? await import('../adapters/rabbitmq.transport') : undefined;
-//#endif
-
-@Module({
-  imports: parts.flatMap((part) => part.imports ?? []),
-  controllers: [
-    HealthController,
-    ...parts.flatMap((part) => part.controllers ?? []),
-  ],
-  providers: [
-    ...parts.flatMap((part) => part.providers ?? []),
-//#if messaging
-    ...(messaging ? [{
-      provide: messaging.RabbitTransport,
-      inject: handlers,
-      useFactory: (...registered: MessageHandler[]) => new messaging.RabbitTransport(messagingOptions(), registered, new Logger('Messaging')),
-    }, { provide: MESSAGING_TRANSPORT, useExisting: messaging.RabbitTransport }] : []),
-//#endif
-    {
-      provide: ServiceHealth,
-      inject: [
-//#if persistence
-        { token: DATABASE_POOL, optional: true },
-//#endif
-//#if messaging
-        { token: MESSAGING_TRANSPORT, optional: true },
-//#endif
-      ],
-      useFactory: (
-//#if persistence
-        pool?: DatabasePool,
-//#endif
-//#if messaging
-        consumer?: RabbitTransport,
-//#endif
-      ) => new ServiceHealth(declaration, {
-//#if persistence
-        ...(pool ? { database: async () => { const { sql } = await import('slonik'); await pool.query(sql.unsafe`SELECT 1`); } } : {}),
-//#endif
-//#if messaging
-        ...(consumer ? { consumer: () => consumer.snapshot() } : {}),
-//#endif
-      }),
-    },
-  ],
-})
-//#if messaging
-export class AppModule implements OnApplicationBootstrap, BeforeApplicationShutdown {
-  constructor(@Optional() @Inject(MESSAGING_TRANSPORT) private readonly consumer?: RabbitTransport) {}
-  onApplicationBootstrap(): void { this.consumer?.start(); }
-  async beforeApplicationShutdown(): Promise<void> { await this.consumer?.stop(); }
-}
-//#else
-// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Nest requires a decorated module class.
-export class AppModule {}
-//#endif
+});

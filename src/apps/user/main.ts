@@ -11,7 +11,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: new ConsoleLogger({ json: true, flattenParams: true }),
   });
-  installShutdown(app, () => app.get(AppModule).beforeApplicationShutdown());
+  installShutdown(app);
 
   const options = new DocumentBuilder().setTitle('User').build();
   SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, options));

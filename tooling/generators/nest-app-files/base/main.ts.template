@@ -8,9 +8,5 @@ import { httpPort } from './configs/environment';
 const app = await NestFactory.create(AppModule, {
   logger: new ConsoleLogger({ json: true, flattenParams: true }),
 });
-//#if messaging
-installShutdown(app, () => app.get(AppModule).beforeApplicationShutdown());
-//#else
 installShutdown(app);
-//#endif
 await app.listen(httpPort(), '0.0.0.0');

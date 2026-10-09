@@ -12,14 +12,18 @@ own Nx project. Read [the Wallet guide](../../docs/wallet.md) before changing
   result models. Controllers and resolvers call application use cases and map
   results; they never import `database/`.
 - `application.json` declares the application's name and its independent
-  `persistence`, `messaging` and `exposure` capabilities. Composition passes it
-  to the readiness probes, composes business REST/GraphQL adapters only with
+  `persistence`, `messaging` and `exposure` capabilities. The shared composition entry binds its
+  readiness probes and composes business REST/GraphQL adapters only with
   exposure, and tooling discovers applications from it; a disabled
   capability has no configuration, adapters or readiness dependency. Never add
   a central list of application names.
 - `composition.json` registers prepared integrations and each functionality
   group's capability requirements. Bind those same names through
-  `composeApplication` at the composition boundary and run preflight before
+  `composeApplicationModule` from `@starter/nest-support/composition`. Supply
+  the database probe with persistence and messaging-role tokens with their
+  providers; the entry owns health, readiness, role lifecycle and shutdown state.
+  Keep HTTP conventions in the application and call `installShutdown(app)`
+  without a callback. Run preflight before
   adapters or environment changes. Only explicitly exposed groups withdraw with
   exposure; unmet business requirements must fail. See
   [application compatibility](../../docs/application-compatibility.md).

@@ -11,7 +11,8 @@
     "./persistence": "./persistence.ts",
     "./http": "./http.ts",
     "./graphql": "./graphql.ts",
-    "./configuration": "./configuration.ts"
+    "./configuration": "./configuration.ts",
+    "./composition": "./composition.ts"
   },
   "dependencies": {
     "@starter/capabilities": "workspace:*",

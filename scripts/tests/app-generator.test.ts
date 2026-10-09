@@ -76,8 +76,8 @@ test.each([true, false])(
         module,
         replaceOnce(
           source,
-          'const functionality: Record<string, () => Functionality> = {};',
-          `const functionality: Record<string, () => Functionality> = {
+          "const functionality: ApplicationFactories['groups'] = {};",
+          `const functionality: ApplicationFactories['groups'] = {
             admin: () => ({ controllers: [AdminController] }),
             public: () => ({ controllers: [PublicController] }),
           };`,
@@ -102,6 +102,22 @@ test.each([true, false])(
           },
           async ({ url }) => {
             expect((await fetch(`${url}/health/ready/http`)).status).toBe(200);
+            const readiness = await fetch(`${url}/health/ready`);
+            expect(readiness.status).toBe(200);
+            expect(await readiness.json()).toEqual({
+              service: 'telemetry',
+              lifecycle: 'running',
+              http: { status: 'ready' },
+              database: { status: 'not_applicable' },
+              consumer: { status: 'not_applicable' },
+              publisher: { status: 'not_applicable' },
+            });
+            const backlog = await fetch(`${url}/health/backlog`);
+            expect(backlog.status).toBe(200);
+            expect(await backlog.json()).toEqual({
+              service: 'telemetry',
+              status: 'not_applicable',
+            });
             const admin = await fetch(`${url}/admin`);
             expect(admin.status).toBe(200);
             expect(await admin.text()).toBe('private operational HTTP');

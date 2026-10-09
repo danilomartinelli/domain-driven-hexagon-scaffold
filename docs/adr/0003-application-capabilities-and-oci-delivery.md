@@ -121,7 +121,43 @@ User and Wallet own their image shutdown scenarios in these targets, with two
 sequential commands and separate disposable environments. Image-only cases skip
 on plain host distribution runs. The light CI image subset remains unchanged.
 
+## Shared composition entry approved on 2026-10-09
+
+Every application composes through one Nest entry in `@starter/nest-support`
+instead of repeating its operational assembly. The application supplies its
+prepared integrations and functionality groups, the database probe with its
+persistence integration, and at most one consumer and one publisher from whichever
+part constructs them, with the publisher's backlog of pending integration events.
+The entry reads and checks the registrations once before any factory, binds probes
+to the declaration, starts and drains the messaging roles and owns the lifecycle
+seen by readiness and shutdown, so its readiness rules are tested in-process.
+Applications keep their HTTP conventions and bootstrap. `@starter/capabilities`
+stays framework-free, and the entry depends on messaging roles only structurally.
+
+The readiness constructor, probes and lifecycle become internal; only a read-only
+readiness snapshot stays public. The starter is copied whole, so a public
+low-level path would only preserve the drift this removes. One instance per role
+follows the readiness snapshot's single entry per role; consuming several queues
+requires a readiness contract change. Generated applications keep registering
+message handlers with their functionality groups, and the entry collects them for
+the consumer their messaging integration constructs, because integrations are
+composed before groups. A missing or duplicate role and a backlog without a
+publisher are author errors that fail startup before any connection; packaged
+preflight still checks the selection only. User and Wallet keep eager adapter
+imports and unconditional distribution lists by scope, not principle: their
+groups require persistence and messaging, so lazy loading would change no
+observable behavior. Delivery status is recorded below.
+
 ## Implementation status
+
+The shared composition entry from [issue #90](https://github.com/danilomartinelli/vibecoding-starter-js/issues/90)
+is implemented in `@starter/nest-support/composition` and used by User, Wallet
+and generated applications. `composeApplicationModule` owns operational assembly;
+`ApplicationReadiness` exposes only `snapshot()` and `MESSAGE_HANDLERS` resolves
+group handler tokens for the consumer. Readiness and composition rules have
+in-process tests in the light gate. Existing generator, application, distribution
+and signal-driven suites retain their coverage. The application-owned HTTP
+conventions, probes and distribution dependency lists remain as specified.
 
 The identity and MIT metadata standardization and bounded rename command from
 [issue #59](https://github.com/danilomartinelli/vibecoding-starter-js/issues/59)
