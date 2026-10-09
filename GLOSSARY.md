@@ -16,6 +16,23 @@ A profile identified by a unique email address, with an address and a role.
 A balance associated with a user's identity. Each user has at most one wallet;
 the wallet can remain after the user profile is removed.
 
+### Applications
+
+**Capability**:
+An infrastructure dependency an application declares independently: persistence,
+messaging or exposure.
+_Avoid_: Feature, preset
+
+**Prepared integration**:
+The author-written connection between an application and one capability, which
+makes that capability possible to enable.
+_Avoid_: Plugin
+
+**Functionality group**:
+A named slice of an application's business behavior together with the capabilities
+it requires.
+_Avoid_: Module, feature
+
 ### Messaging
 
 **Messaging role**:

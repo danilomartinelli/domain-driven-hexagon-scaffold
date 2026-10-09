@@ -213,7 +213,7 @@ test('disabled prepared integrations retain source but deliver no inactive adapt
     for (const path of [
       'database',
       'app/database',
-      'app/adapters/rabbitmq.transport.ts',
+      'app/adapters/rabbitmq.consumer.ts',
       'app/adapters/status.resolver.ts',
     ])
       expect(existsSync(join(artifact, path)), path).toBe(false);

@@ -1,22 +1,10 @@
-import {
-  composeApplication,
-  preflightApplication,
-  readApplicationComposition,
-} from '@starter/capabilities/composition';
-import {
-  HealthController,
-  ServiceHealth,
-} from '@starter/nest-support/operations';
+import { composeApplicationModule } from '@starter/nest-support/composition';
 import { sql } from 'slonik';
 import {
   Module,
   Logger,
-  Inject,
-  type OnApplicationBootstrap,
-  type BeforeApplicationShutdown,
   type MiddlewareConsumer,
   type NestModule,
-  type ModuleMetadata,
 } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { DatabaseModule } from './database/database.module';
@@ -38,7 +26,6 @@ import { CreateUser } from './application/create-user';
 import { RabbitUserCommandConsumer } from './messaging/rabbit-user-command-consumer';
 
 const directory = new URL('./', import.meta.url);
-const declaration = preflightApplication(directory);
 
 const interceptors = [
   {
@@ -51,97 +38,69 @@ const interceptors = [
   },
 ];
 
-const parts = composeApplication<ModuleMetadata>(
-  declaration,
-  readApplicationComposition(directory),
-  {
-    integrations: {
-      persistence: () => ({ imports: [DatabaseModule] }),
-      messaging: () => ({}),
-      exposure: () => ({
-        imports: [
-          GraphQLModule.forRoot<ApolloDriverConfig>({
-            driver: ApolloDriver,
-            autoSchemaFile: true,
-          }),
-        ],
-      }),
-    },
-    groups: {
-      'user-profile': () => ({ imports: [CqrsModule.forRoot(), UserModule] }),
-      'user-delivery': () => ({
-        providers: [
-          {
-            provide: RabbitUserCommandConsumer,
-            useFactory: (create: CreateUser) =>
-              new RabbitUserCommandConsumer(
-                userRabbitMqOptions(),
-                create,
-                new Logger('UserCommands'),
-              ),
-            inject: [CreateUser],
-          },
-          {
-            provide: RabbitOutboxPublisher,
-            useFactory: (pool: DatabasePool) =>
-              new RabbitOutboxPublisher(
-                userRabbitMqOptions(),
-                new SlonikUserOutbox(pool),
-                new Logger('UserPublication'),
-              ),
-            inject: [DATABASE_POOL],
-          },
-        ],
-      }),
-      'user-api': () => ({ imports: [UserApiModule] }),
-    },
+const composition = await composeApplicationModule(directory, {
+  integrations: {
+    persistence: () => ({
+      imports: [DatabaseModule],
+      database: {
+        inject: [DATABASE_POOL],
+        useFactory: (pool: DatabasePool) => async () => {
+          await pool.query(sql.unsafe`SELECT id FROM users LIMIT 0`);
+        },
+      },
+    }),
+    messaging: () => ({}),
+    exposure: () => ({
+      imports: [
+        GraphQLModule.forRoot<ApolloDriverConfig>({
+          driver: ApolloDriver,
+          autoSchemaFile: true,
+        }),
+      ],
+    }),
   },
-);
+  groups: {
+    'user-profile': () => ({ imports: [CqrsModule.forRoot(), UserModule] }),
+    'user-delivery': () => ({
+      publisher: RabbitOutboxPublisher,
+      consumer: RabbitUserCommandConsumer,
+      backlog: {
+        inject: [DATABASE_POOL],
+        useFactory: (pool: DatabasePool) => () =>
+          new SlonikUserOutbox(pool).backlog(),
+      },
+      providers: [
+        {
+          provide: RabbitUserCommandConsumer,
+          useFactory: (create: CreateUser) =>
+            new RabbitUserCommandConsumer(
+              userRabbitMqOptions(),
+              create,
+              new Logger('UserCommands'),
+            ),
+          inject: [CreateUser],
+        },
+        {
+          provide: RabbitOutboxPublisher,
+          useFactory: (pool: DatabasePool) =>
+            new RabbitOutboxPublisher(
+              userRabbitMqOptions(),
+              new SlonikUserOutbox(pool),
+              new Logger('UserPublication'),
+            ),
+          inject: [DATABASE_POOL],
+        },
+      ],
+    }),
+    'user-api': () => ({ imports: [UserApiModule] }),
+  },
+});
 
 @Module({
-  imports: parts.flatMap((part) => part.imports ?? []),
-  controllers: [
-    HealthController,
-    ...parts.flatMap((part) => part.controllers ?? []),
-  ],
-  providers: [
-    ...parts.flatMap((part) => part.providers ?? []),
-    ...interceptors,
-    {
-      provide: ServiceHealth,
-      useFactory: (
-        pool: DatabasePool,
-        consumer: RabbitUserCommandConsumer,
-        publisher: RabbitOutboxPublisher,
-      ) =>
-        new ServiceHealth(declaration, {
-          database: async () => {
-            await pool.query(sql.unsafe`SELECT id FROM users LIMIT 0`);
-          },
-          consumer: () => consumer.snapshot(),
-          publisher: () => publisher.snapshot(),
-          backlog: () => new SlonikUserOutbox(pool).backlog(),
-        }),
-      inject: [DATABASE_POOL, RabbitUserCommandConsumer, RabbitOutboxPublisher],
-    },
-  ],
+  imports: [composition],
+  providers: [...interceptors],
 })
-export class AppModule
-  implements NestModule, OnApplicationBootstrap, BeforeApplicationShutdown
-{
-  constructor(
-    @Inject(RabbitOutboxPublisher)
-    private readonly publisher: RabbitOutboxPublisher,
-    @Inject(RabbitUserCommandConsumer)
-    private readonly commands: RabbitUserCommandConsumer,
-  ) {}
-  onApplicationBootstrap(): void {
-    this.publisher.start();
-    this.commands.start();
-  }
-  async beforeApplicationShutdown(): Promise<void> {
-    await Promise.all([this.publisher.stop(), this.commands.stop()]);
-  }
+export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestContextMiddleware).forRoutes('{*path}');
     // Apollo's Express integration no longer installs GraphQL CORS itself.

@@ -69,8 +69,14 @@ POST `{ "query": "{ httpReady }" }` to `/graphql` for HTTP readiness.
 
 Declare functionality groups and required capabilities in `composition.json`,
 then bind each group name to a factory in `composition/app.module.ts`
-(`functionality`). Factories return module metadata; the same registrations drive
-preflight and runtime composition. An unmet requirement fails before adapters
+(`functionality`). The root passes these and its lazy prepared integrations to
+`composeApplicationModule` from `@starter/nest-support/composition`; factories may
+return module metadata synchronously or asynchronously. The entry checks the
+declaration and registrations once before factories, mounts health endpoints,
+binds readiness and owns messaging-role startup and drain. Bootstrap calls
+`installShutdown(app)` with no callback. Application status adapters can inject
+`ApplicationReadiness` and call its read-only `snapshot()`; its construction and
+lifecycle stay internal. The same registrations drive packaged preflight. An unmet requirement fails before adapters
 or environment changes. The generated group list starts empty. Use explicit `@Inject(Token)`, factory `inject` lists,
 GraphQL type functions and explicit validation; Bun does not emit design metadata.
 <!--#if exposure-->
@@ -86,13 +92,21 @@ changing the selection alone fails preflight.
 <!--#endif-->
 <!--#if persistence-->
 
-Inject `DATABASE_POOL` from `database/database.module.ts` into application-owned
+The persistence integration supplies a connectivity probe through its required
+`database: { inject, useFactory }` registration. Inject `DATABASE_POOL` from `database/database.module.ts` into application-owned
 persistence adapters. Add owned SQL under `database/migrations/` (see its README);
 migrations grant `__role__` exactly what the application needs. Run them
 explicitly with `DATABASE_APP=__name__ bun run migration:up` inside a prepared
 environment; startup never migrates.
 <!--#endif-->
 <!--#if messaging-->
+
+The messaging integration constructs and registers `RabbitMessageConsumer` from
+`adapters/rabbitmq.consumer.ts`, injecting `MESSAGE_HANDLERS` from nest-support.
+Register each group's handler tokens in `handlers`; the entry collects their
+instances after composing all groups. Each application has at most one consumer
+and one publisher. A publisher may register a backlog source; a backlog without
+a publisher or messaging enabled without a role fails before providers start.
 
 Register message handlers in a group factory's `providers`, then return their
 injection tokens in that factory's `handlers`. Declare `messaging` and any other

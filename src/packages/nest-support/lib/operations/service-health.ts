@@ -1,17 +1,13 @@
 import type { ReadinessSnapshot } from '@starter/capabilities/readiness';
 import type { ApplicationDeclaration } from '@starter/capabilities/declaration';
+import type { MessagingRole } from '../composition/parts';
+import type { ApplicationLifecycle } from '../composition/application-lifecycle';
 import { CachedProbe } from './cached-probe';
 
 export type HealthSnapshot = ReadinessSnapshot;
 export type Readiness = ReadinessSnapshot['database'];
 
-interface MessagingState {
-  connected: boolean;
-  failures: number;
-  retries: number;
-  retryDelayMs: number;
-  lastFailureAt: string | null;
-}
+type MessagingState = ReturnType<MessagingRole['snapshot']>;
 
 type MessagingReadiness = ReadinessSnapshot['consumer'];
 
@@ -38,7 +34,6 @@ export interface BacklogSnapshot {
 
 /** Coalesces concurrent database probes and caches their result for one second. */
 export class ServiceHealth {
-  lifecycle: HealthSnapshot['lifecycle'] = 'running';
   readonly service: string;
   private readonly database?: CachedProbe<void>;
   private readonly outbox?: CachedProbe<{
@@ -49,6 +44,7 @@ export class ServiceHealth {
   constructor(
     declaration: ApplicationDeclaration,
     private readonly sources: HealthSources,
+    private readonly lifecycle: ApplicationLifecycle,
   ) {
     const { name, persistence, messaging } = declaration;
     // A mismatch would report a disabled dependency as failed or hide an enabled one.
@@ -66,7 +62,7 @@ export class ServiceHealth {
   }
 
   async snapshot(): Promise<HealthSnapshot> {
-    const running = this.lifecycle === 'running';
+    const running = this.lifecycle.current === 'running';
     const database: Readiness = !this.database
       ? { status: 'not_applicable' }
       : running && (await this.database.read()).available
@@ -82,7 +78,7 @@ export class ServiceHealth {
         ...state,
         status: usable && state.connected ? 'ready' : 'not_ready',
         reason: !running
-          ? this.lifecycle
+          ? this.lifecycle.current
           : database.status === 'not_ready'
             ? 'database_unavailable'
             : state.connected
@@ -92,7 +88,7 @@ export class ServiceHealth {
     };
     return {
       service: this.service,
-      lifecycle: this.lifecycle,
+      lifecycle: this.lifecycle.current,
       http: { status: usable ? 'ready' : 'not_ready' },
       database,
       consumer: readiness(this.sources.consumer),
@@ -103,7 +99,7 @@ export class ServiceHealth {
   async backlog(): Promise<BacklogSnapshot> {
     if (!this.outbox)
       return { service: this.service, status: 'not_applicable' };
-    if (this.lifecycle !== 'running')
+    if (this.lifecycle.current !== 'running')
       return { service: this.service, status: 'unavailable' };
     const result = await this.outbox.read();
     return result.available

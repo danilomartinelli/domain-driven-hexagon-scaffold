@@ -71,7 +71,10 @@ relative `paths`. Packaging includes its dependency roots only when selected in
 dependencies of selected roots remain included. Development images use the same
 selection. The older array of unconditional dependencies remains supported.
 Keep shared source outside capability-specific paths, and load optional adapters
-inside their selected composition factories. Do not put required functionality in
+inside the selected `composeApplicationModule` integration factories. The generated
+messaging paths include `adapters/rabbitmq.consumer.ts`. User and Wallet keep
+eager imports and unconditional distribution lists; their required groups still
+require persistence and messaging. Do not put required functionality in
 an excluded path: register its requirements so preflight rejects incompatibility.
 
 After a declaration change, rebuild the distribution or image from the retained

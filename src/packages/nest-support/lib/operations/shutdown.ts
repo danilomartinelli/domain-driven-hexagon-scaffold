@@ -1,16 +1,15 @@
 import { Logger, type INestApplication } from '@nestjs/common';
 import type { Request, Response, NextFunction } from 'express';
 import { ServiceHealth } from './service-health';
+import { ApplicationLifecycle } from '../composition/application-lifecycle';
 
 /**
- * Own signal handling before Nest closes transports or invokes database hooks.
- * Applications without messaging have no transport to drain first.
+ * Own signal handling before Nest invokes database shutdown hooks.
+ * The composed module supplies the messaging roles to drain first.
  */
-export function installShutdown(
-  app: INestApplication,
-  stopMessaging: () => Promise<void> = () => Promise.resolve(),
-): void {
+export function installShutdown(app: INestApplication): void {
   const health = app.get(ServiceHealth);
+  const lifecycle = app.get(ApplicationLifecycle);
   const logger = new Logger('Shutdown');
   const requests = new Set<Promise<void>>();
   app.use((request: Request, response: Response, next: NextFunction) => {
@@ -18,11 +17,11 @@ export function installShutdown(
       next();
       return;
     }
-    if (health.lifecycle !== 'running') {
+    if (lifecycle.current !== 'running') {
       response.setHeader('Connection', 'close');
       response
         .status(503)
-        .json({ status: 'not_ready', reason: health.lifecycle });
+        .json({ status: 'not_ready', reason: lifecycle.current });
       return;
     }
     const finished = Promise.withResolvers<undefined>();
@@ -37,8 +36,8 @@ export function installShutdown(
   });
 
   const shutdown = (signal: string) => {
-    if (health.lifecycle !== 'running') return;
-    health.lifecycle = 'draining';
+    if (lifecycle.current !== 'running') return;
+    lifecycle.beginDrain();
     const started = Date.now();
     const metadata = { service: health.service, signal, deadlineMs: 15_000 };
     logger.log('Shutdown started; refusing new work.', {
@@ -56,8 +55,8 @@ export function installShutdown(
     }, 15_000);
     deadline.unref();
     void (async () => {
-      await Promise.all([stopMessaging(), ...requests]);
-      health.lifecycle = 'stopping';
+      await Promise.all([lifecycle.stopMessaging(), ...requests]);
+      lifecycle.beginStop();
       await app.close();
       process.once('beforeExit', () => {
         clearTimeout(deadline);
