@@ -114,6 +114,14 @@
         "command": "bun test ./scripts/tests/operations.test.ts ./scripts/tests/operations-live.test.ts",
         "cwd": "."
       }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun test ./scripts/tests/artifact-approval.test.ts",
+        "cwd": "."
+      }
     }
   },
   "implicitDependencies": ["database", "infrastructure"]

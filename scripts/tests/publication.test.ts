@@ -1,3 +1,4 @@
+import { runCommand } from '../lib/command';
 import { expect, test } from 'bun:test';
 import { rejects } from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -340,3 +341,30 @@ test('publication discovers one or all applications, including a generated appli
     });
   }, [workspace.cleanup]);
 }, 60_000);
+
+test('internal artifact approval refuses an unowned environment before using the platform image', async () => {
+  const workspace = await createWorkspace();
+  await withCleanup(async () => {
+    const result = await runCommand(
+      [
+        'bun',
+        '--no-env-file',
+        'scripts/publication.ts',
+        'approve',
+        'user',
+        `--image=sha256:${'a'.repeat(64)}`,
+        '--platform=linux/arm64',
+      ],
+      {
+        cwd: workspace.root,
+        env: { ...process.env, DDH_ENVIRONMENT_FILE: undefined },
+        timeout: 10_000,
+      },
+    );
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(
+      'Refusing test target without an owned environment',
+    );
+    expect(result.stdout).not.toContain('"status":"approved"');
+  }, [workspace.cleanup]);
+});

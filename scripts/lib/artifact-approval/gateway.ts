@@ -1,113 +1,28 @@
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import type { ApplicationDeclaration } from '@starter/capabilities/declaration';
-import {
-  workspaceRoot,
-  type EnvironmentManifest,
-} from '../../database/environment';
-import { runCommand } from './command';
-import { gatewayConfiguration, gatewayNames } from './gateway';
+import { gatewayNames } from '../gateway';
+import type { GatewayEvidence } from './ports';
+import type { ApprovalEnvironment, KongAdmin } from './ports';
 
-const entity = z.looseObject({ id: z.string(), name: z.string() });
-const collection = z.object({
-  data: z.array(entity),
-  next: z.null().optional(),
-});
-const health = z.object({
-  data: z.array(
-    z.object({
-      id: z.string(),
-      target: z.string(),
-      data: z.object({
-        addresses: z.array(
-          z.object({ ip: z.string(), port: z.number(), health: z.string() }),
-        ),
-      }),
-    }),
-  ),
-  next: z.null().optional(),
-});
-
-/** Installs and probes only this disposable fixture's owned DB-less gateway. */
-export async function privateImageGateway(
-  manifest: EnvironmentManifest,
+/** Declaration comparison and the single unhealthy-to-recovered observation. */
+export function observeGateway(
+  manifest: ApprovalEnvironment,
   app: ApplicationDeclaration,
+  kong: KongAdmin,
   budget: () => number,
-): Promise<() => Promise<boolean>> {
-  if (manifest.environment !== 'test' || manifest.topology?.length !== 1)
-    throw new Error(
-      'Image validation requires a disposable single-application environment',
-    );
-  const gateway = manifest.gateway;
-  if (!gateway) {
-    if (app.exposure)
-      throw new Error('Exposed application has no disposable gateway');
-    return () => Promise.resolve(true);
-  }
-  const inspected = await runCommand(['docker', 'inspect', gateway.name], {
-    cwd: workspaceRoot,
-    timeout: budget(),
-  });
-  if (inspected.code !== 0)
-    throw new Error('Cannot establish disposable Kong ownership');
-  z.array(
-    z.object({
-      Config: z.object({
-        Labels: z.object({
-          'dev.starter.owner': z.literal(manifest.owner),
-          'com.docker.compose.project': z.literal(manifest.project),
-          'com.docker.compose.service': z.literal('gateway'),
-        }),
-      }),
-      NetworkSettings: z.object({
-        Ports: z.object({
-          '8001/tcp': z
-            .array(
-              z.object({
-                HostIp: z.literal('127.0.0.1'),
-                HostPort: z.literal(String(gateway.adminPort)),
-              }),
-            )
-            .length(1),
-        }),
-      }),
-    }),
-  )
-    .length(1)
-    .parse(JSON.parse(inspected.stdout));
-  const request = async (
-    path: string,
-    init?: RequestInit,
-  ): Promise<Response> => {
-    const response = await fetch(
-      `http://127.0.0.1:${String(gateway.adminPort)}${path}`,
-      {
-        ...init,
-        signal: AbortSignal.timeout(budget()),
-      },
-    );
-    if (!response.ok)
-      throw new Error(`Kong ${path}: HTTP ${String(response.status)}`);
-    return response;
-  };
-  const read = async (path: string): Promise<unknown> =>
-    (await request(path)).json();
-  const config = gatewayConfiguration(manifest, true, undefined, 'approval');
-  await request('/config', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ config }),
-  });
+): () => Promise<boolean | GatewayEvidence> {
   const routes = app.exposure ? (app.routes ?? []) : [];
   const namesFor = gatewayNames(app, manifest.applicationPorts[app.name]);
   const upstreamName = namesFor.upstream;
   let observed:
     { target: string; address: string; unhealthy: boolean } | undefined;
-  let recovered = false;
-  return async () => {
-    const services = collection.parse(await read('/services')).data;
-    const installed = collection.parse(await read('/routes')).data;
-    const upstreams = collection.parse(await read('/upstreams')).data;
+  let mutationFailure: Error | undefined;
+  return async (): Promise<true | false | GatewayEvidence> => {
+    if (mutationFailure) throw mutationFailure;
+    const services = await kong.services(budget());
+    const installed = await kong.routes(budget());
+    const upstreams = await kong.upstreams(budget());
     const serviceNames = routes
       .map((route) => namesFor.routes[route.name].service)
       .sort();
@@ -203,9 +118,7 @@ export async function privateImageGateway(
       }),
     }).parse(upstreams[0]);
     const targetState = async () => {
-      const targets = health.parse(
-        await read(`/upstreams/${upstreamName}/health`),
-      ).data;
+      const targets = await kong.targetHealth(upstreamName, budget());
       if (targets.length !== 1)
         throw new Error('Kong requires exactly the selected artifact target');
       const [target] = targets;
@@ -225,15 +138,20 @@ export async function privateImageGateway(
     };
     let state = await targetState();
     if (!observed) {
-      await request(
-        `/upstreams/${upstreamName}/targets/${state.target}/unhealthy`,
-        { method: 'PUT' },
-      );
       observed = {
         target: state.target,
         address: state.address,
         unhealthy: false,
       };
+      try {
+        await kong.markUnhealthy(upstreamName, state.target, budget());
+      } catch (error) {
+        mutationFailure = new Error(
+          `Kong unhealthy mutation failed: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+        throw mutationFailure;
+      }
       // Observe before slower private probes can consume an active-check interval.
       state = await targetState();
     }
@@ -241,12 +159,11 @@ export async function privateImageGateway(
       throw new Error('Kong target/address changed during active recovery');
     if (state.health === 'UNHEALTHY') observed.unhealthy = true;
     if (!observed.unhealthy || state.health !== 'HEALTHY') return false;
-    if (!recovered) {
-      console.log(
-        `Kong ${upstreamName} target ${state.target} address ${state.address} UNHEALTHY -> HEALTHY`,
-      );
-      recovered = true;
-    }
-    return true;
+    return {
+      upstream: upstreamName,
+      target: state.target,
+      address: state.address,
+      transition: ['UNHEALTHY', 'HEALTHY'],
+    };
   };
 }

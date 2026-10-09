@@ -1,30 +1,23 @@
 import { expect } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
 import { environmentPrefix } from '@starter/capabilities/declaration';
 import type { EnvironmentManifest } from '../../database/environment';
 import { buildImage } from '../lib/image';
 import { gatewayConfiguration } from '../lib/gateway';
-import {
-  readinessBudget,
-  validatePublicationReadiness,
-} from '../lib/publication-readiness';
+import { imagePlatform, imageMigrations } from '../lib/image-contract';
+import { dockerImageRuntime } from '../lib/platform-image-runtime';
 import { runCommand, type CommandResult } from '../lib/command';
-import { removeOwnedContainer } from './owned-container';
 import { until } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
 
-/** The existing distribution scenarios run unchanged against an unpublished container listener. */
 interface ImageRuntime {
   url: string;
   stop: (expectedExit?: number | number[]) => Promise<void>;
   probe: (path: string) => Promise<{ status: number; body: unknown }>;
   databaseFault: (action: 'pause' | 'unpause') => Promise<void>;
   assertRuntimePrivileges: () => Promise<void>;
-  start: (
-    overrides?: Record<string, string>,
-    approval?: 'publication',
-  ) => Promise<void>;
+  assertMigrationContract: () => Promise<void>;
+  start: (overrides?: Record<string, string>) => Promise<void>;
   migrate: (
     action: string,
     overrides?: Record<string, string>,
@@ -32,6 +25,7 @@ interface ImageRuntime {
   cleanup: () => Promise<void>;
 }
 
+/** Assertion-based distribution wrapper; Docker placement belongs to the production adapter. */
 export async function imageRuntime(
   app: string,
   manifest: EnvironmentManifest,
@@ -39,7 +33,9 @@ export async function imageRuntime(
   migration: Record<string, string>,
   cwd: string,
 ): Promise<ImageRuntime> {
-  const platform = process.env.DDH_IMAGE_PLATFORM;
+  const platform =
+    process.env.DDH_IMAGE_PLATFORM ??
+    `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`;
   const supplied = process.env.DDH_VALIDATED_IMAGE;
   if (supplied && !/^sha256:[a-f0-9]{64}$/.test(supplied))
     throw new Error('Validation requires an immutable local image ID');
@@ -49,100 +45,27 @@ export async function imageRuntime(
       platform,
       tag: `ddh-${app}-test:${randomUUID()}`,
     }));
-  const name = `${manifest.project}-${app}-artifact`;
   const declaration = manifest.topology?.find((entry) => entry.name === app);
   if (!declaration) throw new Error('Image application is not selected');
   const prefix = environmentPrefix(app);
-  const network =
-    manifest.databases.length || manifest.broker || manifest.gateway
-      ? `${manifest.project}_default`
-      : 'none';
+  const adapter = dockerImageRuntime({
+    app: declaration,
+    manifest,
+    image: tag,
+    platform,
+    runtime,
+    migration,
+    cwd,
+  });
   const command = (args: string[], timeout = 30_000) =>
     runCommand(args, { cwd, timeout });
-  const settings = (env: Record<string, string>) => ({
-    ...env,
-    ...(declaration.persistence
-      ? {
-          [`${prefix}_DB_HOST`]: `postgres-${app}`,
-          [`${prefix}_DB_PORT`]: '5432',
-        }
-      : {}),
-    ...(declaration.messaging && manifest.broker
-      ? {
-          RABBITMQ_HOST: 'rabbitmq',
-          RABBITMQ_PORT: '5672',
-          [`${prefix}_RABBITMQ_URL`]: `amqp://${encodeURIComponent(manifest.broker.username)}:${encodeURIComponent(manifest.broker.password)}@rabbitmq:5672/${encodeURIComponent(manifest.broker.vhost)}`,
-        }
-      : {}),
-  });
-  const variables = (env: Record<string, string>) =>
-    Object.entries(env)
-      .filter(([key]) => key !== 'PATH')
-      .flatMap(([key, value]) => ['--env', `${key}=${value}`]);
-  const base = [
-    'docker',
-    'run',
-    '--network',
-    network,
-    '--label',
-    `dev.starter.owner=${manifest.owner}`,
-    ...(platform ? ['--platform', platform] : []),
-  ];
-  const oneShot = (args: string[], timeout = 30_000) => {
-    const commandName = `${name}-command-${randomUUID()}`;
-    return withCleanup(
-      () => command([...base, '--rm', '--name', commandName, ...args], timeout),
-      [
-        () =>
-          removeOwnedContainer({ name: commandName, owner: manifest.owner }),
-      ],
-    );
-  };
-  let running = false;
-  const stop = async (expectedExit: number | number[] = 0) => {
-    if (!running) return;
-    const stopped = await command(
-      ['docker', 'stop', '--time=20', name],
-      25_000,
-    );
-    expect(stopped.code, stopped.stderr).toBe(0);
-    const inspected = await command([
-      'docker',
-      'inspect',
-      '--format',
-      '{{.State.ExitCode}}',
-      name,
-    ]);
-    const logs = await command(['docker', 'logs', name]);
-    expect(inspected.code, inspected.stderr).toBe(0);
-    expect(logs.code, logs.stderr).toBe(0);
-    expect(
-      Array.isArray(expectedExit) ? expectedExit : [expectedExit],
-      logs.stdout + logs.stderr,
-    ).toContain(Number(inspected.stdout.trim()));
-    await removeOwnedContainer({ name, owner: manifest.owner });
-    running = false;
-  };
   const removeImage = async () => {
     if (supplied) return;
     const removed = await command(['docker', 'image', 'rm', tag]);
     expect(removed.code, removed.stderr).toBe(0);
   };
   try {
-    const metadata = await oneShot([
-      tag,
-      '-e',
-      'console.log(JSON.stringify({platform:process.platform,arch:process.arch}))',
-    ]);
-    expect(metadata.code, metadata.stderr).toBe(0);
-    expect(JSON.parse(metadata.stdout)).toEqual({
-      platform: 'linux',
-      arch: platform
-        ? platform === 'linux/arm64'
-          ? 'arm64'
-          : 'x64'
-        : process.arch,
-    });
+    const metadata = await imagePlatform(adapter, platform);
     const host = await command([
       'docker',
       'info',
@@ -151,37 +74,24 @@ export async function imageRuntime(
     ]);
     expect(host.code, host.stderr).toBe(0);
     console.log(
-      `OCI execution ${app}: ${metadata.stdout.trim()}; Docker host ${host.stdout.trim()}; ${metadata.stdout.includes('arm64') === /arm64|aarch64/.test(host.stdout) ? 'native' : 'emulated'}`,
+      `OCI execution ${app}: ${JSON.stringify(metadata)}; Docker host ${host.stdout.trim()}; ${(metadata.arch === 'arm64') === /arm64|aarch64/.test(host.stdout) ? 'native' : 'emulated'}`,
     );
   } catch (error) {
     await withCleanup(() => {
       throw error;
-    }, [removeImage]);
+    }, [adapter.cleanup, removeImage]);
   }
-  const probe = async (path: string, timeout = 30_000) => {
-    const result = await command(
-      [
-        'docker',
-        'exec',
-        name,
-        'bun',
-        '-e',
-        `const response = await fetch(${JSON.stringify(`http://127.0.0.1:${String(manifest.applicationPorts[app])}${path}`)}, {signal:AbortSignal.timeout(${String(Math.min(10_000, timeout))})}); console.log(JSON.stringify({status:response.status,body:await response.json()}));`,
-      ],
-      timeout,
-    );
-    expect(result.code, result.stderr).toBe(0);
-    return z
-      .object({ status: z.number(), body: z.unknown() })
-      .parse(JSON.parse(result.stdout));
-  };
   return {
     url: `http://127.0.0.1:${String(manifest.gateway?.proxyPort)}`,
-    stop,
+    stop: async (expectedExit: number | number[] = 0) => {
+      const stopped = await adapter.stop();
+      await adapter.cleanup();
+      expect(
+        Array.isArray(expectedExit) ? expectedExit : [expectedExit],
+      ).toContain(stopped.code);
+    },
     assertRuntimePrivileges: async () => {
-      const result = await oneShot([
-        ...variables(settings(runtime)),
-        tag,
+      const result = await adapter.executeRuntime([
         '-e',
         `
         import {Client} from 'pg';
@@ -196,7 +106,7 @@ export async function imageRuntime(
       expect(result.code, result.stderr).toBe(0);
       expect(result.stdout.trim()).toBe('runtime-denied');
     },
-    databaseFault: async (action) => {
+    databaseFault: async (action: 'pause' | 'unpause') => {
       const found = await command([
         'docker',
         'ps',
@@ -214,44 +124,21 @@ export async function imageRuntime(
       const result = await command(['docker', action, id]);
       expect(result.code, result.stderr).toBe(0);
     },
-    probe,
-    migrate: (action: string, overrides: Record<string, string> = {}) =>
-      oneShot(
-        [
-          ...variables({ ...settings(migration), ...overrides }),
-          tag,
-          'run',
-          `migration:${action}`,
-        ],
-        60_000,
-      ),
-    start: async (overrides: Record<string, string> = {}, approval) => {
-      const deadline = performance.now() + 60_000;
-      if (running) throw new Error('Image already running');
-      const started = await command([
-        ...base,
-        '--detach',
-        '--name',
-        name,
-        ...(network === 'none' ? [] : ['--network-alias', `app-${app}`]),
-        ...variables({ ...settings(runtime), ...overrides }),
-        tag,
-      ]);
-      expect(started.code, started.stderr).toBe(0);
-      running = true;
-      if (!approval)
-        await until(async () => {
-          const live = await command([
-            'docker',
-            'exec',
-            name,
-            'bun',
-            '-e',
-            `process.exit((await fetch('http://127.0.0.1:${String(manifest.applicationPorts[app])}/health/live')).ok ? 0 : 1)`,
-          ]);
-          return live.code === 0;
-        });
-      if (manifest.gateway && !approval) {
+    probe: adapter.probe,
+    migrate: adapter.migrate,
+    assertMigrationContract: async () => {
+      expect(await imageMigrations(declaration, adapter)).toEqual([]);
+    },
+    start: async (overrides: Record<string, string> = {}) => {
+      await adapter.start(30_000, overrides);
+      await until(async () => {
+        try {
+          return (await adapter.probe('/health/live')).status === 200;
+        } catch {
+          return false;
+        }
+      });
+      if (manifest.gateway) {
         const configured = await fetch(
           `http://127.0.0.1:${String(manifest.gateway.adminPort)}/config`,
           {
@@ -265,34 +152,9 @@ export async function imageRuntime(
         );
         expect(configured.status, await configured.text()).toBe(201);
       }
-      const published = await command(['docker', 'port', name]);
-      expect(published.code, published.stderr).toBe(0);
-      expect(published.stdout).toBe('');
-      expect(
-        await fetch(
-          `http://127.0.0.1:${String(manifest.applicationPorts[app])}/health/live`,
-          {
-            signal: AbortSignal.timeout(
-              approval ? readinessBudget(deadline) : 2000,
-            ),
-          },
-        ).then(
-          () => true,
-          () => false,
-        ),
-      ).toBe(false);
-      if (approval)
-        await validatePublicationReadiness(
-          declaration,
-          manifest,
-          deadline,
-          probe,
-        );
+      expect(await adapter.publishedPorts(30_000)).toBe('');
+      expect(await adapter.hostReachable(2000)).toBe(false);
     },
-    cleanup: () =>
-      withCleanup(
-        () => removeOwnedContainer({ name, owner: manifest.owner }),
-        [removeImage],
-      ),
+    cleanup: () => withCleanup(adapter.cleanup, [removeImage]),
   };
 }

@@ -97,7 +97,11 @@ export async function preparePublication(
         '--no-database-setup',
         '--',
         'bun',
-        'scripts/tests/fixtures/image-capabilities.ts',
+        'scripts/publication.ts',
+        'approve',
+        app.name,
+        `--image=${id}`,
+        `--platform=${platform}`,
       ]);
       for (const args of suites) {
         const result = await runCommand(args, {
@@ -109,7 +113,6 @@ export async function preparePublication(
             ...process.env,
             DDH_IMAGE_PLATFORM: platform,
             DDH_VALIDATED_IMAGE: id,
-            DDH_PUBLICATION_READINESS: 'true',
           },
           progress: { label: `validate ${app.name} ${platform}`, logPath: log },
         });
@@ -119,7 +122,7 @@ export async function preparePublication(
             `Image validation failed: ${app.name} ${platform}; ${log}\n${(result.stdout + result.stderr).slice(-8000)}`,
           );
       }
-      // The fixture actually executes this ID, including its architecture probe.
+      // Artifact approval executes this exact platform image, including its architecture probe.
       z.object({
         Os: z.literal('linux'),
         Architecture: z.literal(architecture),
