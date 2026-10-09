@@ -21,6 +21,13 @@ overtake them. A delivery arriving after draining begins is left unacknowledged.
 The publisher finishes only its current claim; a User commit during shutdown
 can leave a new event pending for the next process.
 
+Work that exceeds its handler deadline remains in flight until the real
+operation settles. Messaging readiness stays unavailable and the consumer waits
+before reconnecting, so it cannot redeliver the message concurrently with that
+operation. Shutdown drains the same work before closing database pools, bounded
+by the existing 15-second total deadline. If it expires, the process exits 1 and
+the durable recovery below applies.
+
 During draining, REST, GraphQL and other non-health requests receive HTTP 503
 with `reason: "draining"` and `Connection: close`. Already accepted requests get
 a bounded opportunity to finish. `/health/live` remains 200 while HTTP is open.

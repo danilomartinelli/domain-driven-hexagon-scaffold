@@ -127,7 +127,8 @@ export class RabbitWalletConsumer {
             return;
           }
           if (session.signal.aborted || signal.aborted) return;
-          const processing = within(this.process(channel, message), 10_000)
+          const operation = this.process(channel, message);
+          const acknowledgement = within(operation, 10_000)
             .then(() => {
               if (session.signal.aborted) return;
               channel.ack(message);
@@ -153,11 +154,16 @@ export class RabbitWalletConsumer {
                 },
               );
               end();
-            })
-            .finally(() => {
-              inFlight.delete(processing);
             });
-          inFlight.add(processing);
+          // A deadline cannot cancel application effects; reconnect and shutdown
+          // must wait for the real operation as well as its acknowledgement.
+          const draining = Promise.allSettled([
+            operation,
+            acknowledgement,
+          ]).then(() => {
+            inFlight.delete(draining);
+          });
+          inFlight.add(draining);
         }),
         5_000,
       );

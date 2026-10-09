@@ -335,7 +335,15 @@ candidate='ghcr.io/your-organization/user@sha256:<candidate digest>'
 bun run ops --directory="$ops_dir" update user --image="$candidate"
 ```
 
-The command selects the candidate in `deployment.json`, writes
+Before changing the Desired selection, update reads the live migration history
+and the Candidate's packaged migrations. It refuses migrations unknown to the
+Candidate, names them and directs the operator to
+[compatibility-reviewed rollback](#compatible-image-rollback). This refusal
+writes no Transition, leaves `deployment.json` unchanged and keeps the server
+running. If history is unavailable during preflight, a second check still refuses
+an older image before stopping the server.
+
+The command then selects the Candidate in `deployment.json`, writes
 `transition-<id>.json` with the previous and candidate digests, checks candidate
 migration status, stops the selected application, creates an owned backup under
 `backups/`, runs applicable migrations, selects the candidate, starts it and
@@ -344,6 +352,11 @@ application containers and images are preserved. Nonpersistent images skip datab
 steps. Changed capabilities/routes appear in `plan`; this bounded updater rejects
 them instead of silently discarding state. Apply them through a
 [reviewed plan](#apply-a-reviewed-plan).
+
+A signal records `interrupted` consistently in the Transition, its migration
+outcome and the Applied state; topology Promotions also record the same status in
+their deployment step. Completed migrations remain committed during an interrupted
+verification and Continuation does not repeat them.
 
 A failed migration exits nonzero, records a failed transition and migration outcome
 and leaves the prior image applied with its server stopped. It never promotes the

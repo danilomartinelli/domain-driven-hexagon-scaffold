@@ -1,6 +1,20 @@
 import { expect } from 'bun:test';
 import type { Subprocess } from 'bun';
-import { eventually } from './broker-fixture';
+async function eventually(
+  assertion: () => Promise<void>,
+  timeout = 12_000,
+): Promise<void> {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await Bun.sleep(50);
+    }
+  }
+}
 
 export interface ConsumerWorker {
   process: Subprocess<'pipe', 'pipe', 'pipe'>;
@@ -11,9 +25,9 @@ export interface ConsumerWorker {
 
 export function startConsumerWorker(phase = 'normal'): ConsumerWorker {
   const worker = Bun.spawn(
-    [process.execPath, 'src/apps/wallet/tests/component/consumer-worker.ts'],
+    [process.execPath, 'src/apps/user/tests/component/consumer-worker.ts'],
     {
-      env: { ...process.env, WALLET_TEST_CHECKPOINT: phase },
+      env: { ...process.env, USER_TEST_CHECKPOINT: phase },
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',

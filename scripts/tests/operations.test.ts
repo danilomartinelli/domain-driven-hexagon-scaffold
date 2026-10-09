@@ -26,7 +26,7 @@ import {
   matchesReviewedPlan,
   type DeploymentPlan,
 } from '../lib/operations-plan';
-import { applyFixture } from './operations-apply-fixture';
+import { promotionFixture } from './operations-promotion-fixture';
 import { until } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
 import {
@@ -598,7 +598,7 @@ for (const change of ['ingress', 'removal'] as const) {
             (app) => ({ ...app, migrations: [] }),
           ),
         };
-        const fixture = applyFixture(state, desired);
+        const fixture = promotionFixture(state, desired);
         try {
           fixture.save('control.json', {
             failure: failure === 'legacy-record' ? 'during-gateway' : failure,
@@ -659,7 +659,7 @@ for (const database of ['absent', 'stopped']) {
         }),
       };
       const target = { ...before, image: digest('user', 'b'), migrations: [] };
-      const fixture = applyFixture(installation([before]), {
+      const fixture = promotionFixture(installation([before]), {
         https: undefined,
         applications: [target],
       });
@@ -694,49 +694,244 @@ for (const database of ['absent', 'stopped']) {
   }
 }
 
-for (const [signal, code] of [
-  ['SIGINT', 130],
-  ['SIGTERM', 143],
-  ['SIGHUP', 129],
-] as const) {
-  test(`apply records ${signal} migration cancellation consistently across durable records`, async () => {
-    const before = {
-      image: digest('user', 'a'),
-      declaration: declaration('user', {
-        persistence: true,
-        messaging: false,
-        exposure: false,
-      }),
-    };
-    const target = { ...before, image: digest('user', 'b'), migrations: [] };
-    const fixture = applyFixture(installation([before]), {
-      https: undefined,
-      applications: [target],
+function promotionCase() {
+  const before = {
+    image: digest('user', 'a'),
+    declaration: declaration('user', {
+      persistence: true,
+      messaging: false,
+      exposure: false,
+    }),
+  };
+  const target = {
+    ...before,
+    image: digest('user', 'b'),
+    migrations: ['001_baseline'],
+  };
+  const fixture = promotionFixture(installation([before]), {
+    https: undefined,
+    applications: [target],
+  });
+  // Updating starts from the current Desired selection; apply selects its target explicitly.
+  return { fixture, before, target };
+}
+
+for (const kind of ['apply', 'update', 'rollback'] as const) {
+  for (const [signal, code] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+    ['SIGHUP', 129],
+  ] as const) {
+    test(`${kind} records ${signal} cancellation consistently across durable records`, async () => {
+      const { fixture, before, target } = promotionCase();
+      try {
+        fixture.save(
+          'control.json',
+          kind === 'rollback' ? { maintenanceSignal: signal } : { signal },
+        );
+        const result = await fixture.promote(kind, target);
+        expect(result.code, result.stderr).toBe(code);
+        const state = fixture.state();
+        expect(state.applied.applications[0]).toMatchObject({
+          image: before.image,
+          migration: { result: 'interrupted' },
+        });
+        expect(fixture.transitions()).toMatchObject([
+          {
+            status: 'interrupted',
+            migration: { outcome: 'interrupted', completedAt: null },
+          },
+        ]);
+        if (kind === 'apply') {
+          const deployment = fixture.deployment(
+            state.pendingDeployment ?? 'missing',
+          );
+          expect(deployment.steps[0].status).toBe('interrupted');
+          expect(deployment.attempts.at(-1)?.outcome).toBe('interrupted');
+        }
+      } finally {
+        fixture.cleanup();
+      }
     });
+  }
+  test(`${kind} ${kind === 'rollback' ? 'accepts a reviewed' : 'refuses an'} older Candidate before stopping its server`, async () => {
+    const { fixture, before, target } = promotionCase();
     try {
-      fixture.save('control.json', { signal });
-      const result = await fixture.apply();
-      expect(result.code, result.stderr).toBe(code);
-      const state = fixture.state();
-      expect(state.applied.applications[0].migration).toMatchObject({
-        result: 'interrupted',
+      fixture.save('control.json', {
+        unknownMigration: '002_newer',
+        history: ['001_baseline', '002_newer'],
       });
-      const deployment = fixture.deployment(
-        state.pendingDeployment ?? 'missing',
+      const result = await fixture.promote(kind, target);
+      expect(result.code, result.stderr).toBe(kind === 'rollback' ? 0 : 1);
+      if (kind !== 'rollback') {
+        expect(result.stderr).toContain('002_newer');
+        expect(result.stderr).toContain('compatibility-reviewed rollback');
+      }
+      expect(fixture.calls().some((args) => args.includes('stop'))).toBe(
+        kind === 'rollback',
       );
-      const step = deployment.steps[0];
-      expect(step.status).toBe('interrupted');
-      expect(deployment.attempts.at(-1)?.outcome).toBe('interrupted');
       expect(
-        fixture.transition(step.transitions.at(-1) ?? 'missing'),
-      ).toMatchObject({
-        status: 'interrupted',
-        migration: { outcome: 'interrupted', completedAt: null },
-      });
+        fixture.calls().some((args) => args.includes('migration:up')),
+      ).toBe(false);
+      expect(fixture.state().applied.applications[0].image).toBe(
+        kind === 'rollback' ? target.image : before.image,
+      );
+      if (kind === 'rollback')
+        expect(fixture.transitions()).toMatchObject([
+          {
+            status: 'verified',
+            migration: { outcome: 'compatibility-reviewed' },
+            backup: expect.stringContaining('.dump') as unknown,
+          },
+        ]);
     } finally {
       fixture.cleanup();
     }
   });
+  if (kind !== 'rollback')
+    test(`${kind} keeps the prior image applied and stopped after a failed migration`, async () => {
+      const { fixture, before, target } = promotionCase();
+      try {
+        fixture.save('control.json', { migrationFailure: true });
+        const result = await fixture.promote(kind, target);
+        expect(result.code).toBe(1);
+        expect(fixture.state().applied.applications[0]).toMatchObject({
+          image: before.image,
+          migration: { result: 'failed' },
+        });
+        expect(fixture.transitions()).toMatchObject([
+          {
+            status: 'failed',
+            migration: { outcome: 'failed' },
+            backup: expect.stringContaining('.dump') as unknown,
+          },
+        ]);
+        expect(
+          fixture
+            .calls()
+            .some((args) => args.includes('stop') && args.includes('app-user')),
+        ).toBe(true);
+        expect(
+          fixture
+            .calls()
+            .some((args) => args.includes('up') && args.includes('app-user')),
+        ).toBe(false);
+      } finally {
+        fixture.cleanup();
+      }
+    });
+}
+
+for (const kind of ['update', 'rollback'] as const) {
+  test(`${kind} refuses stopped infrastructure before its maintenance window`, async () => {
+    const { fixture, before, target } = promotionCase();
+    try {
+      fixture.save('database.json', 'stopped');
+      const result = await fixture.promote(kind, target);
+      expect(result.code).toBe(1);
+      expect(fixture.read('database.json')).toBe('stopped');
+      expect(fixture.state().applied.applications[0].image).toBe(before.image);
+      expect(fixture.calls().some((args) => args.includes('stop'))).toBe(false);
+      expect(fixture.calls().some((args) => args.includes('up'))).toBe(false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}
+
+for (const unreadableHistory of [false, true]) {
+  test(`update refuses an older Candidate with ${unreadableHistory ? 'unreadable' : 'readable'} preflight history`, async () => {
+    const { fixture, before, target } = promotionCase();
+    try {
+      fixture.save('deployment.json', {
+        name: 'example',
+        images: { user: before.image },
+      });
+      const desired = fixture.read('deployment.json');
+      fixture.save('control.json', {
+        unreadableHistory,
+        history: ['002_newer'],
+        unknownMigration: '002_newer',
+      });
+      const result = await fixture.promote('update', target);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('002_newer');
+      expect(result.stderr).toContain('compatibility-reviewed rollback');
+      expect(fixture.calls().some((args) => args.includes('stop'))).toBe(false);
+      if (!unreadableHistory) {
+        expect(fixture.transitions()).toEqual([]);
+        expect(fixture.read('deployment.json')).toEqual(desired);
+      }
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}
+
+for (const kind of ['apply', 'update', 'rollback'] as const) {
+  for (const legacyStatus of [
+    'verification-pending',
+    'provisioning',
+    'verified',
+  ] as const) {
+    test(`${kind} Continuation from ${legacyStatus} verifies the pending Candidate without repeating migrations or backups`, async () => {
+      const { fixture, target } = promotionCase();
+      target.declaration.exposure = true;
+      target.declaration.routes = [
+        { name: 'rest', paths: ['/user'], stripPath: false },
+      ];
+      const state = fixture.state();
+      state.applied.https = { bind: '127.0.0.1', port: 8443 };
+      state.applied.applications[0].declaration = target.declaration;
+      fixture.save('state.json', state);
+      fixture.save('deployment.json', {
+        name: state.name,
+        https: state.applied.https,
+        images: { user: target.image },
+      });
+      fixture.save('artifacts.json', [target]);
+      try {
+        fixture.save('control.json', { failure: 'during-gateway' });
+        const pending = await fixture.promote(kind, target);
+        expect(pending.code, pending.stderr).toBe(1);
+        expect(fixture.transitions()).toMatchObject([
+          {
+            status: 'verification-pending',
+            migration: {
+              outcome:
+                kind === 'rollback' ? 'compatibility-reviewed' : 'completed',
+            },
+          },
+        ]);
+        const id = fixture.state().pendingTransitions?.user;
+        if (!id) throw new Error('Expected a pending Candidate');
+        fixture.save(`transition-${id}.json`, {
+          ...fixture.transition(id),
+          status: legacyStatus,
+        });
+        const callsBefore = fixture.calls();
+        fixture.save('control.json', {});
+        const result = await fixture.ops(
+          'continue',
+          ...(kind === 'apply' ? [] : ['user']),
+        );
+        expect(result.code, result.stderr).toBe(0);
+        expect(fixture.transitions()).toMatchObject([{ status: 'verified' }]);
+        expect(fixture.state().pendingTransitions).toBeUndefined();
+        const continuation = fixture.calls().slice(callsBefore.length);
+        expect(continuation.some((args) => args.includes('migration:up'))).toBe(
+          false,
+        );
+        expect(
+          continuation.some((args) =>
+            args.some((arg) => arg.includes('pg_dump')),
+          ),
+        ).toBe(false);
+      } finally {
+        fixture.cleanup();
+      }
+    });
+  }
 }
 
 test('plans desired additions, removals and image changes against applied outcomes and retained resources', () => {

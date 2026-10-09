@@ -2,6 +2,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -22,7 +23,7 @@ import {
   type Transition,
 } from '../lib/operations-transition';
 
-interface ApplyFixture {
+interface PromotionFixture {
   directory: string;
   save: (file: string, value: unknown) => void;
   read: (file: string) => unknown;
@@ -31,19 +32,24 @@ interface ApplyFixture {
   deployment: (id: string) => DeploymentRecord;
   transition: (id: string) => Transition;
   calls: () => string[][];
+  transitions: () => Transition[];
+  promote: (
+    kind: 'apply' | 'update' | 'rollback',
+    target: PlannedArtifact,
+  ) => Promise<CommandResult>;
   apply: () => Promise<CommandResult>;
   cleanup: () => void;
 }
 
 /** Exercise the public CLI with durable Docker responses and injected boundary failures. */
-export function applyFixture(
+export function promotionFixture(
   state: InstallationState,
   desired: {
     https: InstallationState['applied']['https'];
     applications: PlannedArtifact[];
   },
-): ApplyFixture {
-  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'ddh-apply-')));
+): PromotionFixture {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'ddh-promotion-')));
   const save = (file: string, value: unknown) => {
     writeFileSync(join(directory, file), JSON.stringify(value));
   };
@@ -116,6 +122,15 @@ else if (args[0] === 'ps') {
   } else if (command === 'ps') {
     if (!args.at(-1).startsWith('postgres-') || read('database.json') === 'running') console.log(args.at(-1));
   } else if (command === 'exec') {
+    const sql = args.at(-1);
+    if (sql.includes('SELECT name FROM public.pgmigrations')) {
+      if (control.unreadableHistory || read('database.json') !== 'running') process.exit(1);
+      console.log((control.history ?? []).join('\\n'));
+    }
+    if (sql.includes('pg_dump') && control.maintenanceSignal) {
+      process.kill(process.ppid, control.maintenanceSignal);
+      await Bun.sleep(30_000);
+    }
     const app = args.find(arg => arg.startsWith('app-'));
     if (app) console.log(JSON.stringify({http: true, readiness: {service: app.slice(4), consumer: {status: 'not_applicable'}, publisher: {status: 'not_applicable'}}, backlog: null}));
   } else if (command === 'cp') writeFileSync(args.at(-1), 'fixture archive');
@@ -125,6 +140,7 @@ else if (args[0] === 'ps') {
       process.exit(1);
     }
     if (args.includes('migration:status')) console.log(control.unknownMigration ? 'missing file\\t' + control.unknownMigration : '');
+    if (args.includes('migration:up') && control.migrationFailure) process.exit(1);
     if (args.includes('migration:up') && control.signal) {
       process.kill(process.ppid, control.signal);
       await Bun.sleep(30_000);
@@ -149,6 +165,12 @@ else if (args[0] === 'ps') {
         timeout: 15_000,
       },
     );
+  const apply = async () => {
+    const plan = await ops('plan');
+    if (plan.code !== 0) throw new Error(plan.stderr);
+    writeFileSync(join(directory, 'plan.json'), plan.stdout);
+    return ops('apply', `--plan=${join(directory, 'plan.json')}`);
+  };
   return {
     directory,
     save,
@@ -160,11 +182,35 @@ else if (args[0] === 'ps') {
     transition: (id: string) =>
       transitionSchema.parse(read(`transition-${id}.json`)),
     calls: () => z.array(z.array(z.string())).parse(read('calls.json')),
-    apply: async () => {
-      const plan = await ops('plan');
-      if (plan.code !== 0) throw new Error(plan.stderr);
-      writeFileSync(join(directory, 'plan.json'), plan.stdout);
-      return ops('apply', `--plan=${join(directory, 'plan.json')}`);
+    apply,
+    transitions: () =>
+      readdirSync(directory)
+        .filter((file) => file.startsWith('transition-'))
+        .map((file) => transitionSchema.parse(read(file))),
+    promote: async (kind, target) => {
+      if (kind === 'apply') return apply();
+      const application = target.declaration.name;
+      const previous = state.applied.applications.find(
+        (entry) => entry.declaration.name === application,
+      );
+      save('compatibility.json', {
+        application,
+        currentImage: previous?.image,
+        targetImage: target.image,
+        migrationHistory:
+          (read('control.json') as { history?: string[] }).history ?? [],
+        schemaReview: 'The older image remains compatible with this schema.',
+        eventContractReview:
+          'Retained messages remain compatible with this image.',
+      });
+      return ops(
+        kind,
+        application,
+        `--image=${target.image}`,
+        ...(kind === 'rollback'
+          ? [`--compatibility=${join(directory, 'compatibility.json')}`]
+          : []),
+      );
     },
     cleanup: () => {
       rmSync(directory, { recursive: true, force: true });
