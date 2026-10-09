@@ -1,8 +1,12 @@
-import { expect, test } from 'bun:test';
+import { expect, test as bunTest } from 'bun:test';
 import { availablePort } from '../lib/environments';
 import { runCommand } from '../lib/command';
 import { readEnvironmentFile } from '../../database/environment';
 import { withDistribution, until } from './distribution-fixture';
+
+const test = bunTest.skipIf(
+  !process.env.DDH_VALIDATED_IMAGE && !process.env.DDH_IMAGE_PLATFORM,
+);
 
 test('container stop drains accepted work or rolls it back at the deadline and recovers on restart', async () => {
   await withDistribution(

@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { distributionScenarioCommand } from './distribution-scenarios';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -74,23 +75,7 @@ export async function preparePublication(
         await command(['docker', 'image', 'inspect', '--format={{.Id}}', tag]),
       );
       const log = join(directory, `${app.name}.log`);
-      const suites =
-        app.name === 'user' || app.name === 'wallet'
-          ? [
-              ['bun', 'run', 'nx', 'run', `${app.name}:test-distribution`],
-              [
-                'bun',
-                'scripts/with-test-database.ts',
-                `--app=${app.name}`,
-                '--no-database-setup',
-                '--',
-                'bun',
-                'test',
-                `./scripts/tests/distribution-${app.name === 'user' ? '' : 'wallet-'}shutdown.test.ts`,
-              ],
-            ]
-          : [];
-      suites.unshift([
+      const approval = [
         'bun',
         'scripts/with-test-database.ts',
         `--app=${app.name}`,
@@ -102,8 +87,8 @@ export async function preparePublication(
         app.name,
         `--image=${id}`,
         `--platform=${platform}`,
-      ]);
-      for (const args of suites) {
+      ];
+      const runSuite = async (args: string[], scenarios = false) => {
         const result = await runCommand(args, {
           cwd: workspaceRoot,
           timeout: 600_000,
@@ -111,8 +96,9 @@ export async function preparePublication(
           cancellation,
           env: {
             ...process.env,
-            DDH_IMAGE_PLATFORM: platform,
-            DDH_VALIDATED_IMAGE: id,
+            ...(scenarios
+              ? { DDH_IMAGE_PLATFORM: platform, DDH_VALIDATED_IMAGE: id }
+              : {}),
           },
           progress: { label: `validate ${app.name} ${platform}`, logPath: log },
         });
@@ -121,7 +107,15 @@ export async function preparePublication(
           throw new Error(
             `Image validation failed: ${app.name} ${platform}; ${log}\n${(result.stdout + result.stderr).slice(-8000)}`,
           );
-      }
+      };
+      await runSuite(approval);
+      const scenarios = await distributionScenarioCommand(app.name);
+      const message = scenarios
+        ? `Distribution scenarios ${app.name}: running test-distribution against ${id}; ${platform}`
+        : `Distribution scenarios ${app.name}: no test-distribution target; artifact approval only`;
+      console.log(message);
+      appendFileSync(log, message + '\n');
+      if (scenarios) await runSuite(scenarios, true);
       // Artifact approval executes this exact platform image, including its architecture probe.
       z.object({
         Os: z.literal('linux'),
