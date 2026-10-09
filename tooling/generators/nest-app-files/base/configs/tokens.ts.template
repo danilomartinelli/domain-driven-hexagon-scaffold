@@ -1,6 +1,3 @@
 //#if persistence
 export const DATABASE_POOL = Symbol('__PREFIX___DATABASE_POOL');
 //#endif
-//#if messaging
-export const MESSAGING_TRANSPORT = Symbol('__PREFIX___MESSAGING_TRANSPORT');
-//#endif

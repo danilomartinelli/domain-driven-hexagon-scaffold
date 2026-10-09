@@ -196,7 +196,7 @@ export default async function nestApp(
               paths: {
                 persistence: ['database'],
                 messaging: [
-                  'adapters/rabbitmq.transport.ts',
+                  'adapters/rabbitmq.consumer.ts',
                   'application/message-handler.ts',
                 ],
                 exposure: ['adapters/status.resolver.ts'],

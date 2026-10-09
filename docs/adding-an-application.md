@@ -26,7 +26,12 @@ its tests and the distribution verification below exist.
 - [ ] `src/apps/<name>/application.json`: the name and the `persistence`,
       `messaging` and `exposure` capabilities the application really uses.
 - [ ] `composition.json`: prepared integrations and functionality requirements,
-      bound by the same names in runtime composition. Verify the
+      bound by the same names through `composeApplicationModule` from
+      `@starter/nest-support/composition`, passing the application directory and
+      `{ integrations, groups }` factories. Return the database probe
+      from the persistence integration and register consumer/publisher tokens with
+      the parts providing them. Keep handlers with their groups; bootstrap installs
+      `installShutdown(app)` without a callback. Verify the
       [compatibility contract](application-compatibility.md) before provisioning.
 - [ ] `src/apps/<name>/project.json`: name, tags `scope:<name>` and `type:app`,
       the same targets as `wallet` (with `--app=<name>` in `test-component`) and

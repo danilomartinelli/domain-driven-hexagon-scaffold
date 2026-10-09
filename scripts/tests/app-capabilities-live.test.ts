@@ -164,8 +164,8 @@ DROP TABLE probe_records;
   await writeFile(registration, JSON.stringify(composition));
   const source = replaceOnce(
     await readFile(module, 'utf8'),
-    'const functionality: Record<string, () => Functionality> = {};',
-    `const functionality: Record<string, () => Functionality> = { probe: () => ({ providers: [${providers.join(', ')}], ${messaging ? 'handlers: [ProbeHandler],' : ''} ${exposure ? 'controllers: [ProbeController],' : ''} }) };`,
+    "const functionality: ApplicationFactories['groups'] = {};",
+    `const functionality: ApplicationFactories['groups'] = { probe: () => ({ providers: [${providers.join(', ')}], ${messaging ? 'handlers: [ProbeHandler],' : ''} ${exposure ? 'controllers: [ProbeController],' : ''} }) };`,
   );
   await writeFile(module, `${imports.join('\n')}\n${source}`);
 }

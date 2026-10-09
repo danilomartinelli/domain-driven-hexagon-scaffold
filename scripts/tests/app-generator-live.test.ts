@@ -70,12 +70,12 @@ async function checkScenario(scenario: Scenario): Promise<void> {
       join(app, 'adapters/probe.controller.ts'),
       `
       import { Controller, Get, Inject, Post } from '@nestjs/common';
-      import { RabbitTransport } from './rabbitmq.transport';
+      import { RabbitMessageConsumer } from './rabbitmq.consumer';
       import { received, activity } from '../application/probe';
       @Controller('probe')
       export class ProbeController {
-        constructor(@Inject(RabbitTransport) private readonly transport: RabbitTransport) {}
-        @Post('stop') async stop(): Promise<typeof activity> { await this.transport.stop(); return { ...activity }; }
+        constructor(@Inject(RabbitMessageConsumer) private readonly consumer: RabbitMessageConsumer) {}
+        @Post('stop') async stop(): Promise<typeof activity> { await this.consumer.stop(); return { ...activity }; }
         @Get() read(): typeof received { return received; }
         @Get('activity') activity(): typeof activity { return activity; }
       }
@@ -91,8 +91,8 @@ async function checkScenario(scenario: Scenario): Promise<void> {
     await writeFile(registration, JSON.stringify(registered));
     const composition = replaceOnce(
       await readFile(module, 'utf8'),
-      'const functionality: Record<string, () => Functionality> = {};',
-      "const functionality: Record<string, () => Functionality> = { probe: () => ({ providers: [{ provide: 'probe', useValue: probe }], handlers: ['probe'], controllers: [ProbeController] }) };",
+      "const functionality: ApplicationFactories['groups'] = {};",
+      "const functionality: ApplicationFactories['groups'] = { probe: () => ({ providers: [{ provide: 'probe', useValue: probe }], handlers: ['probe'], controllers: [ProbeController] }) };",
     );
     await writeFile(
       module,
@@ -441,11 +441,11 @@ test(
 );
 test.each([
   ['waits before redelivering a timed-out handler', 'timeout-overlap'],
-  ['keeps timed-out work in the transport drain', 'timeout-drain'],
+  ['keeps timed-out work in the consumer drain', 'timeout-drain'],
   ['retains permanent rejections while consuming valid messages', 'rejection'],
   ['preserves partial identity and retention reasons', 'retention'],
 ] as const)(
-  'generated hybrid transport %s',
+  'generated hybrid consumer %s',
   (_description, scenario) => checkScenario(scenario),
   180_000,
 );

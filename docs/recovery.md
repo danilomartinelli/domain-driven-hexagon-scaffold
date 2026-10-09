@@ -213,6 +213,14 @@ processes before purging queues and truncating their separate databases, so a
 previous scenario cannot deliver work into the next one. See
 [developer checks](developer-checks.md) for the final quality gate.
 
+The infrastructure-free nest-support composition suite starts Nest in-process
+through `composeApplicationModule` with fake probes and messaging roles. It pins
+HTTP readiness/backlog responses, disabled capabilities, database and messaging
+unavailability, rejected compositions and role lifecycle in the light gate.
+Readiness construction and state are internal; application status adapters inject
+`ApplicationReadiness` and call `snapshot()`. The process and live suites below
+retain signal, dependency and recovery evidence.
+
 The [operational suite](../tests/integration/operations.test.ts) executes the
 probes, broker stop/start with application restart, persistent backlog growth
 and drain, correlated REST/GraphQL/command publication and consumption, and the

@@ -1,7 +1,8 @@
 # Deep modules
 
 Private Bun workspace packages and nested Nx projects live here. `core/` owns
-framework-free technical primitives; `nest-support/` owns framework helpers,
+framework-free technical primitives; `nest-support/` owns framework helpers and the shared Nest composition entry
+(health, read-only readiness and messaging-role lifecycle),
 `rabbitmq/` consumer/publisher lifecycles and failure-queue operations, `integration-contracts/` versioned
 event envelopes and `capabilities/` application declaration parsing, discovery and
 the shared readiness snapshot contract.

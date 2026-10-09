@@ -6,6 +6,12 @@ shutdown. In an OCI container Bun is PID 1; `docker stop --time=20` sends it SIG
 and gives its existing 15-second deadline time to finish. Development supervisors
 stop their owned app containers on interruption; infrastructure remains ready.
 
+The entry point installs `installShutdown(app)` without a drain callback. It
+obtains the lifecycle and messaging roles owned by `composeApplicationModule`
+from the Nest container. The same roles start in registration order at bootstrap
+and stop in parallel; Nest's programmatic `app.close()` also drains them, and
+repeated stops reuse the same completion. Applications do not mutate readiness.
+
 ```text
 signal -> draining: refuse new business requests; cancel consumers; stop outbox claims
        -> await accepted HTTP requests, transactions, confirmations and ACKs
@@ -105,7 +111,7 @@ The shutdown system tests start the real service entry points and use real
 signals, PostgreSQL locks and a TCP gate in front of the owned RabbitMQ broker.
 They distinguish graceful termination, missing confirmation, forced deadline
 and `SIGKILL`. The gate can lose an outbound ACK after the real Wallet commit;
-it does not replace the consumer or database transaction with a test worker.
+it does not replace the consumer or database transaction with a fake messaging role.
 Assertions cover drained requests and commands, pending publication, rollback,
 commit-before-ACK redelivery, preserved balances, correlated logs, exit after an
 empty event loop and closed database sessions. Polling is bounded; fixtures
