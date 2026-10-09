@@ -61,8 +61,12 @@ function secretState(directory: string): InstallationState {
   };
 }
 
-for (const version of [1, 2]) {
-  test(`candidate with an unknown final HTTP probe keeps running with verification pending (inventory v${String(version)})`, async () => {
+for (const [version, inconsistent] of [
+  [1, false],
+  [2, false],
+  [2, true],
+] as const) {
+  test(`candidate with ${inconsistent ? 'an inconsistent readiness snapshot' : 'an unknown final HTTP probe'} keeps running with verification pending (inventory v${String(version)})`, async () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), 'ddh-probe-')));
     try {
       const state = secretState(directory);
@@ -141,7 +145,7 @@ for (const version of [1, 2]) {
           writeFileSync('probes', String(count() + 1));
           console.log('candidate');
         } else if (command === 'exec') {
-          if (count() >= 3 && !existsSync('recovered')) {
+          if (!${String(inconsistent)} && count() >= 3 && !existsSync('recovered')) {
             console.error('Docker exec failed');
             process.exit(1);
           }
@@ -149,8 +153,11 @@ for (const version of [1, 2]) {
             http: true,
             readiness: {
               service: 'user',
+              lifecycle: 'running',
+              http: { status: 'ready' },
+              database: { status: 'not_applicable' },
               consumer: { status: 'not_applicable' },
-              publisher: { status: existsSync('recovered') ? 'ready' : 'not_ready' },
+              publisher: ${inconsistent ? "!existsSync('recovered') ? { status: 'not_applicable' } :" : ''} { status: existsSync('recovered') ? 'ready' : 'not_ready', connected: existsSync('recovered'), failures: 0, retries: 0, retryDelayMs: 0, lastFailureAt: null, reason: existsSync('recovered') ? null : 'messaging_unavailable' },
             },
             backlog: null,
           }));
@@ -183,16 +190,31 @@ for (const version of [1, 2]) {
         );
       const result = await continueCandidate();
       expect(result.code).not.toBe(0);
-      expect(result.stderr).toContain('HTTP probe unavailable');
+      expect(result.stderr).toContain(
+        inconsistent
+          ? 'messaging verification pending'
+          : 'HTTP probe unavailable',
+      );
       expect(Number(readFileSync(join(directory, 'probes'), 'utf8'))).toBe(3);
       expect(existsSync(join(directory, 'stopped'))).toBe(false);
       const record = () =>
         transitionSchema.parse(JSON.parse(readFileSync(recordPath, 'utf8')));
       expect(record()).toMatchObject({
         status: 'verification-pending',
-        verification: { outcome: 'pending', reason: 'http-unknown' },
-        runtime: { process: 'running', http: 'unknown' },
-        attempts: [{ outcome: 'pending', reason: 'http-unknown' }],
+        verification: {
+          outcome: 'pending',
+          reason: inconsistent ? 'messaging-degraded' : 'http-unknown',
+        },
+        runtime: {
+          process: 'running',
+          http: inconsistent ? 'ready' : 'unknown',
+        },
+        attempts: [
+          {
+            outcome: 'pending',
+            reason: inconsistent ? 'messaging-degraded' : 'http-unknown',
+          },
+        ],
       });
       const applied = () =>
         stateSchema.parse(

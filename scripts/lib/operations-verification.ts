@@ -1,3 +1,4 @@
+import { parseReadinessSnapshot } from '@starter/capabilities/readiness';
 import { z } from 'zod';
 import type { Artifact } from './operations-config';
 
@@ -98,25 +99,20 @@ export async function probeApplication(
     runtime.http = result.http ? 'ready' : 'not_ready';
     runtime.readiness = result.readiness;
     runtime.backlog = result.backlog;
-    const snapshot = z
-      .object({
-        service: z.literal(selected.declaration.name),
-        consumer: z.object({ status: readiness }),
-        publisher: z.object({ status: readiness }),
-      })
-      .safeParse(result.readiness);
-    if (!snapshot.success) return runtime;
+    const snapshot = parseReadinessSnapshot(
+      result.readiness,
+      selected.declaration,
+    );
+    if (!snapshot.valid) return runtime;
     const roles = [
-      snapshot.data.consumer.status,
-      snapshot.data.publisher.status,
+      snapshot.snapshot.consumer.status,
+      snapshot.snapshot.publisher.status,
     ];
     runtime.messaging = roles.includes('not_ready')
       ? 'not_ready'
       : roles.every((role) => role === 'not_applicable')
         ? 'not_applicable'
-        : roles.includes('unknown')
-          ? 'unknown'
-          : 'ready';
+        : 'ready';
   } catch {
     // Connection refusal and malformed responses are unavailable readiness, never success.
   }

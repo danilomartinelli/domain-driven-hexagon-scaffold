@@ -136,7 +136,7 @@ else if (args[0] === 'ps') {
       await Bun.sleep(30_000);
     }
     const app = args.find(arg => arg.startsWith('app-'));
-    if (app) console.log(JSON.stringify({http: true, readiness: {service: app.slice(4), consumer: {status: 'not_applicable'}, publisher: {status: 'not_applicable'}}, backlog: null}));
+    if (app) console.log(JSON.stringify({http: true, readiness: {service: app.slice(4), lifecycle: 'running', http: {status: 'ready'}, database: {status: read('artifacts.json').find(item => item.declaration.name === app.slice(4))?.declaration.persistence ? 'ready' : 'not_applicable'}, consumer: {status: 'not_applicable'}, publisher: {status: 'not_applicable'}}, backlog: null}));
   } else if (command === 'cp') writeFileSync(args.at(-1), 'fixture archive');
   else if (command === 'run') {
     if (read('database.json') !== 'running') {

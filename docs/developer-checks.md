@@ -30,6 +30,13 @@ lockfiles are staged, it also audits them against the registry. The light gate
 runs without Docker and must finish within three minutes; keep Docker suites and
 workspace mutation regressions out of it. A failure blocks the commit.
 
+The 180-second limit is a hard execution deadline, including orchestration time.
+Run the light gate without concurrent Docker, component, distribution, E2E,
+preservation or workspace mutation suites. On timeout, interrupt the gate,
+identify the unfinished check and report incomplete validation; do not extend
+the budget or launch broader checks as a workaround. Required live checks run
+separately, with their own reported scope and duration.
+
 Continuous integration runs `bun run check:ci` on pull requests and pushes to
 `master`: lint, types, architecture, unit tests, documentation, formatting and
 workflow guardrails, with a five-minute job limit. Native AMD64 and ARM64 light OCI
@@ -103,10 +110,18 @@ process's `PATH`; it invokes the installed local tools without downloading them.
 
 After each implementation slice, run focused tests, typechecking and lint on
 the changed code; resolve failures before broadening validation.
+For a localized fix, begin with the smallest regression that reproduces the
+reported behavior, then focused lint/types and the light gate. Add expensive
+suites only on request or when a concrete changed behavior requires them;
+state what risk each added suite covers. File location and Nx affected membership
+alone are insufficient reasons to run all live suites.
 `bun scripts/focused-checks.ts` prints the lint paths, the affected typecheck,
 test, component, distribution and selection targets, and the runner targets below that the branch,
-staged, unstaged and new files require; `--base` and `--head` select immutable
-commits. When running checks by hand, pass the actual changed TypeScript or
+staged, unstaged and new files may require; `--base` and `--head` select immutable
+commits. Its path-based requirements are conservative: narrow them against the
+actual behavior changed and explain omitted live checks. Diagnostics-only or
+test-fixture edits do not automatically require full live suites.
+When running checks by hand, pass the actual changed TypeScript or
 JavaScript paths explicitly; for example:
 
 ```sh
@@ -127,8 +142,8 @@ uncached regression executes affected application components under a shared Nx
 parent and verifies that their migrations can run independently. The local
 `test:tooling` gate includes the same regression.
 
-Infrastructure and runner changes also affect the applications' component
-fixtures. Before staged review, select and run the affected `test-component`
+Changes to provisioning, application startup or runtime behavior can also affect
+the applications' component fixtures. When those behaviors change, select and run the affected `test-component`
 targets through Nx. Supply the actual changed paths, including staged and new
 files; for a Compose change:
 
@@ -155,12 +170,15 @@ are discovered from disk and their dependency is not represented by Nx imports.
 The complete `test:tooling` suite belongs to the on-demand full gate. The light
 gate runs no Docker suites and does not replace this focused feedback.
 
-When changing application behavior, E2E coverage or runner code, run
+When a change affects prepared E2E execution, environment isolation, ownership,
+process supervision or cleanup, run
 `bun run nx run test-runner:test-preservation` before staged review. This test
 executes the complete prepared E2E suite, so adding tests can affect its deadline
 even when provisioning code is unchanged. `bun scripts/preservation-required.ts`
-shows whether branch, staged, unstaged or new files require it; `--base` and
-`--head` select immutable commits. Git comparison failures fail the command.
+conservatively flags branch, staged, unstaged or new files for inspection;
+`--base` and `--head` select immutable commits. A diagnostics-only change or a
+fixture regression outside prepared E2E does not require this entire suite
+solely because its file matches the selector. Git comparison failures fail the command.
 
 Use `&&` to stop a sequential batch on failure. For independent checks, use
 separate tool calls (parallel when useful) and inspect every command's exit

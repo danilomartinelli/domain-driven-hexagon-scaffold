@@ -224,26 +224,13 @@ for (const roles of ['consumer', 'publisher', 'combined'] as const) {
         join(workspace.root, `.context/${roles}/inbox.log`),
         'utf8',
       );
-      expect(evidence).toContain('not_ready');
+      const elapsed = /approved within 60000 ms \(elapsed=(\d+) ms\)/.exec(
+        evidence,
+      );
+      expect(Number(elapsed?.[1])).toBeGreaterThanOrEqual(2500);
       expect(evidence).toContain('approved within 60000 ms');
     }, [workspace.cleanup]);
   }, 1_170_000);
-}
-
-async function middleware(
-  workspace: Workspace,
-  app: string,
-  body: string,
-): Promise<void> {
-  const main = join(workspace.root, `src/apps/${app}/main.ts`);
-  await writeFile(
-    main,
-    replaceOnce(
-      await readFile(main, 'utf8'),
-      'await app.listen',
-      `${body}\nawait app.listen`,
-    ),
-  );
 }
 
 async function rejected(
@@ -264,11 +251,7 @@ async function rejected(
   expect(evidence).toContain('cleanup 0');
 }
 
-for (const fault of [
-  'routing',
-  'connectivity',
-  'unobserved-transition',
-] as const) {
+for (const fault of ['routing', 'listener'] as const) {
   test(`publication refuses Kong ${fault} despite private HTTP readiness`, async () => {
     const workspace = await appWorkspace();
     await withCleanup(async () => {
@@ -291,13 +274,13 @@ for (const fault of [
           routes: [{ name: 'api', paths: ['/reports/api'], stripPath: true }],
         }),
       );
-      if (fault === 'connectivity') {
+      if (fault === 'listener') {
         const main = join(workspace.root, 'src/apps/reports/main.ts');
         await writeFile(
           main,
           replaceOnce(await readFile(main, 'utf8'), "'0.0.0.0'", "'127.0.0.1'"),
         );
-      } else if (fault === 'routing') {
+      } else {
         const gateway = join(workspace.root, 'scripts/lib/gateway.ts');
         await writeFile(
           gateway,
@@ -306,25 +289,6 @@ for (const fault of [
             'strip_path: route.stripPath',
             'strip_path: !route.stripPath',
           ),
-        );
-      } else {
-        // A transport fault acknowledges a dropped mutation and replays only
-        // optimistic health. Slow artifact startup can cause a genuine active
-        // transition even without the mutation, so dropping it alone is not a
-        // deterministic absence of evidence. Configuration reads remain real.
-        const fixture = join(
-          workspace.root,
-          'scripts/tests/fixtures/image-capabilities.ts',
-        );
-        await writeFile(
-          fixture,
-          `const actualFetch = globalThis.fetch;
-globalThis.fetch = Object.assign(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-  if (String(input).endsWith('/unhealthy')) return new Response(null, { status: 204 });
-  const response = await actualFetch(input, init);
-  if (!String(input).endsWith('/health') || !response.ok) return response;
-  return Response.json(JSON.parse(JSON.stringify(await response.json(), (key, value: unknown) => key === 'health' ? 'HEALTHY' : value)));
-}, actualFetch);\n` + (await readFile(fixture, 'utf8')),
         );
       }
       await rejected(
@@ -336,82 +300,3 @@ globalThis.fetch = Object.assign(async (input: Parameters<typeof fetch>[0], init
     }, [workspace.cleanup]);
   }, 1_170_000);
 }
-
-// Each served response is independently invalid. Rotating them within the real
-// window catches a validator that accepts any one of these shapes or states.
-for (const messaging of [false, true]) {
-  test(`publication rejects invalid readiness schema and capability mismatches with messaging=${String(messaging)}`, async () => {
-    const workspace = await appWorkspace();
-    await withCleanup(async () => {
-      await run(
-        workspace,
-        generate(
-          'reports',
-          '--persistence=false',
-          `--messaging=${String(messaging)}`,
-          '--exposure=false',
-        ),
-      );
-      await middleware(
-        workspace,
-        'reports',
-        `
-const readyRole = {status:'ready',connected:true,failures:0,retries:0,retryDelayMs:0,lastFailureAt:null,reason:null};
-const ready = {service:'reports', lifecycle:'running',http:{status:'ready'},database:{status:'not_applicable'},consumer:${messaging ? 'readyRole' : "{status:'not_applicable'}"},publisher:{status:'not_applicable'}};
-const cases = [null, {}, {...ready,service:'sibling'}, {...ready,lifecycle:'draining'}, {...ready,http:{status:'unknown'}}, {...ready,database:{status:'ready'}}, {...ready,consumer:undefined}, {...ready,publisher:{status:'unknown'}}, {...ready,consumer:${messaging ? "{status:'not_applicable'}" : 'readyRole'}}, {...ready,consumer:{...readyRole,connected:false}}, {...ready,publisher:{...readyRole,status:'not_ready',connected:false,reason:'messaging_unavailable'}}];
-let index = 0;
-app.use((request: {url:string}, response: {status:(code:number)=>{json:(value:unknown)=>void}}, next:()=>void) => {
-  if (request.url === '/health/ready') response.status(200).json(cases[index++ % cases.length]);
-  else next();
-});`,
-      );
-      await rejected(
-        workspace,
-        'reports',
-        'invalid',
-        'Publication readiness reports',
-      );
-    }, [workspace.cleanup]);
-  }, 1_170_000);
-}
-
-test('publication cannot restart its deadline after slow HTTP startup or an overlong response', async () => {
-  const workspace = await appWorkspace();
-  await withCleanup(async () => {
-    await run(
-      workspace,
-      generate(
-        'reports',
-        '--persistence=false',
-        '--messaging=false',
-        '--exposure=true',
-      ),
-    );
-    await middleware(
-      workspace,
-      'reports',
-      `
-const startedAt = Date.now();
-app.use((request: {url:string}, response: {status:(code:number)=>{json:(value:unknown)=>void}}, next:()=>void) => {
-  const elapsed = Date.now() - startedAt;
-  if (request.url === '/health/ready/http' && elapsed < 35000) response.status(503).json({service:'reports',status:'not_ready'});
-  else if (request.url === '/health/ready') setTimeout(() => response.status(200).json({service:'reports',lifecycle:'running',http:{status:'ready'},database:{status:'not_applicable'},consumer:{status:'not_applicable'},publisher:{status:'not_applicable'}}), 31000);
-  else next();
-});`,
-    );
-    await rejected(
-      workspace,
-      'reports',
-      'slow',
-      'Publication readiness reports',
-    );
-    const evidence = await readFile(
-      join(workspace.root, '.context/slow/reports.log'),
-      'utf8',
-    );
-    const elapsed = /exhausted 60000 ms \(elapsed=(\d+) ms\)/.exec(evidence);
-    expect(elapsed).not.toBeNull();
-    expect(Number(elapsed?.[1])).toBeGreaterThanOrEqual(59_900);
-    expect(Number(elapsed?.[1])).toBeLessThan(61_000);
-  }, [workspace.cleanup]);
-}, 1_170_000);

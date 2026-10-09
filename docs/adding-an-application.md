@@ -74,7 +74,14 @@ Skip this section when persistence is not declared.
       the migration tooling's own dependencies for persistence), an uncached
       `distribution` target, delivered run/migration commands and a live
       `test-distribution` target that runs outside the workspace with only owned
-      infrastructure.
+      infrastructure. Publication preparation and the full image suite discover this
+      target from the resolved Nx graph after artifact approval. When supplied
+      `DDH_VALIDATED_IMAGE` and `DDH_IMAGE_PLATFORM`, it must execute that exact
+      platform image rather than build or substitute another. This contract is
+      documented, not enforced by the runner. Without an image, skip image-only
+      lifecycle cases. Preparation logs absence of the optional target and continues
+      with approval alone; this does not relax the workspace's non-empty-suite
+      guardrail or add a mandatory publication scenario interface.
 - [ ] `docs/<name>.md` with startup, migration, seed and API commands, linked from
       [database.md](database.md) and `src/apps/AGENTS.md`.
 - [ ] The persistent applications in [database.md](database.md) and

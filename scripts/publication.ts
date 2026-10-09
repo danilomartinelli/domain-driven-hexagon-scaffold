@@ -1,3 +1,4 @@
+import { approvePlatformImage } from './lib/publication-approve';
 import { parseArgs } from 'node:util';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,64 +26,75 @@ try {
       revision: { type: 'string' },
       platform: { type: 'string' },
       output: { type: 'string' },
+      image: { type: 'string' },
     },
   });
   const [action, selection] = positionals;
   if (
-    !['plan', 'prepare', 'publish'].includes(action) ||
+    !['plan', 'prepare', 'publish', 'approve'].includes(action) ||
     !selection ||
     positionals.length !== 2
   )
     throw new Error(
       'Usage: bun scripts/publication.ts <plan|prepare|publish> <application|all> --repository=<owner/repo> --revision=<commit-sha> [--platform=linux/amd64|linux/arm64 --output=<directory>]',
     );
-  const plan = publicationPlan(
-    selection,
-    values.repository ?? '',
-    values.revision ?? '',
-  );
-  if (action === 'plan') console.log(JSON.stringify(plan));
-  else if (action === 'prepare') {
-    if (!values.platform || !values.output)
-      throw new Error('Preparation requires --platform and --output');
-    await preparePublication(
-      plan,
-      values.platform,
-      values.output,
+  if (action === 'approve') {
+    const approved = await approvePlatformImage(
+      selection,
+      values.image ?? '',
+      values.platform ?? '',
       cancellation.signal,
     );
+    if (!approved) process.exitCode = 1;
   } else {
-    if (
-      !values.output ||
-      process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
-      process.env.GITHUB_SHA !== plan.revision ||
-      process.env.GITHUB_REPOSITORY?.toLowerCase() !== plan.repository
-    )
-      throw new Error(
-        'Publication requires an explicit workflow_dispatch for this repository and revision',
+    const plan = publicationPlan(
+      selection,
+      values.repository ?? '',
+      values.revision ?? '',
+    );
+    if (action === 'plan') console.log(JSON.stringify(plan));
+    else if (action === 'prepare') {
+      if (!values.platform || !values.output)
+        throw new Error('Preparation requires --platform and --output');
+      await preparePublication(
+        plan,
+        values.platform,
+        values.output,
+        cancellation.signal,
       );
-    const directory = values.output;
-    const receipts = ['linux-amd64', 'linux-arm64'].map(
-      (platform) =>
-        JSON.parse(
-          readFileSync(join(directory, platform, 'validated.json'), 'utf8'),
-        ) as unknown,
-    );
-    const result = await publishValidated(
-      plan,
-      receipts,
-      ghcrRegistry(plan, directory, fetch, cancellation.signal),
-    );
-    writeFileSync(
-      join(directory, 'published.json'),
-      JSON.stringify(result, null, 2) + '\n',
-    );
-    if (process.env.GITHUB_STEP_SUMMARY)
-      appendFileSync(
-        process.env.GITHUB_STEP_SUMMARY,
-        `Source: ${plan.revision}\n\n| Application | Immutable image |\n| --- | --- |\n${result.images.map((image) => `| ${image.name} | \`${image.reference}\` |`).join('\n')}\n\nPublication only. No environment was deployed or migrated.\n`,
+    } else {
+      if (
+        !values.output ||
+        process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
+        process.env.GITHUB_SHA !== plan.revision ||
+        process.env.GITHUB_REPOSITORY?.toLowerCase() !== plan.repository
+      )
+        throw new Error(
+          'Publication requires an explicit workflow_dispatch for this repository and revision',
+        );
+      const directory = values.output;
+      const receipts = ['linux-amd64', 'linux-arm64'].map(
+        (platform) =>
+          JSON.parse(
+            readFileSync(join(directory, platform, 'validated.json'), 'utf8'),
+          ) as unknown,
       );
-    console.log(JSON.stringify(result, null, 2));
+      const result = await publishValidated(
+        plan,
+        receipts,
+        ghcrRegistry(plan, directory, fetch, cancellation.signal),
+      );
+      writeFileSync(
+        join(directory, 'published.json'),
+        JSON.stringify(result, null, 2) + '\n',
+      );
+      if (process.env.GITHUB_STEP_SUMMARY)
+        appendFileSync(
+          process.env.GITHUB_STEP_SUMMARY,
+          `Source: ${plan.revision}\n\n| Application | Immutable image |\n| --- | --- |\n${result.images.map((image) => `| ${image.name} | \`${image.reference}\` |`).join('\n')}\n\nPublication only. No environment was deployed or migrated.\n`,
+        );
+      console.log(JSON.stringify(result, null, 2));
+    }
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

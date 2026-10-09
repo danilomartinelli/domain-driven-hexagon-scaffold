@@ -9,14 +9,159 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { runCommand } from '../lib/command';
 import { createWorkspace } from './workspace-fixture';
 import { tcpGate } from './tcp-gate';
 import { withCleanup } from './cleanup';
 import { appWorkspace, generate, run } from './app-generator-fixture';
 import { withApp } from './app-runtime-fixture';
+import { runDistributionRuntimeProbe } from './distribution-runtime-fixture';
 
 const root = new URL('../../', import.meta.url).pathname;
+
+for (const app of ['user', 'wallet'] as const)
+  for (const platform of [undefined, '', 'linux/amd64'])
+    test(`distribution fixture ${app} uses a supplied image with ${platform === undefined ? 'absent' : platform || 'empty'} platform`, async () => {
+      const result = await runDistributionRuntimeProbe({
+        mode: 'selection',
+        app,
+        platform,
+      });
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        `Selected image sha256:${'a'.repeat(64)} on ${platform || `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`}`,
+      );
+      expect(result.stdout).not.toContain('Host package selected');
+    });
+
+for (const expectedExit of [0, [0, 1]])
+  test(`image shutdown includes application logs for unexpected exit with ${JSON.stringify(expectedExit)}`, async () => {
+    const result = await runDistributionRuntimeProbe({
+      mode: 'shutdown',
+      app: 'user',
+      expectedExit,
+    });
+    expect(result.code, result.stderr).toBe(0);
+    const observation = z
+      .object({ error: z.string(), removed: z.boolean() })
+      .parse(JSON.parse(result.stdout.trim().split('\n').at(-1) ?? ''));
+    expect(observation.removed).toBe(true);
+    expect(observation.error).toContain('shutdown drain started');
+    expect(observation.error).toContain('shutdown deadline exceeded');
+    expect(observation.error).toContain('7');
+  });
+
+for (const app of ['user', 'wallet'])
+  for (const scenario of [
+    { name: 'without image selection', selection: {}, calls: 1, code: 0 },
+    {
+      name: 'with empty image selection',
+      selection: { DDH_VALIDATED_IMAGE: '', DDH_IMAGE_PLATFORM: '' },
+      calls: 1,
+      code: 0,
+    },
+    {
+      name: 'with an approved image',
+      selection: { DDH_VALIDATED_IMAGE: 'sha256:fixture' },
+      calls: 2,
+      code: 0,
+    },
+    {
+      name: 'with an image platform',
+      selection: { DDH_IMAGE_PLATFORM: 'linux/arm64' },
+      calls: 2,
+      code: 0,
+    },
+    {
+      name: 'with an approved platform image',
+      selection: {
+        DDH_VALIDATED_IMAGE: 'sha256:fixture',
+        DDH_IMAGE_PLATFORM: 'linux/arm64',
+      },
+      calls: 2,
+      code: 0,
+    },
+    {
+      name: 'after a distribution failure',
+      selection: { DDH_IMAGE_PLATFORM: 'linux/arm64', DISTRIBUTION_EXIT: '37' },
+      calls: 1,
+      code: 37,
+    },
+    {
+      name: 'after an image shutdown failure',
+      selection: { DDH_IMAGE_PLATFORM: 'linux/arm64', SHUTDOWN_EXIT: '42' },
+      calls: 2,
+      code: 42,
+    },
+  ])
+    test(`distribution target ${app} provisions only selected scenarios ${scenario.name}`, async () => {
+      const directory = mkdtempSync(
+        join(tmpdir(), 'starter-distribution-target-'),
+      );
+      try {
+        const log = join(directory, 'calls.jsonl');
+        writeFileSync(log, '');
+        writeFileSync(
+          join(directory, 'bun'),
+          `#!${process.execPath}
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+process.exit(Number(args.at(-1).includes('shutdown') ? process.env.SHUTDOWN_EXIT : process.env.DISTRIBUTION_EXIT) || 0);
+`,
+          { mode: 0o700 },
+        );
+        const project = z
+          .object({
+            targets: z.object({
+              'test-distribution': z.object({
+                options: z.object({ command: z.string() }),
+              }),
+            }),
+          })
+          .parse(
+            JSON.parse(
+              readFileSync(join(root, `src/apps/${app}/project.json`), 'utf8'),
+            ),
+          );
+        const result = await runCommand(
+          [
+            '/bin/sh',
+            '-c',
+            project.targets['test-distribution'].options.command,
+          ],
+          {
+            cwd: root,
+            env: {
+              PATH: `${directory}:${process.env.PATH ?? ''}`,
+              ...scenario.selection,
+            },
+          },
+        );
+        expect(result.code, result.stderr).toBe(scenario.code);
+        const calls = readFileSync(log, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => z.array(z.string()).parse(JSON.parse(line)));
+        expect(calls).toHaveLength(scenario.calls);
+        for (const args of calls)
+          expect(args.slice(0, 3)).toEqual([
+            'scripts/with-test-database.ts',
+            `--app=${app}`,
+            '--no-database-setup',
+          ]);
+        expect(calls[0].at(-1)).toBe(
+          `./scripts/tests/distribution-${app}.test.ts`,
+        );
+        if (scenario.calls === 2)
+          expect(calls[1].at(-1)).toBe(
+            `./scripts/tests/distribution-${app === 'user' ? '' : 'wallet-'}shutdown.test.ts`,
+          );
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
 
 test('disabled prepared integrations retain source but deliver no inactive adapters or migration interface', async () => {
   const workspace = await appWorkspace();

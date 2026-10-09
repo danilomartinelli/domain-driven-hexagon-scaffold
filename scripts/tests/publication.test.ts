@@ -1,3 +1,4 @@
+import { runCommand } from '../lib/command';
 import { expect, test } from 'bun:test';
 import { rejects } from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -13,11 +14,14 @@ import {
   type PublicationRegistry,
 } from '../lib/publication-push';
 
-for (const [phase, signal, code] of [
-  ['build', 'SIGINT', 130],
-  ['validation', 'SIGTERM', 143],
+for (const [runner, phase, signal, code] of [
+  ['publication', 'build', 'SIGINT', 130],
+  ['publication', 'validation', 'SIGTERM', 143],
+  ['distribution', 'build', 'SIGINT', 130],
+  ['distribution', 'validation', 'SIGTERM', 143],
+  ['distribution', 'scenarios', 'SIGINT', 130],
 ] as const) {
-  test(`publication interruption during ${phase} terminates the command, cleans its image and withholds approval`, async () => {
+  test(`${runner} interruption during ${phase} terminates the command, cleans its image and withholds approval`, async () => {
     const workspace = await createWorkspace();
     const bin = join(workspace.root, '.context/bin');
     await mkdir(bin, { recursive: true });
@@ -37,7 +41,11 @@ const block = () => {
   writeFileSync('.context/ready', String(process.pid));
   setInterval(() => {}, 1000);
 };
-if (process.argv[1].endsWith('/bun')) block();
+if (process.argv[1].endsWith('/bun')) {
+  if (args.includes('graph')) console.log(JSON.stringify({graph:{nodes:{user:{data:{root:'src/apps/user',targets:{'test-distribution':{}}}}},dependencies:{}}}));
+  else if (${JSON.stringify(phase)} === 'scenarios' && args[0] === 'scripts/with-test-database.ts') process.exit(0);
+  else block();
+}
 else if (args[0] === 'info') console.log('arm64');
 else if (args[0] === 'buildx') {
   writeFileSync(tagFile, args[args.indexOf('--tag') + 1]);
@@ -57,17 +65,25 @@ else if (args[1] === 'ls') {
       [
         process.execPath,
         '--no-env-file',
-        'scripts/publication.ts',
-        'prepare',
-        'user',
-        '--repository=acme/scaffold',
-        `--revision=${'1'.repeat(40)}`,
-        '--platform=linux/arm64',
-        '--output=.context/prepared',
+        ...(runner === 'distribution'
+          ? ['scripts/distribution-images.ts']
+          : [
+              'scripts/publication.ts',
+              'prepare',
+              'user',
+              '--repository=acme/scaffold',
+              `--revision=${'1'.repeat(40)}`,
+              '--platform=linux/arm64',
+              '--output=.context/prepared',
+            ]),
       ],
       {
         cwd: workspace.root,
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` },
+        env: {
+          ...process.env,
+          DDH_IMAGE_PLATFORM: 'linux/arm64',
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+        },
         stdout: Bun.file(join(workspace.root, '.context/stdout')),
         stderr: Bun.file(join(workspace.root, '.context/stderr')),
       },
@@ -340,3 +356,30 @@ test('publication discovers one or all applications, including a generated appli
     });
   }, [workspace.cleanup]);
 }, 60_000);
+
+test('internal artifact approval refuses an unowned environment before using the platform image', async () => {
+  const workspace = await createWorkspace();
+  await withCleanup(async () => {
+    const result = await runCommand(
+      [
+        'bun',
+        '--no-env-file',
+        'scripts/publication.ts',
+        'approve',
+        'user',
+        `--image=sha256:${'a'.repeat(64)}`,
+        '--platform=linux/arm64',
+      ],
+      {
+        cwd: workspace.root,
+        env: { ...process.env, DDH_ENVIRONMENT_FILE: undefined },
+        timeout: 10_000,
+      },
+    );
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(
+      'Refusing test target without an owned environment',
+    );
+    expect(result.stdout).not.toContain('"status":"approved"');
+  }, [workspace.cleanup]);
+});

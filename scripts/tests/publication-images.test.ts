@@ -61,6 +61,9 @@ test('publication prepares exact executable images for one/all discovery and pro
       `.context/one/${architectureDirectory}`,
     );
     expect(one.code, one.stdout + one.stderr).toBe(0);
+    expect(one.stdout).toContain(
+      'Distribution scenarios reports: no test-distribution target; artifact approval only',
+    );
     const receipt = receiptSchema.parse(
       JSON.parse(
         await readFile(
@@ -135,3 +138,121 @@ test('publication prepares exact executable images for one/all discovery and pro
     ).toBe(true);
   }, [workspace.cleanup]);
 }, 1_200_000);
+
+test('publication discovers application scenarios and requires success against the approved image', async () => {
+  const workspace = await appWorkspace();
+  await withCleanup(async () => {
+    await run(
+      workspace,
+      generate(
+        'reports',
+        '--persistence=false',
+        '--messaging=false',
+        '--exposure=false',
+      ),
+    );
+    const platform =
+      process.env.DDH_IMAGE_PLATFORM ??
+      `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`;
+    const projectPath = join(workspace.root, 'src/apps/reports/project.json');
+    const project = z
+      .object({ targets: z.record(z.string(), z.unknown()) })
+      .loose()
+      .parse(JSON.parse(await readFile(projectPath, 'utf8')));
+    const command =
+      'bun scripts/with-test-database.ts --app=reports --no-database-setup -- bun scripts/tests/fixtures/image-capabilities.ts';
+    const target = async (failure: boolean) => {
+      project.targets['test-distribution'] = {
+        executor: 'nx:run-commands',
+        cache: false,
+        options: {
+          command: command + (failure ? ' && bun -e "process.exit(42)"' : ''),
+        },
+      };
+      await writeFile(projectPath, JSON.stringify(project));
+    };
+    const prepare = (output: string) =>
+      workspace.run(
+        [
+          'bun',
+          '--no-env-file',
+          'scripts/publication.ts',
+          'prepare',
+          'reports',
+          '--repository=acme/scaffold',
+          '--revision=0123456789012345678901234567890123456789',
+          `--platform=${platform}`,
+          `--output=${output}`,
+        ],
+        { timeout: 600_000 },
+      );
+    await target(true);
+    const rejected = await prepare('.context/scenario-failed');
+    expect(rejected.code, rejected.stdout + rejected.stderr).not.toBe(0);
+    expect(rejected.stdout).toContain(
+      'Distribution scenarios reports: running test-distribution against sha256:',
+    );
+    const failedLog = await readFile(
+      join(workspace.root, '.context/scenario-failed/reports.log'),
+      'utf8',
+    );
+    expect(failedLog).toContain('Artifact approval reports: approved');
+    expect(failedLog).toContain('reports:test-distribution');
+    expect(
+      await Bun.file(
+        join(workspace.root, '.context/scenario-failed/validated.json'),
+      ).exists(),
+    ).toBe(false);
+    await target(false);
+    const approved = await prepare('.context/scenario-approved');
+    expect(approved.code, approved.stdout + approved.stderr).toBe(0);
+    expect(approved.stdout).toContain(
+      'Distribution scenarios reports: running test-distribution against sha256:',
+    );
+    expect(
+      await Bun.file(
+        join(workspace.root, '.context/scenario-approved/validated.json'),
+      ).exists(),
+    ).toBe(true);
+  }, [workspace.cleanup]);
+}, 1_200_000);
+
+test('publication runs User distribution and image shutdown scenarios after approval', async () => {
+  const workspace = await appWorkspace();
+  await withCleanup(async () => {
+    const platform =
+      process.env.DDH_IMAGE_PLATFORM ??
+      `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`;
+    const result = await workspace.run(
+      [
+        'bun',
+        '--no-env-file',
+        'scripts/publication.ts',
+        'prepare',
+        'user',
+        '--repository=acme/scaffold',
+        '--revision=0123456789012345678901234567890123456789',
+        `--platform=${platform}`,
+        '--output=.context/user-scenarios',
+      ],
+      { timeout: 600_000 },
+    );
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const log = await readFile(
+      join(workspace.root, '.context/user-scenarios/user.log'),
+      'utf8',
+    );
+    expect(
+      log.indexOf('Artifact approval user: approved'),
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      log.indexOf('Distribution scenarios user: running test-distribution'),
+    ).toBeGreaterThan(log.indexOf('Artifact approval user: approved'));
+    expect(log).toContain('distribution-shutdown.test.ts');
+    expect(
+      await Bun.file(
+        join(workspace.root, '.context/user-scenarios/validated.json'),
+      ).exists(),
+    ).toBe(true);
+  }, [workspace.cleanup]);
+}, 900_000);

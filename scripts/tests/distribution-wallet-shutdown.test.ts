@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, test as bunTest } from 'bun:test';
 import { connect } from 'amqplib';
 import { withCleanup } from './cleanup';
 import {
@@ -6,6 +6,10 @@ import {
   until,
   withDistribution,
 } from './distribution-fixture';
+
+const test = bunTest.skipIf(
+  !process.env.DDH_VALIDATED_IMAGE && !process.env.DDH_IMAGE_PLATFORM,
+);
 
 test('Wallet container stop acknowledges drained work and recovers the same delivery after its deadline', async () => {
   await withDistribution(

@@ -1,3 +1,4 @@
+import { parseReadinessSnapshot } from '@starter/capabilities/readiness';
 import { expect, test } from 'bun:test';
 import { connect } from 'amqplib';
 import { randomUUID } from 'node:crypto';
@@ -168,14 +169,6 @@ DROP TABLE probe_records;
   );
   await writeFile(module, `${imports.join('\n')}\n${source}`);
 }
-
-const snapshotSchema = z.object({
-  service: z.string(),
-  http: z.object({ status: z.string() }),
-  database: z.object({ status: z.string() }),
-  consumer: z.object({ status: z.string(), reason: z.string().nullish() }),
-  publisher: z.object({ status: z.string() }),
-});
 
 async function ownedContainer(
   container: { name: string; owner: string },
@@ -523,8 +516,14 @@ async function checkCombination(
         [`${env}_RABBITMQ_URL`]: `amqp://probe:${context.broker.password}@127.0.0.1:${brokerPort}`,
       }),
     });
-    const ready = async (url: string) =>
-      snapshotSchema.parse(await (await fetch(`${url}/health/ready`)).json());
+    const ready = async (url: string) => {
+      const result = parseReadinessSnapshot(
+        await (await fetch(`${url}/health/ready`)).json(),
+        { name, persistence, messaging, exposure },
+      );
+      if (!result.valid) throw new Error(result.reason);
+      return result.snapshot;
+    };
     const status = async (url: string, component: string) =>
       (await fetch(`${url}/health/ready/${component}`)).status;
     databaseGate.allow();

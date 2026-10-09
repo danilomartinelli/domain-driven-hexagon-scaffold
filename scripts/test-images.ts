@@ -70,34 +70,8 @@ for (const platform of platforms) {
       ],
     },
     {
-      name: 'wallet',
-      command: ['bun', 'run', 'nx', 'run', 'wallet:test-distribution'],
-    },
-    {
-      name: 'shutdown',
-      command: [
-        'bun',
-        'scripts/with-test-database.ts',
-        '--app=user',
-        '--no-database-setup',
-        '--',
-        'bun',
-        'test',
-        './scripts/tests/distribution-shutdown.test.ts',
-      ],
-    },
-    {
-      name: 'wallet-shutdown',
-      command: [
-        'bun',
-        'scripts/with-test-database.ts',
-        '--app=wallet',
-        '--no-database-setup',
-        '--',
-        'bun',
-        'test',
-        './scripts/tests/distribution-wallet-shutdown.test.ts',
-      ],
+      name: 'distributions',
+      command: ['bun', 'scripts/distribution-images.ts'],
     },
     {
       name: 'capabilities',

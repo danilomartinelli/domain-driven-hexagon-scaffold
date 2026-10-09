@@ -281,6 +281,14 @@ generic readiness cannot assume that a business request is safe or should return
 tests. This correction does not require a new per-application functional scenario
 interface as a condition of publication.
 
+The refinement approved on 2026-10-09 discovers optional distribution scenarios
+from each selected application's `test-distribution` Nx target, after artifact
+approval. Preparation and the full image suite supply the same approved platform
+image ID and platform. Targets are responsible for executing that image; this is
+a documented contract, not a new enforced interface. Missing targets are logged
+and continue with approval alone; failing scenarios prevent the approval receipt.
+User and Wallet include their isolated image shutdown cases in their own targets.
+
 Read back the installed Kong services and routes and compare their effective
 configuration with the declaration. For each declared application upstream,
 also establish that Kong actually reached the artifact's private HTTP readiness
