@@ -118,7 +118,7 @@ const parts = composeApplication<ModuleMetadata>(
           database: async () => {
             await pool.query(sql.unsafe`SELECT id FROM users LIMIT 0`);
           },
-          consumer: () => consumer.diagnostics.snapshot(),
+          consumer: () => consumer.snapshot(),
           publisher: () => publisher.diagnostics.snapshot(),
           backlog: () => new SlonikUserOutbox(pool).backlog(),
         }),

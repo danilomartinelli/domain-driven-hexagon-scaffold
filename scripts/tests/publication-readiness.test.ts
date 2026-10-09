@@ -209,12 +209,12 @@ for (const roles of ['consumer', 'publisher', 'combined'] as const) {
         source = replaceOnce(
           source,
           'consumer:',
-          'publisher: () => transport.diagnostics.snapshot(), consumer:',
+          'publisher: () => consumer.snapshot(), consumer:',
         );
       source = replaceOnce(
         source,
-        'this.transport?.start();',
-        'setTimeout(() => this.transport?.start(), 2500);',
+        'this.consumer?.start();',
+        'setTimeout(() => this.consumer?.start(), 2500);',
       );
       await writeFile(module, source);
       const result = await prepare(workspace, 'inbox', roles);

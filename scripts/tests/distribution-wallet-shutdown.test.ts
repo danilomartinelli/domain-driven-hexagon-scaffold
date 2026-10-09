@@ -66,9 +66,9 @@ test('Wallet container stop acknowledges drained work and recovers the same deli
               paused = true;
             }
             const started = Date.now();
-            // The consumer's 10s operation timeout can finish cleanup before the
-            // 15s application deadline. Either exit must preserve the delivery.
-            stopped = stop(mode === 'timeout' ? [0, 1] : 0);
+            // A delivery deadline cannot finish the real handler's drain. The
+            // application's outer deadline must report unfinished work.
+            stopped = stop(mode === 'timeout' ? 1 : 0);
             await until(
               async () =>
                 (await probe('/health/ready/consumer')).status === 503,
@@ -81,7 +81,7 @@ test('Wallet container stop acknowledges drained work and recovers the same deli
             if (mode === 'drain') await owner.query('COMMIT');
             await stopped;
             if (mode === 'timeout') {
-              expect(Date.now() - started).toBeGreaterThanOrEqual(9_000);
+              expect(Date.now() - started).toBeGreaterThanOrEqual(14_000);
               expect(Date.now() - started).toBeLessThan(20_000);
               await databaseFault('unpause');
               paused = false;

@@ -34,7 +34,7 @@ readiness are applicable.
 
 Use `/health/ready/http` to decide whether to send REST/GraphQL traffic. The
 aggregate probe deliberately reports messaging degradation even when HTTP is
-usable. Probes do not initiate broker connections or change worker retries.
+usable. Probes do not initiate broker connections or change messaging retries.
 Database readiness and backlog reads each coalesce concurrent requests and cache
 results for one second. A probe responds within five seconds even if the database
 connection stalls; the outstanding query is reused until it settles, so repeated
@@ -46,7 +46,7 @@ Use the [private container probe command](database.md#container-watch-debugging-
 for each application; operational listeners are not published to the host.
 
 Consumer and User publisher states include `connected`, `failures`, `retries`,
-`retryDelayMs` and `lastFailureAt`. Counters describe failed/retried worker
+`retryDelayMs` and `lastFailureAt`. Counters describe failed/retried messaging role
 sessions **in this process**, not per-message delivery attempts. They reset on
 restart; the database backlog and RabbitMQ queues persist. `retryDelayMs` is the
 scheduled backoff, not a countdown. Database loss makes messaging readiness
@@ -72,7 +72,9 @@ user.create.committed (User; command/request -> eventId, correlationId)
 Wallet may commit before User records publication completion. Failed publication
 logs `outbox.failed` with the current event identity when one was selected, plus
 the retry delay. Consumer failures and retained invalid messages carry their
-transport identity where available. No message body is added to these records.
+delivery identity where available. No message body is added to these records.
+All consumers use the [shared lifecycle operations](rabbitmq.md#retention-and-logs)
+and log the service, queue and error class instead of raw errors or broker details.
 Capture each application's console output and filter JSON records locally; for
 example, after saving User output to `.context/user-incident.log`:
 

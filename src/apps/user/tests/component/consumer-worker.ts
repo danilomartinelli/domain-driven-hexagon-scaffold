@@ -45,9 +45,7 @@ consumer.start();
 createInterface({ input: process.stdin }).on('line', (command) => {
   if (command === 'release') release.resolve(undefined);
   if (command === 'readiness')
-    console.log(
-      `AVAILABLE:${String(consumer.diagnostics.snapshot().connected)}`,
-    );
+    console.log(`AVAILABLE:${String(consumer.snapshot().connected)}`);
 });
 process.on('SIGTERM', () => {
   void consumer

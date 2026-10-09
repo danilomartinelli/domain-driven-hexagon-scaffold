@@ -107,9 +107,7 @@ for (const name of ['user', 'wallet'] as const) {
             await channel.waitForConfirms();
             await blockedQuery(pool, `${name}_runtime`, `INSERT INTO ${table}`);
             await eventually(() => {
-              expect(service.output).toContain(
-                name === 'user' ? 'command.failed' : 'wallet.event.failed',
-              );
+              expect(service.output).toContain('consumer.failed');
             });
             service.signal('SIGTERM');
             await eventually(() => {

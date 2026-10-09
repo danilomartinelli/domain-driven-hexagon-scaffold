@@ -18,6 +18,14 @@
         "command": "bun --bun tsc --project src/packages/rabbitmq/tsconfig.json",
         "cwd": "."
       }
+    },
+    "test-component": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/rabbitmq-consumer.test.ts",
+        "cwd": "."
+      }
     }
   }
 }

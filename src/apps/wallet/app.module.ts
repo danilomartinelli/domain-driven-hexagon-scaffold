@@ -106,7 +106,7 @@ const parts = composeApplication<ModuleMetadata>(
           database: async () => {
             await pool.query(sql.unsafe`SELECT id FROM wallets LIMIT 0`);
           },
-          consumer: () => consumer.diagnostics.snapshot(),
+          consumer: () => consumer.snapshot(),
         }),
       inject: [DATABASE_POOL, RabbitWalletConsumer],
     },

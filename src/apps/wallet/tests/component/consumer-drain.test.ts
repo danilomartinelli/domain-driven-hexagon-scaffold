@@ -10,10 +10,10 @@ for (const shutdown of [false, true]) {
     await withBroker(async (channel) => {
       const worker = startConsumerWorker('past-deadline');
       await withCleanup(async () => {
-        await worker.waitFor('Wallet messaging connected.');
+        await worker.waitFor('consumer.connected');
         await publish(channel, userCreated('drain-event', 'drain-user'));
         await worker.waitFor('CHECKPOINT:past-deadline');
-        await worker.waitFor('Wallet delivery failed;', 15000);
+        await worker.waitFor('consumer.failed', 15000);
         if (shutdown) worker.process.kill('SIGTERM');
         await Bun.sleep(750);
         if (shutdown) expect(worker.output()).not.toContain('CONSUMER:stopped');

@@ -4,10 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./consumer": "./consumer.ts",
     "./diagnostics": "./diagnostics.ts",
     "./failure-queue": "./failure-queue.ts"
   },
   "dependencies": {
+    "@starter/core": "workspace:*",
     "amqplib": "2.2.0"
   },
   "license": "MIT"

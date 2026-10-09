@@ -250,7 +250,7 @@ async function checkScenario(scenario: Scenario): Promise<void> {
                 JSON.stringify({ pattern: 'probe.v1', data: 'invalid' }),
               );
               expect(failed && failed.properties.headers).toMatchObject({
-                'x-failure-reason': 'invalid-probe',
+                'failure-reason': 'invalid-probe',
               });
               expect(logs()).not.toContain('consumer.failed');
               expect((await fetch(`${url}/health/ready/consumer`)).ok).toBe(
@@ -296,7 +296,7 @@ async function checkScenario(scenario: Scenario): Promise<void> {
                   type: 'probe',
                   headers: {
                     source: 'producer-private',
-                    'x-failure-reason': 'untrusted',
+                    'failure-reason': 'untrusted',
                   },
                 });
                 await channel.waitForConfirms();
@@ -315,7 +315,7 @@ async function checkScenario(scenario: Scenario): Promise<void> {
                   type: 'probe',
                   headers: {
                     source: 'producer-private',
-                    'x-failure-reason': sample.reason,
+                    'failure-reason': sample.reason,
                   },
                 });
                 expect(failed && failed.properties.expiration).toBeUndefined();

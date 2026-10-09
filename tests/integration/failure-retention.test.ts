@@ -79,8 +79,8 @@ test('both poison-message paths retain original bytes and metadata through broke
     const channel = await connection.createConfirmChannel();
     await until(
       () =>
-        user.output.includes('User command consumer connected.') &&
-        wallet.output.includes('Wallet messaging connected.'),
+        user.output.includes('consumer.connected') &&
+        wallet.output.includes('consumer.connected'),
     );
     for (const path of paths) {
       for (const body of [

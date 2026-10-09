@@ -6,7 +6,7 @@ export interface MessagingSnapshot {
   lastFailureAt: string | null;
 }
 
-/** Observes the existing worker; never connects or retries on a probe's behalf. */
+/** Observes the messaging role; never connects or retries on a probe's behalf. */
 export class MessagingDiagnostics {
   private connected = false;
   private blocked = false;
