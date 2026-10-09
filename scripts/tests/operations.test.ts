@@ -17,7 +17,6 @@ import { backupApplication } from '../lib/operations-backup';
 import { operationsDiagnostics } from '../lib/operations-diagnostics';
 import {
   retainResources,
-  stateSchema,
   type InstallationState,
 } from '../lib/operations-config';
 import { operationsCompose } from '../lib/operations-compose';
@@ -29,10 +28,6 @@ import {
 import { promotionFixture } from './operations-promotion-fixture';
 import { until } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
-import {
-  transitionSchema,
-  type Transition,
-} from '../lib/operations-transition';
 
 const userImage = `example/user@sha256:${'a'.repeat(64)}`;
 const userDeployment = { name: 'example', images: { user: userImage } };
@@ -59,198 +54,6 @@ function secretState(directory: string): InstallationState {
     },
     retained: { databases: [] },
   };
-}
-
-for (const [version, inconsistent] of [
-  [1, false],
-  [2, false],
-  [2, true],
-] as const) {
-  test(`candidate with ${inconsistent ? 'an inconsistent readiness snapshot' : 'an unknown final HTTP probe'} keeps running with verification pending (inventory v${String(version)})`, async () => {
-    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'ddh-probe-')));
-    try {
-      const state = secretState(directory);
-      state.applied.applications[0].declaration.persistence = false;
-      const transitionId = 'a1111111-1111-4111-8111-111111111111';
-      state.pendingTransitions = { user: transitionId };
-      const recordPath = join(directory, `transition-${transitionId}.json`);
-      const transition: Transition = {
-        action: 'update',
-        application: 'user',
-        previousImage: `example/user@sha256:${'b'.repeat(64)}`,
-        candidateImage: state.applied.applications[0].image,
-        compatibilityReview: null,
-        status: 'verification-pending',
-        migrationStatus: '',
-        migration: { outcome: 'not-applicable', completedAt: null },
-        runtime: null,
-        verification: { outcome: 'pending', reason: 'messaging-degraded' },
-        attempts: [],
-        backup: '',
-        error: '',
-        diagnostic: '',
-      };
-      writeFileSync(
-        join(directory, 'deployment.json'),
-        JSON.stringify(userDeployment),
-      );
-      state.retained = retainResources(state, state.applied.applications);
-      const inventory =
-        version === 1
-          ? {
-              version: 1,
-              project: state.project,
-              owner: state.owner,
-              directory,
-              config: userDeployment,
-              artifacts: state.applied.applications,
-              pendingTransitions: state.pendingTransitions,
-            }
-          : state;
-      writeFileSync(join(directory, 'state.json'), JSON.stringify(inventory));
-      writeFileSync(recordPath, JSON.stringify(transition));
-      mkdirSync(join(directory, 'secrets'));
-      writeFileSync(
-        join(directory, 'secrets/broker-password'),
-        'fixture-password',
-      );
-      writeFileSync(join(directory, 'probes'), '0');
-      // Advance the verification clock at probe boundaries, leaving subprocess
-      // deadlines and the actual polling/decision path intact in an isolated CLI.
-      const preload = join(directory, 'clock.ts');
-      writeFileSync(
-        preload,
-        `
-      import { readFileSync } from 'node:fs';
-      const now = Date.now;
-      Date.now = () => now() + Number(readFileSync(${JSON.stringify(join(directory, 'probes'))}, 'utf8')) * 30_000;
-    `,
-      );
-      writeFileSync(
-        join(directory, 'docker'),
-        `#!/usr/bin/env bun
-      import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-      const args = process.argv.slice(2);
-      const count = () => Number(readFileSync('probes', 'utf8'));
-      if (args[0] === 'create') console.log('preflight');
-      else if (args[0] === 'start') console.log(${JSON.stringify(JSON.stringify(state.applied.applications[0].declaration))});
-      else if (args[0] === 'ps' || args[0] === 'network' || args[0] === 'volume') {}
-      else if (args[0] === 'inspect') console.log(JSON.stringify({
-        image: ${JSON.stringify(state.applied.applications[0].image)},
-        process: existsSync('stopped') ? 'exited' : 'running',
-      }));
-      else if (args[0] === 'compose') {
-        const command = args[args.indexOf('--file') + 2];
-        if (command === 'ps') {
-          writeFileSync('probes', String(count() + 1));
-          console.log('candidate');
-        } else if (command === 'exec') {
-          if (!${String(inconsistent)} && count() >= 3 && !existsSync('recovered')) {
-            console.error('Docker exec failed');
-            process.exit(1);
-          }
-          console.log(JSON.stringify({
-            http: true,
-            readiness: {
-              service: 'user',
-              lifecycle: 'running',
-              http: { status: 'ready' },
-              database: { status: 'not_applicable' },
-              consumer: { status: 'not_applicable' },
-              publisher: ${inconsistent ? "!existsSync('recovered') ? { status: 'not_applicable' } :" : ''} { status: existsSync('recovered') ? 'ready' : 'not_ready', connected: existsSync('recovered'), failures: 0, retries: 0, retryDelayMs: 0, lastFailureAt: null, reason: existsSync('recovered') ? null : 'messaging_unavailable' },
-            },
-            backlog: null,
-          }));
-        } else if (command === 'stop') writeFileSync('stopped', 'true');
-        else if (command !== 'logs') throw new Error('Unexpected Compose command: ' + command);
-      } else throw new Error('Unexpected Docker command: ' + args[0]);
-    `,
-        { mode: 0o700 },
-      );
-      const continueCandidate = () =>
-        runCommand(
-          [
-            'bun',
-            '--no-env-file',
-            '--preload',
-            preload,
-            'scripts/operations.ts',
-            `--directory=${directory}`,
-            'continue',
-            'user',
-          ],
-          {
-            cwd: process.cwd(),
-            env: {
-              ...process.env,
-              PATH: `${directory}:${process.env.PATH ?? ''}`,
-            },
-            timeout: 10_000,
-          },
-        );
-      const result = await continueCandidate();
-      expect(result.code).not.toBe(0);
-      expect(result.stderr).toContain(
-        inconsistent
-          ? 'messaging verification pending'
-          : 'HTTP probe unavailable',
-      );
-      expect(Number(readFileSync(join(directory, 'probes'), 'utf8'))).toBe(3);
-      expect(existsSync(join(directory, 'stopped'))).toBe(false);
-      const record = () =>
-        transitionSchema.parse(JSON.parse(readFileSync(recordPath, 'utf8')));
-      expect(record()).toMatchObject({
-        status: 'verification-pending',
-        verification: {
-          outcome: 'pending',
-          reason: inconsistent ? 'messaging-degraded' : 'http-unknown',
-        },
-        runtime: {
-          process: 'running',
-          http: inconsistent ? 'ready' : 'unknown',
-        },
-        attempts: [
-          {
-            outcome: 'pending',
-            reason: inconsistent ? 'messaging-degraded' : 'http-unknown',
-          },
-        ],
-      });
-      const applied = () =>
-        stateSchema.parse(
-          JSON.parse(readFileSync(join(directory, 'state.json'), 'utf8')),
-        );
-      expect(applied()).toMatchObject({
-        version: 2,
-        pendingTransitions: { user: transitionId },
-        applied: {
-          applications: [
-            {
-              startup: {
-                operation: 'update',
-                image: userImage,
-                readiness: 'full',
-                result: 'pending',
-              },
-            },
-          ],
-        },
-      });
-      writeFileSync(join(directory, 'recovered'), 'true');
-      expect((await continueCandidate()).code).toBe(0);
-      expect(record()).toMatchObject({ status: 'verified' });
-      expect(record().attempts).toHaveLength(2);
-      expect(applied()).not.toHaveProperty('pendingTransitions');
-      expect(applied().applied.applications[0].startup).toMatchObject({
-        operation: 'update',
-        image: userImage,
-        readiness: 'full',
-        result: 'verified',
-      });
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
 }
 
 for (const key of [
@@ -669,53 +472,6 @@ for (const change of ['ingress', 'removal'] as const) {
   }
 }
 
-for (const database of ['absent', 'stopped']) {
-  for (const unknownMigration of [undefined, '002_newer']) {
-    test(`apply starts an existing ${database} database before checking ${unknownMigration ? 'an older' : 'a compatible'} image`, async () => {
-      const before = {
-        image: digest('user', 'a'),
-        declaration: declaration('user', {
-          persistence: true,
-          messaging: false,
-          exposure: false,
-        }),
-      };
-      const target = { ...before, image: digest('user', 'b'), migrations: [] };
-      const fixture = promotionFixture(installation([before]), {
-        https: undefined,
-        applications: [target],
-      });
-      try {
-        fixture.save('database.json', database);
-        fixture.save('control.json', { unknownMigration });
-        const result = await fixture.apply();
-        if (unknownMigration) {
-          expect(result.code).not.toBe(0);
-          expect(result.stderr).toContain(
-            `its database already applied migrations unknown to the selected image (${unknownMigration})`,
-          );
-          expect(
-            fixture.calls().some((args) => args.includes('migration:up')),
-          ).toBe(false);
-          expect(fixture.state().applied.applications[0].image).toBe(
-            before.image,
-          );
-        } else {
-          expect(result.code, result.stderr).toBe(0);
-          expect(fixture.state().applied.applications[0]).toMatchObject({
-            image: target.image,
-            migration: { result: 'committed' },
-            startup: { result: 'verified' },
-          });
-        }
-        expect(fixture.read('database.json')).toBe('running');
-      } finally {
-        fixture.cleanup();
-      }
-    });
-  }
-}
-
 function promotionCase() {
   const before = {
     image: digest('user', 'a'),
@@ -872,38 +628,6 @@ for (const kind of ['apply', 'update', 'rollback'] as const) {
       fixture.cleanup();
     }
   });
-  if (kind !== 'rollback')
-    test(`${kind} keeps the prior image applied and stopped after a failed migration`, async () => {
-      const { fixture, before, target } = promotionCase();
-      try {
-        fixture.save('control.json', { migrationFailure: true });
-        const result = await fixture.promote(kind, target);
-        expect(result.code).toBe(1);
-        expect(fixture.state().applied.applications[0]).toMatchObject({
-          image: before.image,
-          migration: { result: 'failed' },
-        });
-        expect(fixture.transitions()).toMatchObject([
-          {
-            status: 'failed',
-            migration: { outcome: 'failed' },
-            backup: expect.stringContaining('.dump') as unknown,
-          },
-        ]);
-        expect(
-          fixture
-            .calls()
-            .some((args) => args.includes('stop') && args.includes('app-user')),
-        ).toBe(true);
-        expect(
-          fixture
-            .calls()
-            .some((args) => args.includes('up') && args.includes('app-user')),
-        ).toBe(false);
-      } finally {
-        fixture.cleanup();
-      }
-    });
 }
 
 for (const kind of ['update', 'rollback'] as const) {
@@ -953,69 +677,78 @@ for (const unreadableHistory of [false, true]) {
 }
 
 for (const kind of ['apply', 'update', 'rollback'] as const) {
-  for (const legacyStatus of [
-    'verification-pending',
-    'provisioning',
-    'verified',
-  ] as const) {
-    test(`${kind} Continuation from ${legacyStatus} verifies the pending Candidate without repeating migrations or backups`, async () => {
-      const { fixture, target } = promotionCase();
-      target.declaration.exposure = true;
-      target.declaration.routes = [
-        { name: 'rest', paths: ['/user'], stripPath: false },
-      ];
-      const state = fixture.state();
-      state.applied.https = { bind: '127.0.0.1', port: 8443 };
-      state.applied.applications[0].declaration = target.declaration;
-      fixture.save('state.json', state);
-      fixture.save('deployment.json', {
-        name: state.name,
-        https: state.applied.https,
+  test(`${kind} command links continuation to its desired selection and deployment records`, async () => {
+    const { fixture, target } = promotionCase();
+    target.declaration.exposure = true;
+    target.declaration.routes = [
+      { name: 'rest', paths: ['/user'], stripPath: false },
+    ];
+    const state = fixture.state();
+    state.applied.https = { bind: '127.0.0.1', port: 8443 };
+    state.applied.applications[0].declaration = target.declaration;
+    fixture.save('state.json', state);
+    fixture.save('deployment.json', {
+      name: state.name,
+      https: state.applied.https,
+      images: { user: target.image },
+    });
+    fixture.save('artifacts.json', [target]);
+    try {
+      fixture.save('control.json', { failure: 'during-gateway' });
+      const pending = await fixture.promote(kind, target);
+      expect(pending.code, pending.stderr).toBe(1);
+      expect(fixture.transitions()).toMatchObject([
+        {
+          status: 'verification-pending',
+          migration: {
+            outcome:
+              kind === 'rollback' ? 'compatibility-reviewed' : 'completed',
+          },
+        },
+      ]);
+      const id = fixture.state().pendingTransitions?.user;
+      if (!id) throw new Error('Expected a pending Candidate');
+      fixture.save(`transition-${id}.json`, {
+        ...fixture.transition(id),
+        status: 'verification-pending',
+      });
+      const callsBefore = fixture.calls();
+      fixture.save('control.json', {});
+      const result = await fixture.ops(
+        'continue',
+        ...(kind === 'apply' ? [] : ['user']),
+      );
+      expect(result.code, result.stderr).toBe(0);
+      expect(fixture.transitions()).toMatchObject([{ status: 'verified' }]);
+      expect(fixture.state().pendingTransitions).toBeUndefined();
+      expect(fixture.read('deployment.json')).toMatchObject({
         images: { user: target.image },
       });
-      fixture.save('artifacts.json', [target]);
-      try {
-        fixture.save('control.json', { failure: 'during-gateway' });
-        const pending = await fixture.promote(kind, target);
-        expect(pending.code, pending.stderr).toBe(1);
-        expect(fixture.transitions()).toMatchObject([
-          {
-            status: 'verification-pending',
-            migration: {
-              outcome:
-                kind === 'rollback' ? 'compatibility-reviewed' : 'completed',
-            },
-          },
-        ]);
-        const id = fixture.state().pendingTransitions?.user;
-        if (!id) throw new Error('Expected a pending Candidate');
-        fixture.save(`transition-${id}.json`, {
-          ...fixture.transition(id),
-          status: legacyStatus,
+      if (kind === 'apply') {
+        const deployment = fixture.transition(id).deployment;
+        if (!deployment)
+          throw new Error('Missing command-owned deployment link');
+        expect(fixture.deployment(deployment)).toMatchObject({
+          status: 'completed',
+          steps: [
+            { kind: 'promote', status: 'completed', transitions: [id] },
+            { kind: 'reconcile', status: 'completed' },
+          ],
         });
-        const callsBefore = fixture.calls();
-        fixture.save('control.json', {});
-        const result = await fixture.ops(
-          'continue',
-          ...(kind === 'apply' ? [] : ['user']),
-        );
-        expect(result.code, result.stderr).toBe(0);
-        expect(fixture.transitions()).toMatchObject([{ status: 'verified' }]);
-        expect(fixture.state().pendingTransitions).toBeUndefined();
-        const continuation = fixture.calls().slice(callsBefore.length);
-        expect(continuation.some((args) => args.includes('migration:up'))).toBe(
-          false,
-        );
-        expect(
-          continuation.some((args) =>
-            args.some((arg) => arg.includes('pg_dump')),
-          ),
-        ).toBe(false);
-      } finally {
-        fixture.cleanup();
       }
-    });
-  }
+      const continuation = fixture.calls().slice(callsBefore.length);
+      expect(continuation.some((args) => args.includes('migration:up'))).toBe(
+        false,
+      );
+      expect(
+        continuation.some((args) =>
+          args.some((arg) => arg.includes('pg_dump')),
+        ),
+      ).toBe(false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
 }
 
 test('plans desired additions, removals and image changes against applied outcomes and retained resources', () => {
@@ -1679,5 +1412,38 @@ test('inspection and shutdown use applied inventory while planning and image upd
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('candidate continuation adopts a legacy inventory while retaining its pending transition', async () => {
+  const { fixture, target } = promotionCase();
+  try {
+    const promoted = await fixture.promote('update', target);
+    expect(promoted.code, promoted.stderr).toBe(0);
+    const state = fixture.state();
+    const id = 'a1111111-1111-4111-8111-111111111111';
+    fixture.save(`transition-${id}.json`, {
+      ...fixture.transitions()[0],
+      status: 'verification-pending',
+    });
+    fixture.save('state.json', {
+      version: 1,
+      project: state.project,
+      owner: state.owner,
+      directory: fixture.directory,
+      config: fixture.read('deployment.json'),
+      artifacts: state.applied.applications.map(({ image, declaration }) => ({
+        image,
+        declaration,
+      })),
+      pendingTransitions: { user: id },
+    });
+    const continued = await fixture.ops('continue', 'user');
+    expect(continued.code, continued.stderr).toBe(0);
+    expect(fixture.transition(id).status).toBe('verified');
+    expect(fixture.state()).toMatchObject({ version: 2 });
+    expect(fixture.state().pendingTransitions).toBeUndefined();
+  } finally {
+    fixture.cleanup();
   }
 });

@@ -565,6 +565,22 @@ all distributed work completed.
 
 ## Verification and delivery evidence
 
+Promotion decisions run in process through a semantic installation runtime.
+The [fast promotion suite](../scripts/tests/operations-promotion.test.ts) uses
+independent runtime effects, real temporary records and a manual verification
+clock. The [readiness suite](../scripts/tests/operations-readiness.test.ts)
+characterizes Docker response interpretation. Both run in `test-runner:test`,
+`test:unit`, the light gate and CI quality checks. The polling window still starts
+after startup and gateway refresh, checks readiness before expiration, and can
+accept an observation that finishes after 60 seconds; durable timestamps use real
+time.
+
+The [command suite](../scripts/tests/operations.test.ts) retains argument,
+preflight, rollback review, desired-selection and deployment-linkage coverage,
+plus real process signals, exit codes, locks and subprocess cleanup. These and
+the live Docker cases below continue to run through `test:operations`; in-memory
+runtime tests do not establish those integration contracts.
+
 ```sh
 bun run nx run test-runner:test-operations --skip-nx-cache
 bun run check:full
