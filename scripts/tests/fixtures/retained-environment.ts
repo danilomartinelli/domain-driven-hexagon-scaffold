@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { Client } from 'pg';
 import { connect } from 'amqplib';
 import { z } from 'zod';
+import { environmentPrefix } from '@starter/capabilities/declaration';
 import { readEnvironmentFile } from '../../../database/environment';
 import { stopStartup, until } from '../app-runtime-fixture';
 import { withCleanup } from '../cleanup';
@@ -20,7 +21,7 @@ const evidenceSchema = z.object({
   events: z.array(eventSchema),
 });
 const settings = (app: string) => {
-  const prefix = app.toUpperCase() + '_DB';
+  const prefix = `${environmentPrefix(app)}_DB`;
   return {
     host: process.env[`${prefix}_HOST`],
     port: Number(process.env[`${prefix}_PORT`]),

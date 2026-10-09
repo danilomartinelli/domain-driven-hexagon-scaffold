@@ -1,6 +1,7 @@
 import type { Subprocess } from 'bun';
 import { createConnection } from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { environmentPrefix } from '@starter/capabilities/declaration';
 
 export class ServiceProcess {
   private child?: Subprocess<'ignore', 'pipe', 'pipe'>;
@@ -9,7 +10,7 @@ export class ServiceProcess {
   constructor(readonly name: 'user' | 'wallet') {}
 
   get url(): string {
-    return `http://127.0.0.1:${String(process.env[`${this.name.toUpperCase()}_HTTP_PORT`])}`;
+    return `http://127.0.0.1:${String(process.env[`${environmentPrefix(this.name)}_HTTP_PORT`])}`;
   }
 
   async start(

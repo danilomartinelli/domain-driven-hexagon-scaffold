@@ -2,6 +2,10 @@ import { mock } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import {
+  environmentPrefix,
+  runtimeRole,
+} from '@starter/capabilities/declaration';
+import {
   environmentLocation,
   environmentVariables,
   workspaceRoot,
@@ -51,13 +55,13 @@ export async function exerciseDistributionRuntime(
     databases: [
       {
         app,
-        prefix: `${app.toUpperCase()}_DB`,
+        prefix: `${environmentPrefix(app)}_DB`,
         host: '127.0.0.1',
         port: 1,
         username: 'fixture',
         password: 'fixture',
         database: `${location.project.replaceAll('-', '_')}_${app}`,
-        runtime: { username: `${app}_runtime`, password: 'fixture' },
+        runtime: { username: runtimeRole(app), password: 'fixture' },
       },
     ],
   };

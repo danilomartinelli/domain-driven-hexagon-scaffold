@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   applicationDeclarationSchema,
   environmentPrefix,
+  runtimeRole,
 } from '@starter/capabilities/declaration';
 import { selectedApplications } from './topology';
 
@@ -123,7 +124,7 @@ export function readEnvironmentFile(
       target.database !==
         `${manifest.project.replaceAll('-', '_')}_${target.app}` ||
       target.runtime?.username !==
-        (legacy ? undefined : `${target.app.replaceAll('-', '_')}_runtime`)
+        (legacy ? undefined : runtimeRole(target.app))
     ) {
       throw new Error(
         'Database is not scoped to the selected application and run.',

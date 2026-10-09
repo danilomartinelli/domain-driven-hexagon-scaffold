@@ -1,4 +1,8 @@
 import { parseReadinessSnapshot } from '@starter/capabilities/readiness';
+import {
+  environmentPrefix,
+  runtimeRole,
+} from '@starter/capabilities/declaration';
 import { expect, test } from 'bun:test';
 import { connect } from 'amqplib';
 import { randomUUID } from 'node:crypto';
@@ -48,10 +52,8 @@ const combinations: Combination[] = [false, true].flatMap((persistence) =>
   ),
 );
 
-// Expected naming conventions, stated independently of the implementation.
+// Database identities remain separate from application contract names.
 const identifier = (name: string) => name.replaceAll('-', '_');
-const prefix = (name: string) => identifier(name).toUpperCase();
-const role = (name: string) => `${identifier(name)}_runtime`;
 
 /** The database settings an application reads with its environment prefix. */
 function databaseSettings(
@@ -64,7 +66,8 @@ function databaseSettings(
     credential?: '' | 'MIGRATION_';
   },
 ): Record<string, string> {
-  const variable = (suffix: string) => `${prefix(name)}_DB_${suffix}`;
+  const variable = (suffix: string) =>
+    `${environmentPrefix(name)}_DB_${suffix}`;
   const credential = target.credential ?? '';
   return {
     [variable('HOST')]: '127.0.0.1',
@@ -88,7 +91,7 @@ async function addProbes(app: string, combination: Combination) {
       join(app, 'database/migrations/1790900000000_probe-records.sql'),
       `-- Up Migration
 CREATE TABLE probe_records (id text PRIMARY KEY, source text NOT NULL);
-GRANT SELECT, INSERT ON probe_records TO ${role(combination.name)};
+GRANT SELECT, INSERT ON probe_records TO ${runtimeRole(combination.name)};
 
 -- Down Migration
 DROP TABLE probe_records;
@@ -383,7 +386,7 @@ test('every capability combination generates, passes project checks and runs wit
       for (const { name } of combinations.filter((c) => c.persistence)) {
         // Operator provisioning: the runtime role exists before migrations grant it.
         await admin.query(
-          `CREATE ROLE ${role(name)} LOGIN PASSWORD '${runtimePassword}'`,
+          `CREATE ROLE ${runtimeRole(name)} LOGIN PASSWORD '${runtimePassword}'`,
         );
         await admin.query(`CREATE DATABASE ${identifier(name)}`);
       }
@@ -429,7 +432,7 @@ async function checkCombination(
 ): Promise<void> {
   const { name, persistence, messaging, exposure } = combination;
   const { artifact, channel } = context;
-  const env = prefix(name);
+  const env = environmentPrefix(name);
   const database = identifier(name);
   const scripts = z
     .object({ scripts: z.record(z.string(), z.string()) })
@@ -509,7 +512,7 @@ async function checkCombination(
         databaseSettings(name, {
           port: databaseGate.port,
           database,
-          username: role(name),
+          username: runtimeRole(name),
           password: context.runtimePassword,
         })),
       ...(messaging && {

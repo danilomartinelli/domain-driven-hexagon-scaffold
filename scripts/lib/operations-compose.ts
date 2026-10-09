@@ -1,7 +1,10 @@
 import { isUtf8 } from 'node:buffer';
 import { accessSync, constants, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { environmentPrefix } from '@starter/capabilities/declaration';
+import {
+  environmentPrefix,
+  runtimeRole,
+} from '@starter/capabilities/declaration';
 import type { InstallationState } from './operations-config';
 import { gatewayConfiguration } from './gateway';
 
@@ -83,7 +86,7 @@ export function operationsCompose(
         [`${prefix}_DB_HOST`]: `postgres-${app.name}`,
         [`${prefix}_DB_PORT`]: '5432',
         [`${prefix}_DB_NAME`]: db,
-        [`${prefix}_DB_USERNAME`]: `${db}_runtime`,
+        [`${prefix}_DB_USERNAME`]: runtimeRole(app.name),
         [`${prefix}_DB_PASSWORD_FILE`]: `/run/secrets/${runtime}`,
       });
       serverSecrets.push(runtime);
@@ -216,6 +219,7 @@ export function operationsCompose(
 /** Create identities only when absent; repeated preparation verifies every supplied password. */
 export function provisionDatabase(app: string): string {
   const db = app.replaceAll('-', '_');
+  const role = runtimeRole(app);
   return `set -eu
 export PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=${db}
 export PGPASSWORD="$(cat /run/secrets/${app}-admin-password)"
@@ -225,13 +229,13 @@ psql -X -v ON_ERROR_STOP=1 <<'SQL'
 \\getenv owner_password OWNER_PASSWORD
 \\getenv runtime_password RUNTIME_PASSWORD
 SELECT format('CREATE ROLE ${db}_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'owner_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${db}_owner') \\gexec
-SELECT format('CREATE ROLE ${db}_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'runtime_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${db}_runtime') \\gexec
+SELECT format('CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'runtime_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') \\gexec
 ALTER DATABASE "${db}" OWNER TO ${db}_owner;
 REVOKE ALL ON DATABASE "${db}" FROM PUBLIC;
-GRANT CONNECT ON DATABASE "${db}" TO ${db}_owner, ${db}_runtime;
+GRANT CONNECT ON DATABASE "${db}" TO ${db}_owner, ${role};
 ALTER SCHEMA public OWNER TO ${db}_owner;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 SQL
 PGUSER=${db}_owner PGPASSWORD="$OWNER_PASSWORD" psql -X -v ON_ERROR_STOP=1 -c 'SELECT current_user' >/dev/null
-PGUSER=${db}_runtime PGPASSWORD="$RUNTIME_PASSWORD" psql -X -v ON_ERROR_STOP=1 -c 'SELECT current_user' >/dev/null`;
+PGUSER=${role} PGPASSWORD="$RUNTIME_PASSWORD" psql -X -v ON_ERROR_STOP=1 -c 'SELECT current_user' >/dev/null`;
 }

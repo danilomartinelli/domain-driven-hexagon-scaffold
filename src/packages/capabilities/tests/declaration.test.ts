@@ -7,6 +7,7 @@ import {
   environmentPrefix,
   exposedAdapters,
   readApplicationDeclaration,
+  runtimeRole,
 } from '@starter/capabilities/declaration';
 
 async function withApps(
@@ -136,10 +137,36 @@ test('business adapters are composed only for declared exposure', () => {
   expect(exposedAdapters(declared(false), ['rest', 'graphql'])).toEqual([]);
 });
 
-test('environment prefixes are derived from the kebab-case application name', () => {
-  expect(environmentPrefix('user')).toBe('USER');
-  expect(environmentPrefix('order-history')).toBe('ORDER_HISTORY');
-  expect(() => environmentPrefix('Order_History')).toThrow(
-    'Invalid application name',
+test.each([
+  ['user', 'USER'],
+  ['wallet', 'WALLET'],
+  ['order-history', 'ORDER_HISTORY'],
+  ['order2-history3', 'ORDER2_HISTORY3'],
+])('environment prefix for %s is %s', (name, prefix) => {
+  expect(environmentPrefix(name)).toBe(prefix);
+});
+
+test.each([
+  ['user', 'user_runtime'],
+  ['wallet', 'wallet_runtime'],
+  ['order-history', 'order_history_runtime'],
+  ['order2-history3', 'order2_history3_runtime'],
+])('runtime role for %s is %s', (name, role) => {
+  expect(runtimeRole(name)).toBe(role);
+});
+
+test.each([
+  '',
+  'Order_History',
+  'order_history',
+  '1order',
+  'order--history',
+  'order-',
+  '../user',
+  'user runtime',
+])('application contract names reject invalid application name %j', (name) => {
+  expect(() => environmentPrefix(name)).toThrow(
+    `Invalid application name: ${name}`,
   );
+  expect(() => runtimeRole(name)).toThrow(`Invalid application name: ${name}`);
 });

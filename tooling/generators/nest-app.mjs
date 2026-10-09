@@ -4,6 +4,10 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { format, resolveConfig } from 'prettier';
 import { assertApplicationCompatibility } from '@starter/capabilities/composition';
+import {
+  environmentPrefix,
+  runtimeRole,
+} from '@starter/capabilities/declaration';
 
 /** @typedef {'persistence' | 'messaging' | 'exposure'} Capability */
 /** @type {Capability[]} */
@@ -90,8 +94,7 @@ export default async function nestApp(
     exposure = true,
   },
 ) {
-  if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name))
-    throw new Error('Use a lowercase kebab-case project name, without a path.');
+  const prefix = environmentPrefix(name);
   if (preset !== 'hybrid') throw new Error('Supported app preset: hybrid.');
   /** @type {Record<Capability, boolean>} */
   const enabled = { persistence, messaging, exposure };
@@ -131,7 +134,6 @@ export default async function nestApp(
       return [dependency, version];
     }),
   );
-  const prefix = name.replaceAll('-', '_').toUpperCase();
   const unit = `bun --no-env-file test --cwd ${root} ./tests/unit`;
   /** @type {Record<string, string>} */
   const files = {
@@ -232,7 +234,7 @@ export default async function nestApp(
       )
         .replaceAll('__name__', name)
         .replaceAll('__PREFIX__', prefix)
-        .replaceAll('__role__', `${name.replaceAll('-', '_')}_runtime`);
+        .replaceAll('__role__', runtimeRole(name));
       // A wholly disabled template contributes no empty, orphaned module.
       if (rendered.trim()) files[destination] = rendered;
     }
