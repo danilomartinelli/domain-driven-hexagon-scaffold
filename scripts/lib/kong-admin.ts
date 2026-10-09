@@ -4,7 +4,10 @@ import {
   type EnvironmentManifest,
 } from '../../database/environment';
 import { runCommand } from './command';
-import type { KongAdmin } from './artifact-approval/ports';
+import {
+  KongMutationNotSentError,
+  type KongAdmin,
+} from './artifact-approval/ports';
 
 const entity = z.looseObject({ id: z.string(), name: z.string() });
 const collection = z.object({
@@ -52,47 +55,60 @@ export function disposableKong(
       if (budget <= 0) throw new Error('Kong probe budget exhausted');
       return budget;
     };
-    if (init?.method) {
-      const inspected = await runCommand(['docker', 'inspect', gateway.name], {
-        cwd: workspaceRoot,
-        timeout: remaining(),
-      });
-      if (inspected.code !== 0)
-        throw new Error('Cannot establish disposable Kong ownership');
-      z.array(
-        z.object({
-          Config: z.object({
-            Labels: z.object({
-              'dev.starter.owner': z.literal(manifest.owner),
-              'com.docker.compose.project': z.literal(manifest.project),
-              'com.docker.compose.service': z.literal('gateway'),
+    let requestSignal: AbortSignal;
+    try {
+      if (init?.method) {
+        const inspected = await runCommand(
+          ['docker', 'inspect', gateway.name],
+          {
+            cwd: workspaceRoot,
+            timeout: remaining(),
+          },
+        );
+        if (inspected.code !== 0)
+          throw new Error('Cannot establish disposable Kong ownership');
+        z.array(
+          z.object({
+            Config: z.object({
+              Labels: z.object({
+                'dev.starter.owner': z.literal(manifest.owner),
+                'com.docker.compose.project': z.literal(manifest.project),
+                'com.docker.compose.service': z.literal('gateway'),
+              }),
+            }),
+            NetworkSettings: z.object({
+              Ports: z.object({
+                '8001/tcp': z
+                  .array(
+                    z.object({
+                      HostIp: z.literal('127.0.0.1'),
+                      HostPort: z.literal(String(gateway.adminPort)),
+                    }),
+                  )
+                  .length(1),
+              }),
             }),
           }),
-          NetworkSettings: z.object({
-            Ports: z.object({
-              '8001/tcp': z
-                .array(
-                  z.object({
-                    HostIp: z.literal('127.0.0.1'),
-                    HostPort: z.literal(String(gateway.adminPort)),
-                  }),
-                )
-                .length(1),
-            }),
-          }),
-        }),
-      )
-        .length(1)
-        .parse(JSON.parse(inspected.stdout));
+        )
+          .length(1)
+          .parse(JSON.parse(inspected.stdout));
+      }
+      requestSignal = AbortSignal.any([
+        AbortSignal.timeout(remaining()),
+        ...(signal ? [signal] : []),
+      ]);
+    } catch (error) {
+      if (!init?.method) throw error;
+      throw new KongMutationNotSentError(
+        error instanceof Error ? error.message : String(error),
+        { cause: error },
+      );
     }
     const response = await fetch(
       `http://127.0.0.1:${String(gateway.adminPort)}${path}`,
       {
         ...init,
-        signal: AbortSignal.any([
-          AbortSignal.timeout(remaining()),
-          ...(signal ? [signal] : []),
-        ]),
+        signal: requestSignal,
       },
     );
     if (!response.ok)

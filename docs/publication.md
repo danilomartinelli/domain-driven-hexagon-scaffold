@@ -75,7 +75,9 @@ Preparation fixes the platform image ID before execution. Artifact approval is
 implemented in `scripts/lib/artifact-approval.ts`, with explicit image, declaration,
 environment and platform inputs, a monotonic clock and Docker/Kong adapters. The
 internal `publication.ts approve` command runs only in a disposable environment
-selecting exactly that application. It does not read an image-selection flag.
+selecting exactly that application. It requires explicit `--image=<id>` and
+`--platform` arguments and does not read `DDH_VALIDATED_IMAGE`,
+`DDH_IMAGE_PLATFORM` or `DDH_PUBLICATION_READINESS` from the environment.
 
 Every selected platform image first passes the image contract: target Linux
 architecture, applicable owner migration up/status, refusal of another application

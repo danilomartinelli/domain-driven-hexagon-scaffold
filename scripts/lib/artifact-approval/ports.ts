@@ -30,6 +30,9 @@ export interface KongTarget {
   target: string;
   data: { addresses: { ip: string; port: number; health: string }[] };
 }
+/** The adapter guarantees that no mutation request was sent, so retry is safe. */
+export class KongMutationNotSentError extends Error {}
+
 export interface KongAdmin {
   install(configuration: string, timeout: number): Promise<void>;
   services(timeout: number): Promise<KongEntity[]>;

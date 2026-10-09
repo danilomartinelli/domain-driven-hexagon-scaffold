@@ -57,10 +57,10 @@ export async function approveArtifact(input: {
     input;
   return withCleanup(async () => {
     const unmet = new Set<string>();
-    const record = (error: unknown) => {
+    const record = (error: unknown, conditions = unmet) => {
       if (isOwnedCleanupFailure(error)) throw error;
       signal?.throwIfAborted();
-      unmet.add(error instanceof Error ? error.message : String(error));
+      conditions.add(error instanceof Error ? error.message : String(error));
     };
     signal?.throwIfAborted();
     try {
@@ -113,6 +113,7 @@ export async function approveArtifact(input: {
       const observe = kong
         ? observeGateway(environment, app, kong, budget)
         : undefined;
+      const readinessErrors = new Set<string>();
       while (clock.now() < deadline) {
         signal?.throwIfAborted();
         try {
@@ -158,14 +159,16 @@ export async function approveArtifact(input: {
           ready = true;
           break;
         } catch (error) {
-          record(error);
+          record(error, readinessErrors);
         }
         await clock.sleep(Math.max(0, Math.min(100, deadline - clock.now())));
       }
-      if (!ready)
+      if (!ready) {
+        for (const condition of readinessErrors) unmet.add(condition);
         unmet.add(
           `Technical readiness exhausted 60000 ms (elapsed=${String(Math.round(clock.now() - started))} ms)`,
         );
+      }
       try {
         const stopped = await runtime.stop();
         if (stopped.code !== 0) {

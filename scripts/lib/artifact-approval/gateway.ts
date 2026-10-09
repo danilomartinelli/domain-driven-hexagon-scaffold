@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApplicationDeclaration } from '@starter/capabilities/declaration';
 import { gatewayNames } from '../gateway';
 import type { GatewayEvidence } from './ports';
+import { KongMutationNotSentError } from './ports';
 import type { ApprovalEnvironment, KongAdmin } from './ports';
 
 /** Declaration comparison and the single unhealthy-to-recovered observation. */
@@ -138,20 +139,21 @@ export function observeGateway(
     };
     let state = await targetState();
     if (!observed) {
-      observed = {
-        target: state.target,
-        address: state.address,
-        unhealthy: false,
-      };
       try {
         await kong.markUnhealthy(upstreamName, state.target, budget());
       } catch (error) {
+        if (error instanceof KongMutationNotSentError) throw error;
         mutationFailure = new Error(
           `Kong unhealthy mutation failed: ${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
         );
         throw mutationFailure;
       }
+      observed = {
+        target: state.target,
+        address: state.address,
+        unhealthy: false,
+      };
       // Observe before slower private probes can consume an active-check interval.
       state = await targetState();
     }

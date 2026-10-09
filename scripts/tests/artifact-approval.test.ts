@@ -1,6 +1,7 @@
 import { rejects } from 'node:assert/strict';
 import { expect, test } from 'bun:test';
 import { approveArtifact } from '../lib/artifact-approval';
+import { runKongApproval } from './kong-approval-fixture';
 import {
   approvalFixture,
   MemoryKong,
@@ -131,6 +132,59 @@ test('artifact approval records the same Kong target and address recovering thro
         transition: ['UNHEALTHY', 'HEALTHY'],
       },
     },
+  });
+});
+
+test('a stop failure reports only the final failure after Kong recovery', async () => {
+  const fixture = approvalFixture({ exposure: true });
+  fixture.state.stopCode = 137;
+  expect(await approveArtifact({ ...fixture, kong: new MemoryKong() })).toEqual(
+    {
+      status: 'rejected',
+      unmet: ['Runtime stop exited with 137 instead of 0'],
+    },
+  );
+});
+
+test('a published port reports only the final failure after HTTP recovery', async () => {
+  const fixture = approvalFixture();
+  fixture.state.publishedPorts = '3000/tcp';
+  const probe = fixture.runtime.probe;
+  fixture.runtime.probe = (path, timeout) =>
+    fixture.clock.now() === 0
+      ? Promise.resolve({
+          status: 503,
+          body: { service: 'reports', status: 'not_ready' },
+        })
+      : probe(path, timeout);
+  expect(await approveArtifact(fixture)).toEqual({
+    status: 'rejected',
+    unmet: ['Runtime container publishes host ports'],
+  });
+});
+
+test('Kong ownership inspection can recover before the unhealthy PUT is sent', async () => {
+  const result = await runKongApproval('inspection-timeout');
+  expect(result.code, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    verdict: {
+      status: 'approved',
+      evidence: { gateway: { transition: ['UNHEALTHY', 'HEALTHY'] } },
+    },
+    mutations: 1,
+    inspections: 3,
+    cleaned: true,
+  });
+});
+
+test('Kong mutation response failures cannot be retried or borrow later recovery', async () => {
+  const result = await runKongApproval('mutation-response');
+  expect(result.code, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    verdict: { status: 'rejected' },
+    mutations: 1,
+    inspections: 2,
+    cleaned: true,
   });
 });
 
