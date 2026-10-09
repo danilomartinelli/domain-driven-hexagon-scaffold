@@ -1,18 +1,9 @@
+import type { ReadinessSnapshot } from '@starter/capabilities/readiness';
 import type { ApplicationDeclaration } from '@starter/capabilities/declaration';
 import { CachedProbe } from './cached-probe';
 
-export interface Readiness {
-  status: 'ready' | 'not_ready' | 'not_applicable';
-}
-
-export interface HealthSnapshot {
-  service: string;
-  lifecycle: 'running' | 'draining' | 'stopping';
-  http: Readiness;
-  database: Readiness;
-  consumer: Readiness | MessagingReadiness;
-  publisher: Readiness | MessagingReadiness;
-}
+export type HealthSnapshot = ReadinessSnapshot;
+export type Readiness = ReadinessSnapshot['database'];
 
 interface MessagingState {
   connected: boolean;
@@ -22,8 +13,7 @@ interface MessagingState {
   lastFailureAt: string | null;
 }
 
-type MessagingReadiness = Readiness &
-  MessagingState & { reason: string | null };
+type MessagingReadiness = ReadinessSnapshot['consumer'];
 
 /**
  * Supply exactly the probes of the declared capabilities: `database` when
@@ -85,7 +75,7 @@ export class ServiceHealth {
     const usable = running && database.status !== 'not_ready';
     const readiness = (
       source: (() => MessagingState) | undefined,
-    ): Readiness | MessagingReadiness => {
+    ): MessagingReadiness => {
       if (!source) return { status: 'not_applicable' };
       const state = source();
       return {
