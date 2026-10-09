@@ -13,7 +13,7 @@ pending integration events in its own database. The independent Wallet applicati
 
 - `src/packages/core/` contains framework-free technical primitives;
   `src/packages/nest-support/` contains Nest adapters, `src/packages/rabbitmq/`
-  consumer lifecycles and failure-queue operations, `src/packages/integration-contracts/` versioned
+  consumer/publisher lifecycles and failure-queue operations, `src/packages/integration-contracts/` versioned
   event envelopes and `src/packages/capabilities/` the parser for each app's
   `application.json` capability declaration. Keep business entities and use
   cases in the application.

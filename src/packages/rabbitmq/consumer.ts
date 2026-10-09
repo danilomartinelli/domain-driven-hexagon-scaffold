@@ -1,6 +1,6 @@
 import type { ConsumeMessage } from 'amqplib';
 import type { LoggerPort } from '@starter/core/logger';
-import type { MessagingSnapshot } from './diagnostics';
+import type { MessagingSnapshot } from './lib/diagnostics';
 import {
   BrokerSession,
   SessionSupervisor,
@@ -10,7 +10,7 @@ import {
   type DeliveryIdentity,
 } from './lib/session';
 export type { ConnectionOptions, DeliveryIdentity } from './lib/session';
-export type { MessagingSnapshot } from './diagnostics';
+export type { MessagingSnapshot } from './lib/diagnostics';
 
 /** AMQP deliveries and fetched failure-queue messages both satisfy this contract. */
 export interface Delivery {

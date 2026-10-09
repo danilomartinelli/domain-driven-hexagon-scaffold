@@ -52,7 +52,7 @@ records include `service`, `signal`, `deadlineMs` and these operations:
   completion record. These never imply that in-flight work succeeded.
 
 Event logs retain their original `eventId` and `correlationId` through restart.
-A missing confirmation logs `outbox.failed`; it cannot produce `outbox.published`.
+A missing confirmation logs `publisher.failed`; it cannot produce `outbox.published`.
 Shutdown completion describes process cleanup, not an empty outbox or queue.
 
 ## Durable recovery

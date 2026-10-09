@@ -6,7 +6,7 @@ import {
 } from 'amqplib';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { LoggerPort } from '@starter/core/logger';
-import { MessagingDiagnostics } from '../diagnostics';
+import { MessagingDiagnostics } from './diagnostics';
 
 export type ConnectionOptions = Options.Connect | string;
 
@@ -227,6 +227,9 @@ export class SessionSupervisor {
       service,
       ...destination,
       operation: `${role}.${operation}`,
+      ...(role === 'publisher' && operation === 'failed'
+        ? { retryDelayMs: this.retryMs }
+        : {}),
       ...identity,
       ...(error === undefined
         ? {}
@@ -252,6 +255,7 @@ export class SessionSupervisor {
         await session.open();
         await this.work(session);
       } catch (error) {
+        if (this.options.role === 'publisher') this.log('failed', {}, error);
         if (session) session.end(error);
         else if (!this.shutdown.signal.aborted)
           this.log('unavailable', {}, error);

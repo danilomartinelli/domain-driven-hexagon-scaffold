@@ -7,14 +7,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Changed
 
-- User, Wallet and generated consumers share `@starter/rabbitmq/consumer`.
+- User, Wallet and generated consumers share `@starter/rabbitmq/consumer`; the
+  User outbox publisher uses `@starter/rabbitmq/publisher`. Both roles expose
+  readiness through `snapshot()`; the diagnostics entry point is now private.
   Retention now uses `failure-reason`, `original-exchange`,
   `original-routing-key` and `original-redelivered`, replacing the
   `user-command-*`, `wallet-*` and `x-failure-reason` schemas. Already retained
   deliveries keep their old headers; inspection and replay remain compatible.
   `command.*`, `wallet.event.failed` and `wallet.event.retained` lifecycle logs
   now use `consumer.*`, with service, queue, identity and error class only.
-  See the [consumer contract](docs/rabbitmq.md) for the operation names and drain semantics.
+  `outbox.connected` and `outbox.failed` become `publisher.connected` and
+  `publisher.failed`; `outbox.confirmed` and `outbox.published` stay unchanged.
+  See the [messaging contracts](docs/rabbitmq.md) for the operation names and drain semantics.
 
 - Compose operations treat `deployment.json` as the desired selection for an
   installation's lifetime. `state.json` (version 2) records applied images with

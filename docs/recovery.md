@@ -70,11 +70,11 @@ user.create.committed (User; command/request -> eventId, correlationId)
 ```
 
 Wallet may commit before User records publication completion. Failed publication
-logs `outbox.failed` with the current event identity when one was selected, plus
+logs `publisher.failed` with the current event identity when one was selected, plus
 the retry delay. Consumer failures and retained invalid messages carry their
 delivery identity where available. No message body is added to these records.
-All consumers use the [shared lifecycle operations](rabbitmq.md#retention-and-logs)
-and log the service, queue and error class instead of raw errors or broker details.
+All messaging roles use the [shared lifecycle operations](rabbitmq.md#retention-and-logs)
+and log the service, queue or exchange, and error class instead of raw errors or broker details.
 Capture each application's console output and filter JSON records locally; for
 example, after saving User output to `.context/user-incident.log`:
 

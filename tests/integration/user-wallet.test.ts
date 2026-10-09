@@ -248,7 +248,7 @@ test('publication completion failure duplicates delivery with stable identity an
   await withCleanup(async () => {
     id = await create();
     first = await observe(id);
-    await until(() => user.output.includes('publication uncertain'));
+    await until(() => user.output.includes('Publisher failed.'));
     await user.stop();
     expect(await published()).toBe(false);
   }, [

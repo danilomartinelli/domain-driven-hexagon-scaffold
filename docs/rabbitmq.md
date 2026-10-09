@@ -1,9 +1,12 @@
-# RabbitMQ consumers
+# RabbitMQ messaging roles
 
 `@starter/rabbitmq/consumer` owns consumer connections, topology, confirmations,
 acknowledgement, failure retention and drain. Application adapters decode their
 envelopes and run their own use cases. User, Wallet and generated applications
 use this entry point; fixes reach generated adapters through the shared package.
+`@starter/rabbitmq/publisher` owns publication through the same private session
+supervisor. Both roles expose readiness with `snapshot()`; the diagnostics
+recorder is private and has no public entry point.
 
 ```ts
 import { RabbitConsumer } from '@starter/rabbitmq/consumer';
@@ -40,6 +43,47 @@ decoded identity to failure logs when it differs from or cannot fit the optional
 AMQP properties. This changes neither the body nor retained metadata. The package
 never interprets an application's envelope.
 
+## Publishers
+
+```ts
+import { RabbitPublisher } from '@starter/rabbitmq/publisher';
+
+const publisher = new RabbitPublisher({
+  connection: { hostname: 'localhost' },
+  service: 'example',
+  exchange: 'example.events',
+  routingKey: 'example.created.v1',
+  queues: ['recipient.example-created'],
+  logger,
+  claim: (publish) =>
+    outbox.publishNext(async (event) => {
+      await publish({
+        body: Buffer.from(event.body),
+        messageId: event.eventId,
+        correlationId: event.correlationId,
+        type: 'example.created',
+        contentType: 'application/json',
+      });
+    }),
+});
+publisher.start();
+```
+
+The publisher declares a durable direct exchange and each durable queue/binding
+before accepting claims. The application owns claiming and marking work complete;
+`claim(publish)` returns whether a unit completed. An empty claim waits a fixed
+250 ms before another attempt. Publication is persistent, mandatory and confirmed;
+a return or missing confirmation ends the session and rejects publication, so
+completion remains the application's recovery responsibility.
+
+Publication preserves the body exactly. Optional `messageId` and `correlationId`
+properties exceeding 255 UTF-8 bytes are omitted, while the full identities remain
+available in failure logs. The immutable envelope stays authoritative.
+
+`stop()` stops new claims and waits for the current claim, including a publication
+started after shutdown. Its publication uses the session signal; shutdown does
+not interrupt a broker confirmation already being awaited.
+
 ## Sessions and drain
 
 `start()` is idempotent and independent of HTTP startup. `snapshot()` returns
@@ -48,7 +92,7 @@ for readiness probes. A blocked broker connection is not connected for readiness
 
 Connection attempts take at most two seconds and each broker operation at most
 five seconds. Reconnection starts at 250 ms, doubles to ten seconds, and resets
-only after acknowledged work. These resilience timings belong to the package.
+only after an acknowledged delivery or a completed publisher claim. These resilience timings belong to the package.
 User keeps prefetch 1 and a 15-second delivery deadline; Wallet and generated
 consumers keep prefetch 4 and a ten-second deadline.
 
@@ -86,8 +130,15 @@ Consumer lifecycle operations are `consumer.connected`, `consumer.unavailable`,
 the service and queue, available delivery identity, retry delay where applicable,
 and `errorType` (the error class). They contain no raw errors, stack traces,
 payloads or connection details. Retained records also name the rejection reason.
+Publisher lifecycle operations are `publisher.connected`, `publisher.unavailable`,
+`publisher.retry` and `publisher.failed`. They follow the same logging policy and
+identify the exchange; a failed claim includes its latest publication identity
+when it reached `publish`, using `messageId` and its `eventId` alias plus
+`correlationId`. Failures before publication carry no stale identity.
+
 Business logs stay with their applications: `user.create.committed`,
-`user.create.rejected`, `wallet.event.committed` and generated `consumer.completed`.
+`user.create.rejected`, `wallet.event.committed`, `outbox.confirmed`,
+`outbox.published` and generated `consumer.completed`.
 
 ## Contract tests
 

@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/rabbitmq-consumer.test.ts",
+        "command": "bun scripts/with-test-database.ts --app=user --no-database-setup -- bun test ./scripts/tests/rabbitmq-consumer.test.ts ./scripts/tests/rabbitmq-publisher.test.ts",
         "cwd": "."
       }
     }
