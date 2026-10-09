@@ -5,6 +5,10 @@ import { environmentPrefix } from '@starter/capabilities/declaration';
 import type { EnvironmentManifest } from '../../database/environment';
 import { buildImage } from '../lib/image';
 import { gatewayConfiguration } from '../lib/gateway';
+import {
+  readinessBudget,
+  validatePublicationReadiness,
+} from '../lib/publication-readiness';
 import { runCommand, type CommandResult } from '../lib/command';
 import { removeOwnedContainer } from './owned-container';
 import { until } from './app-runtime-fixture';
@@ -17,7 +21,10 @@ interface ImageRuntime {
   probe: (path: string) => Promise<{ status: number; body: unknown }>;
   databaseFault: (action: 'pause' | 'unpause') => Promise<void>;
   assertRuntimePrivileges: () => Promise<void>;
-  start: (overrides?: Record<string, string>) => Promise<void>;
+  start: (
+    overrides?: Record<string, string>,
+    approval?: 'publication',
+  ) => Promise<void>;
   migrate: (
     action: string,
     overrides?: Record<string, string>,
@@ -151,6 +158,23 @@ export async function imageRuntime(
       throw error;
     }, [removeImage]);
   }
+  const probe = async (path: string, timeout = 30_000) => {
+    const result = await command(
+      [
+        'docker',
+        'exec',
+        name,
+        'bun',
+        '-e',
+        `const response = await fetch(${JSON.stringify(`http://127.0.0.1:${String(manifest.applicationPorts[app])}${path}`)}, {signal:AbortSignal.timeout(${String(Math.min(10_000, timeout))})}); console.log(JSON.stringify({status:response.status,body:await response.json()}));`,
+      ],
+      timeout,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    return z
+      .object({ status: z.number(), body: z.unknown() })
+      .parse(JSON.parse(result.stdout));
+  };
   return {
     url: `http://127.0.0.1:${String(manifest.gateway?.proxyPort)}`,
     stop,
@@ -190,20 +214,7 @@ export async function imageRuntime(
       const result = await command(['docker', action, id]);
       expect(result.code, result.stderr).toBe(0);
     },
-    probe: async (path) => {
-      const result = await command([
-        'docker',
-        'exec',
-        name,
-        'bun',
-        '-e',
-        `const response = await fetch(${JSON.stringify(`http://127.0.0.1:${String(manifest.applicationPorts[app])}${path}`)}, {signal:AbortSignal.timeout(10000)}); console.log(JSON.stringify({status:response.status,body:await response.json()}));`,
-      ]);
-      expect(result.code, result.stderr).toBe(0);
-      return z
-        .object({ status: z.number(), body: z.unknown() })
-        .parse(JSON.parse(result.stdout));
-    },
+    probe,
     migrate: (action: string, overrides: Record<string, string> = {}) =>
       oneShot(
         [
@@ -214,7 +225,8 @@ export async function imageRuntime(
         ],
         60_000,
       ),
-    start: async (overrides: Record<string, string> = {}) => {
+    start: async (overrides: Record<string, string> = {}, approval) => {
+      const deadline = performance.now() + 60_000;
       if (running) throw new Error('Image already running');
       const started = await command([
         ...base,
@@ -227,22 +239,24 @@ export async function imageRuntime(
       ]);
       expect(started.code, started.stderr).toBe(0);
       running = true;
-      await until(async () => {
-        const live = await command([
-          'docker',
-          'exec',
-          name,
-          'bun',
-          '-e',
-          `process.exit((await fetch('http://127.0.0.1:${String(manifest.applicationPorts[app])}/health/live')).ok ? 0 : 1)`,
-        ]);
-        return live.code === 0;
-      });
-      if (manifest.gateway) {
+      if (!approval)
+        await until(async () => {
+          const live = await command([
+            'docker',
+            'exec',
+            name,
+            'bun',
+            '-e',
+            `process.exit((await fetch('http://127.0.0.1:${String(manifest.applicationPorts[app])}/health/live')).ok ? 0 : 1)`,
+          ]);
+          return live.code === 0;
+        });
+      if (manifest.gateway && !approval) {
         const configured = await fetch(
           `http://127.0.0.1:${String(manifest.gateway.adminPort)}/config`,
           {
             method: 'POST',
+            signal: AbortSignal.timeout(5000),
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
               config: gatewayConfiguration(manifest, true),
@@ -257,25 +271,22 @@ export async function imageRuntime(
       expect(
         await fetch(
           `http://127.0.0.1:${String(manifest.applicationPorts[app])}/health/live`,
+          {
+            signal: AbortSignal.timeout(
+              approval ? readinessBudget(deadline) : 2000,
+            ),
+          },
         ).then(
           () => true,
           () => false,
         ),
       ).toBe(false);
-      // Wait for Kong's active HTTP healthcheck, independently of messaging readiness.
-      if (declaration.routes?.length)
-        await until(
-          async () =>
-            (
-              await fetch(
-                `http://127.0.0.1:${String(manifest.gateway?.proxyPort)}/${app}/graphql`,
-                {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ query: '{ __typename }' }),
-                },
-              )
-            ).status === 200,
+      if (approval)
+        await validatePublicationReadiness(
+          declaration,
+          manifest,
+          deadline,
+          probe,
         );
     },
     cleanup: () =>

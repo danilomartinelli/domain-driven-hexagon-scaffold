@@ -91,6 +91,14 @@
         "cwd": "."
       }
     },
+    "test-images-light": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun scripts/test-images.ts --light",
+        "cwd": "."
+      }
+    },
     "test-private-development": {
       "executor": "nx:run-commands",
       "cache": false,

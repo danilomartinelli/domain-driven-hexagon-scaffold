@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import pg from 'pg';
 import type { Options } from 'amqplib';
 import request from 'supertest';
+import { z } from 'zod';
 import {
   assertTestEnvironment,
   readEnvironmentFile,
@@ -40,13 +41,33 @@ export interface DistributionFixture {
   databaseFault?: (action: 'pause' | 'unpause') => Promise<void>;
 }
 
-export async function until(check: () => Promise<boolean>): Promise<void> {
-  const deadline = Date.now() + 20_000;
+export async function until(
+  check: () => Promise<boolean>,
+  timeout = 20_000,
+): Promise<void> {
+  const deadline = Date.now() + timeout;
   while (!(await check())) {
     if (Date.now() >= deadline)
       throw new Error('Distribution condition timed out');
     await Bun.sleep(50);
   }
+}
+
+const upstreamHealth = z.object({
+  data: z.array(
+    z.object({ data: z.object({ addresses: z.unknown() }).optional() }),
+  ),
+});
+
+/**
+ * Kong lists resolved target addresses. A failed lookup reports `{}`, and a
+ * balancer that is not built yet omits the target's health data.
+ */
+export function kongResolved(body: unknown): boolean {
+  return upstreamHealth.parse(body).data.some(({ data }) => {
+    const addresses = data?.addresses;
+    return Array.isArray(addresses) && addresses.length > 0;
+  });
 }
 
 export async function withDistribution(
@@ -161,7 +182,33 @@ export async function withDistribution(
       ).rows,
     ).toEqual([]);
     if (image) {
+      if (!manifest.gateway) throw new Error('Missing owned gateway');
+      const admin = `http://127.0.0.1:${String(manifest.gateway.adminPort)}`;
       await image.start();
+      // HTTP readiness fails before migrations, so Kong's active probe rejects
+      // proxied requests. Wait only until Kong resolves the target, so the
+      // immediate teardown cannot race its asynchronous initial DNS lookup.
+      let observed = 'no response';
+      await until(async () => {
+        let status: number;
+        let body: unknown;
+        try {
+          const response = await fetch(`${admin}/upstreams/app-${app}/health`, {
+            signal: AbortSignal.timeout(1000),
+          });
+          status = response.status;
+          body = await response.json();
+        } catch (error: unknown) {
+          observed = String(error);
+          return false;
+        }
+        observed = `${String(status)} ${JSON.stringify(body)}`;
+        return status === 200 && kongResolved(body);
+      }, 60_000).catch((error: unknown) => {
+        throw new Error(`Kong did not resolve app-${app}: ${observed}`, {
+          cause: error,
+        });
+      });
       await image.stop();
       expect(
         (
@@ -199,7 +246,31 @@ export async function withDistribution(
       databaseFault: image?.databaseFault,
       stop,
       start: async (overrides = {}) => {
-        if (image) return image.start(overrides);
+        if (image) {
+          await image.start(overrides);
+          // These User/Wallet scenarios own their GraphQL contract. Generic
+          // image preparation must never invent this business request.
+          // Replacing the pre-migration container can leave Kong with a failed
+          // DNS lookup; its balancer retries that lookup after 30 seconds.
+          const gateway = image.url;
+          await until(async () => {
+            try {
+              return (
+                (
+                  await fetch(`${gateway}/${app}/graphql`, {
+                    method: 'POST',
+                    signal: AbortSignal.timeout(1000),
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ query: '{ __typename }' }),
+                  })
+                ).status === 200
+              );
+            } catch {
+              return false;
+            }
+          }, 60_000);
+          return;
+        }
         if (child) throw new Error('Distribution already running');
         output = '';
         child = Bun.spawn([process.execPath, '--no-env-file', 'run', 'start'], {

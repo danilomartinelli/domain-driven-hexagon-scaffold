@@ -74,16 +74,21 @@ Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`, created lazily 
 Use `bun run test:unit` for infrastructure-free application and package tests;
 bare `bun test` only discovers `src/packages/core/tests`.
 
-Before committing code, configuration or dependency changes, and before declaring
-them ready, run the full local gate, `bun run check:full` (`make check`), with Docker
-running. GitHub CI runs only `check:ci` (a five-minute job) and native OCI image
-checks (a fifteen-minute job per architecture). Workspace mutation regressions,
-Docker lifecycle, Compose operations, E2E, component and distribution suites
-remain mandatory locally; green CI does not replace them. The pre-commit hook
-does not run these Docker suites automatically. For documentation-only changes, format the
-affected files, run `bun run check:docs` and verify changed commands. Targeted
-checks remain the development loop; see [developer checks](docs/developer-checks.md)
-for focused suites and the scope of each gate.
+The required gate for code, configuration or dependency changes is the light gate,
+`bun run check:light`, which the pre-commit hook runs on every commit within a
+three-minute budget: lint, types, architecture, unit tests, staged documentation,
+staged dependency audit and workflow guardrails. Committing the reviewed snapshot
+runs this final gate; no separate run is needed. GitHub CI runs `check:ci` (a
+five-minute job) and the light native OCI image checks, `test:images:light` (a
+fifteen-minute job per architecture).
+The full local gate, `bun run check:full` (`make check`), runs on demand with
+Docker: the `check:workspace` guardrail and mutation suites (documentation checker,
+audit CLI, search and agent tooling tests among them), Docker lifecycle, Compose
+operations, E2E, component, distribution and image suites. It is not required
+before committing.
+For documentation-only changes, format the affected files, run `bun run check:docs`
+and verify changed commands. Targeted checks remain the development loop; see
+[developer checks](docs/developer-checks.md) for focused suites and the scope of each gate.
 
 ### Review before commit
 

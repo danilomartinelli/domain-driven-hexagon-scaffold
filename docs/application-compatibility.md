@@ -129,4 +129,5 @@ inventory and durable work. The operations suite selects a deliberately
 incompatible immutable image and verifies rejected preparation/update without
 changes to services, credentials, state, database rows, outbox or queues. Existing
 component, distribution and end-to-end suites retain User/Wallet API and delivery
-coverage. Run the focused suites and full gate in [developer checks](developer-checks.md).
+coverage. Run the focused suites, and the on-demand full gate when complete local
+evidence is wanted, as described in [developer checks](developer-checks.md).

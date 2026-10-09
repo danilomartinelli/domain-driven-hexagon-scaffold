@@ -53,6 +53,7 @@ directories in `finally`. The guardrail suite also tests the audit CLI with real
 against a local HTTP registry fixture, with no external registry or Docker.
 Its workflow checks run `make -n` to confirm each Makefile alias delegates to
 one package script, follow `check` and `check:full` to every required suite,
+keep the hook on `check:light` without Docker or workspace mutation suites,
 and read Nx's resolved targets to enforce the
 [cache contract](nx-workspace.md#cache-contract) and non-empty suites: native
 suites for applications, shared cores and contracts, plus each component, system,
@@ -60,13 +61,13 @@ distribution and runner lifecycle suite that `run-many` would otherwise skip
 silently if its target disappeared. Editor tasks must name existing scripts.
 The existing real-Docker runner suite remains `test:tooling`. Its focused broker
 and gateway subsets are available as `bun run nx run test-runner:test-broker`
-and `bun run nx run test-runner:test-gateway`; both remain part of the mandatory
+and `bun run nx run test-runner:test-gateway`; both remain part of the on-demand
 local lifecycle gate.
 
 `bun run audit:changed` compares dependency files against the merge-base of
 `HEAD` and `origin/master`, including branch commits, staged/unstaged changes and
 untracked manifests. Use `--base <ref>` for another comparison. It runs during
-`check:full`. The hook uses `bun run audit:changed --staged`, considering only the
+`check:full`. The light gate run by the hook uses `bun run audit:changed --staged`, considering only the
 pending commit. All `package.json`, `bun.lock` and `bun.lockb` paths are covered.
 Documentation-only changes skip the registry. Dependency changes always query
 it; there is no Nx target or cached audit result. `bun audit` remains the command

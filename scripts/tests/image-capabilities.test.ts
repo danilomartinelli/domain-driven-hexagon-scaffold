@@ -44,10 +44,10 @@ test('independent Linux artifacts execute enabled-disabled-enabled from the same
   }, [workspace.cleanup]);
 }, 1_200_000);
 
-test('generated Linux images execute every independent capability combination using only owned infrastructure', async () => {
-  const workspace = await appWorkspace();
-  await withCleanup(async () => {
-    for (const persistence of [false, true])
+for (const persistence of [false, true])
+  test(`generated Linux images execute every messaging/exposure combination with persistence=${String(persistence)} using only owned infrastructure`, async () => {
+    const workspace = await appWorkspace();
+    await withCleanup(async () => {
       for (const messaging of [false, true])
         for (const exposure of [false, true]) {
           const name = `oci-${persistence ? 'p' : 'x'}${messaging ? 'm' : 'x'}${exposure ? 'e' : 'x'}`;
@@ -76,5 +76,5 @@ test('generated Linux images execute every independent capability combination us
           for (const line of output.split('\n'))
             if (line.startsWith('OCI execution ')) console.log(line);
         }
-  }, [workspace.cleanup]);
-}, 1_200_000);
+    }, [workspace.cleanup]);
+  }, 1_200_000);

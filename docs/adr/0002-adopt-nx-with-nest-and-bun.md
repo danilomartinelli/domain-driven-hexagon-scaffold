@@ -42,6 +42,18 @@ mandatory local `check:full` gate before committing code/configuration/dependenc
 changes. The non-Docker pre-commit hook remains a partial gate. This supersedes
 the earlier CI suite placement without removing local coverage.
 
+Amended on 2026-10-08: the pre-commit hook now runs the light gate,
+`bun run check:light`, as the required local gate for code, configuration and
+dependency changes: lint, types, architecture, unit tests, staged documentation,
+staged dependency audit and workflow guardrails, within a three-minute budget.
+`check:full` remains available on demand and is no longer required before
+committing, so the `check:workspace` guardrail and mutation suites and the
+Docker-backed suites run only when requested or as focused feedback. This supersedes the mandatory local
+`check:full` placement above and the full-gate requirement for agents below.
+The native OCI jobs run the light image subset, `test:images:light` (image build,
+the two reproduced publication-readiness defects and ordinary User OCI startup),
+accepting reduced CI coverage; `test:images` keeps every image suite on demand.
+
 The repository will adopt Nx with `user` and `wallet` as separate Nest
 applications. Wallet's current size does not determine its intended application
 boundary. Preserve Nest 12 and Bun as the application runtime, package manager

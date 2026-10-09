@@ -1,7 +1,8 @@
 # Domain-Driven Hexagon Scaffold delivery design
 
 Status: accepted design, approved on 2026-10-04, with the transition decisions
-below approved on 2026-10-06. These decisions describe required behavior; their
+below approved on 2026-10-06 and the publication validation boundaries approved
+on 2026-10-08. These decisions describe required behavior; their
 approval does not establish implementation or executable verification.
 [ADR 0003's implementation status](adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
 records the delivered slices and remaining work. This document preserves the
@@ -262,6 +263,76 @@ uses the exact digest rather than relying on a mutable default tag. Application
 images can be selected and updated independently. Publish only validated artifacts;
 image publication does not automatically deploy them.
 
+### Publication validation boundaries
+
+The common publication gate establishes technical readiness of the selected
+immutable artifact. Application-owned tests establish business behavior. These
+boundaries were approved on 2026-10-08 after an audit reproduced rejection of a
+healthy image with a custom Kong route and approval of an image whose enabled
+messaging consumer remained disconnected. The
+[implementation status](adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
+records the delivered validator and its executable checks.
+
+For HTTP exposure, validate private HTTP readiness and the effective technical
+routing configuration in Kong against the application's declaration. Do not
+invent a business endpoint, HTTP method, authentication scheme, GraphQL query or
+request payload. A route can require authentication or change durable state;
+generic readiness cannot assume that a business request is safe or should return 200. Functional requests and their expected responses remain in application-owned
+tests. This correction does not require a new per-application functional scenario
+interface as a condition of publication.
+
+Read back the installed Kong services and routes and compare their effective
+configuration with the declaration. For each declared application upstream,
+also establish that Kong actually reached the artifact's private HTTP readiness
+endpoint. In the gate-owned disposable Kong, mark the target unhealthy, observe
+`UNHEALTHY`, and require automatic recovery to `HEALTHY` through an active probe
+of the same target/address. Keep active checks enabled for unhealthy targets and
+passive checks disabled; no configuration reload or manual healthy mutation may
+occur between observations. A successful mutation response or an initially
+healthy target is insufficient evidence. This proof shares the single readiness
+deadline below and never changes health in an existing development or deployment
+environment.
+
+The controlled transition is required because
+[Kong 3.9.1 initializes new targets as healthy](https://github.com/Kong/kong/blob/3.9.1/kong/runloop/balancer/healthcheckers.lua#L43-L60).
+It proves connectivity through Kong's active HTTP probe; it does not execute
+business route matching, authentication or functional responses. The installed
+route configuration and application-owned scenarios provide their respective
+evidence. This gateway proof was approved on 2026-10-08; public preparation regressions verify the
+transition against the actual DB-less Kong fixture.
+
+Respect the declared exposure capability independently of retained route source.
+Disabled exposure requires no Kong route or business request. Enabled exposure
+without declared routes does not invent an API. A successful technical check
+does not claim to have exercised every route's authentication or business logic.
+
+For messaging, every applicable consumer or publisher role must be ready before
+the artifact receives publication approval. Both roles need not exist, and a
+disabled role is not applicable rather than failed. HTTP readiness alone cannot
+approve an artifact whose enabled messaging remains unavailable. Application-owned
+tests continue to establish message exchange, recovery, and identity preservation;
+the common gate must not invent a universal business message or handler.
+
+Validate the readiness response against the selected application and its enabled
+capabilities, rather than accepting HTTP 200 alone. With messaging enabled, at
+least one messaging role must be applicable and every applicable role must be
+ready; with messaging disabled, both roles must be not applicable. Missing,
+malformed, unknown, or mismatched responses never establish readiness.
+
+After the artifact process starts, use one shared window of at most 60 seconds
+to establish its complete technical readiness. All applicable checks share that
+deadline; a new retry or a different dependency does not restart the clock.
+Transient startup and reconnection can recover within the window. If readiness
+is still incomplete at the deadline, fail validation without an approval receipt
+and preserve diagnostics identifying the unmet conditions. The existing bounded
+cleanup still runs; the readiness deadline does not waive resource ownership or
+shutdown guarantees. This waiting policy was approved on 2026-10-08.
+
+This is a publication approval condition, separate from ordinary process startup.
+Preserve HTTP availability during broker outages and existing distribution tests
+that deliberately start an application while its broker is unavailable. A shared
+startup helper must not implicitly impose full messaging readiness on those paths.
+
 ## Provisioning, secrets and migration lifecycle
 
 Document first provisioning of the selected databases, their owners and restricted
@@ -327,6 +398,23 @@ Implementation must provide evidence of:
   data, broker backlog and sibling environments.
 - Independent OCI startup and separately executed owned migrations on both supported
   architectures, using distinct migration/runtime secrets and no sibling sources.
+- Public publication preparation accepting valid custom and REST-only routing
+  without a presumed GraphQL endpoint or business request, including authenticated
+  and state-changing routes. Disabled exposure and empty route declarations must
+  not invent an API. Installed routes must match the effective declaration.
+- Actual Kong target recovery through an active readiness probe, within the shared
+  deadline. Initial optimistic health, a successful health mutation without an
+  observed transition, or unreachable private HTTP must not produce approval.
+- Publication preparation accepting consumer-only, publisher-only and combined
+  messaging roles when all applicable roles are ready, and refusing an otherwise
+  HTTP-ready image whose applicable role remains unavailable. Disabled messaging
+  requires neither role; enabled messaging cannot report both as not applicable.
+- Transient startup or reconnection recovering within the single 60-second window,
+  and permanent degradation exhausting it without an approval receipt. Retries
+  must not reset the deadline; malformed, unknown or mismatched readiness responses
+  cannot count as success. Failure retains diagnostics and bounded cleanup.
+- Application-owned functional API and message scenarios still using the selected
+  immutable artifact, including the existing broker-outage HTTP behavior.
 - Signal delivery and draining under containers, HTTP availability during broker
   loss, and correct readiness for unavailable enabled dependencies.
 - Image selection by digest, failure handling before promotion, and verified
@@ -341,8 +429,9 @@ Implementation must provide evidence of:
   migrated state. Verify explicit continuation, completed migrations not repeated,
   and no automatic image or database rollback.
 
-Use focused checks during implementation and the repository's full Docker-backed
-gate before declaring code ready, following [developer checks](developer-checks.md).
+Use focused checks during implementation and the repository's light pre-commit
+gate before declaring code ready; the full Docker-backed gate runs on demand,
+following [developer checks](developer-checks.md).
 Record local validation, remote CI, registry publication and actual deployment as
 separate results. No production environment or registry publication is performed
 by accepting this design.
