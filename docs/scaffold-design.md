@@ -1,8 +1,9 @@
 # Domain-Driven Hexagon Scaffold delivery design
 
 Status: accepted design, approved on 2026-10-04, with the transition decisions
-below approved on 2026-10-06 and the publication validation boundaries approved
-on 2026-10-08. These decisions describe required behavior; their
+below approved on 2026-10-06, the publication validation boundaries approved
+on 2026-10-08 and the promotion runtime seam decisions approved on
+2026-10-09. These decisions describe required behavior; their
 approval does not establish implementation or executable verification.
 [ADR 0003's implementation status](adr/0003-application-capabilities-and-oci-delivery.md#implementation-status)
 records the delivered slices and remaining work. This document preserves the
@@ -201,6 +202,63 @@ requires explicit continuation or image rollback after evaluating schema and
 event-contract compatibility; neither automatically reverses the database. This
 candidate-verification policy does not replace ordinary running applications'
 dependency-outage recovery behavior.
+
+### Promotion runtime seam
+
+The following architecture and testing decisions were approved on 2026-10-09.
+They define a refactoring of promotion and verification that preserves existing
+operator behavior. Approval does not establish implementation or executable
+verification. [ADR 0004](adr/0004-promotion-runtime-seam.md) records the trade-offs.
+The self-contained implementation specification is published as
+[issue #89](https://github.com/danilomartinelli/domain-driven-hexagon-scaffold/issues/89).
+
+- **Semantic operations:** introduce a runtime interface for installation actions
+  and observations, such as starting a candidate, querying migrations and observing
+  readiness. The Docker adapter owns command arguments, subprocess execution and
+  response interpretation. A test adapter represents the effects in memory.
+  Injecting only an arbitrary command executor would preserve the tests'
+  dependency on Docker command syntax.
+- **First scope:** apply the seam to per-application promotion and candidate
+  verification, shared by reviewed topology application, update, rollback and
+  continuation. Extracting every installation operation is outside this first
+  scope; it would also bring in restoration, replay and resource retirement.
+- **Durable records:** orchestration continues to interpret and write installation
+  and transition records. The runtime performs actions and returns observations;
+  it does not infer runtime success from those records. In tests, the in-memory
+  adapter owns independent simulated runtime state while orchestration uses real
+  records in a temporary directory. Tests assert the resulting records without
+  using them to manufacture observations of running resources.
+- **Injectable clock:** inject the verification clock instead of patching global
+  time in tests. Preserve the existing 60-second polling window, check order and
+  individual command timeouts. The window begins after startup and gateway
+  refresh; an observation already in progress can finish after the window, and
+  readiness is checked before expiration. This is not a 60-second limit for the
+  entire verification. Durable timestamps continue to represent real date and
+  time. A strict end-to-end deadline is a separate behavioral change.
+- **Partial effects and interruption:** an action result and the observed resource
+  state are separate facts. The test adapter must support failure before or after
+  an effect, unavailable observations and interruption; a failed start command
+  does not prove that no candidate is running. Promotion retains the decision
+  about verification and recovery from those facts. Preserve the existing
+  interruption outcome and pending records without introducing automatic
+  candidate shutdown on interruption.
+- **Test migration:** exercise the production promotion module in process with
+  the semantic runtime adapter and real temporary records. Reconstruct the
+  operation from those files to prove continuation across invocations. Move the
+  promotion and verification decision matrices into the unit and light gates,
+  retaining the light gate's hard 180-second execution limit. Keep full-command
+  tests for arguments, preflight, rollback review, desired selection, deployment
+  record linkage, exit codes, locks and real subprocess signals. Retain focused
+  Docker adapter coverage for migrations, readiness, recovery, ownership and
+  resource preservation. Replace migrated Docker-fake cases rather than
+  duplicating them; cases that still prove full-command contracts remain.
+
+Acceptance must demonstrate a start command failing after its candidate exists,
+unknown readiness remaining unverified, interruption retaining recoverable
+progress, and continuation reconstructed from disk without repeating completed
+migrations. Manual-clock tests must cover the existing polling expiration and an
+observation finishing after it. These fast tests establish orchestration behavior;
+CLI and real Docker tests establish their respective integration contracts.
 
 ## Kong access and local development
 

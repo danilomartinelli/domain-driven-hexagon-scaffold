@@ -144,7 +144,6 @@ else if (args[0] === 'ps') {
       process.exit(1);
     }
     if (args.includes('migration:status')) console.log(control.unknownMigration ? 'missing file\\t' + control.unknownMigration : '');
-    if (args.includes('migration:up') && control.migrationFailure) process.exit(1);
     if (args.includes('migration:up') && control.signal) {
       process.kill(process.ppid, control.signal);
       await Bun.sleep(30_000);
