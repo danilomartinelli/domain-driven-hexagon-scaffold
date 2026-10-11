@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -65,20 +64,62 @@ function secretState(directory: string): InstallationState {
   };
 }
 
-test.each(['user', 'wallet', 'order-history'])(
-  'application contract names preserve installation output for %s',
-  (name) => {
+test.each([
+  ['user', 'USER', 'user', 'user_owner', 'user_runtime'],
+  ['wallet', 'WALLET', 'wallet', 'wallet_owner', 'wallet_runtime'],
+  [
+    'order-history',
+    'ORDER_HISTORY',
+    'order_history',
+    'order_history_owner',
+    'order_history_runtime',
+  ],
+])(
+  'a new installation of %s renders its contract names and derives its owned identities',
+  (name, prefix, database, ownerRole, runtimeRole) => {
     const state = secretState('/fixture');
     state.applied.applications[0].declaration.name = name;
-    const output = {
-      compose: operationsCompose(state, false),
-      provisioning: provisionDatabase(name),
-      inventory: retainResources(state, state.applied.applications),
-    };
-    // Freeze complete rendered settings, SQL and identities before centralizing names.
+    expect(operationsCompose(state, false)).toMatchObject({
+      services: {
+        [`app-${name}`]: {
+          environment: {
+            [`${prefix}_DB_NAME`]: database,
+            [`${prefix}_DB_USERNAME`]: runtimeRole,
+          },
+        },
+        [`migrate-${name}`]: {
+          environment: {
+            [`${prefix}_DB_NAME`]: database,
+            [`${prefix}_DB_MIGRATION_USERNAME`]: ownerRole,
+          },
+        },
+      },
+    });
+    const provisioning = provisionDatabase(name);
+    for (const statement of [
+      `CREATE ROLE ${ownerRole} LOGIN`,
+      `CREATE ROLE ${runtimeRole} LOGIN`,
+      `WHERE rolname = '${runtimeRole}'`,
+      `GRANT CONNECT ON DATABASE "${database}" TO ${ownerRole}, ${runtimeRole};`,
+      `PGUSER=${runtimeRole} PGPASSWORD="$RUNTIME_PASSWORD"`,
+    ])
+      expect(provisioning).toContain(statement);
     expect(
-      createHash('sha256').update(JSON.stringify(output)).digest('hex'),
-    ).toMatchSnapshot();
+      retainResources(state, state.applied.applications).databases,
+    ).toMatchObject([
+      {
+        application: name,
+        service: `postgres-${name}`,
+        volume: `owned_postgres-${name}`,
+        database,
+        roles: [ownerRole, runtimeRole],
+        secrets: [
+          `${name}-admin-password`,
+          `${name}-owner-password`,
+          `${name}-runtime-password`,
+        ],
+      },
+    ]);
   },
 );
 
