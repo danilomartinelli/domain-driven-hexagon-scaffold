@@ -7,6 +7,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
 
 ### Changed
 
+- Applications now use `composeApplicationModule` from
+  `@starter/nest-support/composition` for health endpoints, readiness and messaging
+  lifecycle. `ServiceHealth` and `HealthController` are no longer public exports
+  of `@starter/nest-support/operations`. Earlier-generated applications must
+  replace manual health and lifecycle wiring with
+  `await composeApplicationModule(directory, { integrations, groups })`, register
+  database probes and messaging-role provider tokens in those factories, and use
+  `ApplicationReadiness.snapshot()` for read-only status. Change
+  `installShutdown(app, cb)` to `installShutdown(app)` and remove application-owned
+  messaging start/stop hooks; composition now owns that drain. The generated adapter
+  `adapters/rabbitmq.transport.ts` (`RabbitTransport`) becomes
+  `adapters/rabbitmq.consumer.ts` (`RabbitMessageConsumer`): rename the file,
+  class and imports, remove `MESSAGING_TRANSPORT`, and register the consumer's
+  provider with `consumer: RabbitMessageConsumer` in the messaging factory,
+  injecting `MESSAGE_HANDLERS` for group handlers. See the
+  [composition contract](docs/application-compatibility.md) and
+  [generated application layout](docs/library-generators.md#application-capabilities).
+
 - User, Wallet and generated consumers share `@starter/rabbitmq/consumer`; the
   User outbox publisher uses `@starter/rabbitmq/publisher`. Both roles expose
   readiness through `snapshot()`; the diagnostics entry point is now private.
@@ -39,8 +57,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project ha
   required-suite guardrails discover applications from their declarations instead
   of a central list of application names. Persistent applications use the
   `<NAME>_DB` prefix, `<name>_runtime` role and `database/migrations/` conventions.
-  Applications generated earlier need an `application.json` passed to
-  `ServiceHealth`; discovery skips undeclared directories, while the workflow
+  Applications generated earlier need an `application.json` declaration in their
+  application directory; discovery skips undeclared directories, while the workflow
   guardrail and packaging reject them.
 
 ### Fixed

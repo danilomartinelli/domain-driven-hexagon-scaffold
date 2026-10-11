@@ -15,7 +15,7 @@ const identity = z.object({
 });
 
 /** The shared consumer owns sessions, confirmations, retention and drain. */
-export class RabbitTransport extends RabbitConsumer {
+export class RabbitMessageConsumer extends RabbitConsumer {
   constructor(
     config: { broker: string; queue: string },
     handlers: readonly MessageHandler[],

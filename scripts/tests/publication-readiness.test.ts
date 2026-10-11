@@ -206,15 +206,17 @@ for (const roles of ['consumer', 'publisher', 'combined'] as const) {
       if (roles === 'publisher')
         source = replaceOnce(source, 'consumer:', 'publisher:');
       if (roles === 'combined')
+        // A second role provider mirrors the consumer's broker connection.
         source = replaceOnce(
-          source,
-          'consumer:',
-          'publisher: () => consumer.snapshot(), consumer:',
+          replaceOnce(source, 'consumer:', "publisher: 'mirror', consumer:"),
+          'providers: [',
+          "providers: [{ provide: 'mirror', inject: [RabbitMessageConsumer], useFactory: (role: InstanceType<typeof RabbitMessageConsumer>) => ({ start: () => undefined, stop: () => Promise.resolve(), snapshot: () => role.snapshot() }) },",
         );
+      // Composition starts registered roles; delay the consumer's own start.
       source = replaceOnce(
         source,
-        'this.consumer?.start();',
-        'setTimeout(() => this.consumer?.start(), 2500);',
+        "await import('../adapters/rabbitmq.consumer');",
+        "await import('../adapters/rabbitmq.consumer'); const start = RabbitMessageConsumer.prototype.start; RabbitMessageConsumer.prototype.start = function (this: InstanceType<typeof RabbitMessageConsumer>) { setTimeout(() => start.call(this), 2500); };",
       );
       await writeFile(module, source);
       const result = await prepare(workspace, 'inbox', roles);

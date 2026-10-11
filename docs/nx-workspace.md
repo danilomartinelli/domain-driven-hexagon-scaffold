@@ -55,14 +55,12 @@ graph TD
   e2e --> database
   e2e --> user
   e2e --> wallet
-  user --> capabilities
   user --> nest-support
   user --> core
   user --> integration-contracts
   user --> rabbitmq
   user --> test-runner
   user --> database
-  wallet --> capabilities
   wallet --> nest-support
   wallet --> core
   wallet --> integration-contracts
