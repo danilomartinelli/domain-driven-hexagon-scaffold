@@ -426,7 +426,9 @@ for (const kind of ['apply', 'update'] as const) {
         expect(f.runtime.migrations.get('user') ?? 0).toBe(
           effect === 'after' ? 1 : 0,
         );
-        expect(f.runtime.backups).toHaveLength(1);
+        // The failure evidence names the retained backup taken before migrating.
+        expect(f.runtime.backups).toEqual([f.transition().backup]);
+        expect(f.transition().backup).toEndWith('.dump');
         expect(f.state().pendingTransitions).toBeUndefined();
         expect(await f.connect().continue(f.target, f.id)).toBe(false);
       } finally {

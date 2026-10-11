@@ -58,6 +58,23 @@ export function health(
     backlog: null,
   };
 }
+/** An owned installation that applies and retains the supplied applications. */
+export function installationState(
+  directory: string,
+  applications: Artifact[],
+): InstallationState {
+  const state: InstallationState = {
+    version: 2,
+    name: 'example',
+    project: 'owned',
+    owner: 'owner',
+    directory,
+    applied: { applications },
+    retained: { databases: [] },
+  };
+  state.retained = retainResources(state, applications);
+  return state;
+}
 export class ManualVerificationClock implements VerificationClock {
   elapsed = 0;
   sleeps: number[] = [];
@@ -223,16 +240,10 @@ function createInstallationFixture(
   const runtime = new MemoryInstallationRuntime(controller.signal);
   const clock = new ManualVerificationClock();
   const sibling = artifact('wallet', 'c');
-  const state: InstallationState = {
-    version: 2,
-    name: 'example',
-    project: 'owned',
-    owner: 'owner',
-    directory,
-    applied: { applications: [...(previous ? [previous] : []), sibling] },
-    retained: { databases: [] },
-  };
-  state.retained = retainResources(state, state.applied.applications);
+  const state = installationState(directory, [
+    ...(previous ? [previous] : []),
+    sibling,
+  ]);
   writeJson(join(directory, 'state.json'), state);
   for (const app of state.applied.applications) {
     runtime.processes.set(app.declaration.name, {
