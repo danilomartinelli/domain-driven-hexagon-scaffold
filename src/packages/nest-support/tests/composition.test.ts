@@ -330,6 +330,24 @@ test.each([
     true,
     'backlog requires a publisher',
   ],
+  [
+    'duplicate backlog',
+    {
+      publisher: 'role',
+      backlog: {
+        useFactory: () => () =>
+          Promise.resolve({ pendingCount: 0, oldestAgeSeconds: null }),
+      },
+    },
+    {
+      backlog: {
+        useFactory: () => () =>
+          Promise.resolve({ pendingCount: 1, oldestAgeSeconds: 1 }),
+      },
+    },
+    true,
+    'at most one backlog',
+  ],
 ] satisfies [string, ApplicationPart, ApplicationPart, boolean, string][])(
   '%s is rejected before any provider is instantiated',
   async (_name, first, second, messaging, message) => {

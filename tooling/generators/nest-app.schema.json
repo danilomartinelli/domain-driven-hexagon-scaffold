@@ -21,7 +21,7 @@
     "messaging": {
       "type": "boolean",
       "default": true,
-      "description": "Consume RabbitMQ messages with an independently recovering transport and consumer readiness."
+      "description": "Consume RabbitMQ messages with an independently recovering consumer and its readiness."
     },
     "exposure": {
       "type": "boolean",

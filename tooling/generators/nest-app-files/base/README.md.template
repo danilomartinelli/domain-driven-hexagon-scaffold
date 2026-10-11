@@ -105,8 +105,9 @@ The messaging integration constructs and registers `RabbitMessageConsumer` from
 `adapters/rabbitmq.consumer.ts`, injecting `MESSAGE_HANDLERS` from nest-support.
 Register each group's handler tokens in `handlers`; the entry collects their
 instances after composing all groups. Each application has at most one consumer
-and one publisher. A publisher may register a backlog source; a backlog without
-a publisher or messaging enabled without a role fails before providers start.
+and one publisher. A publisher may register one backlog source; a second backlog,
+a backlog without a publisher or messaging enabled without a role fails before
+providers start.
 
 Register message handlers in a group factory's `providers`, then return their
 injection tokens in that factory's `handlers`. Declare `messaging` and any other

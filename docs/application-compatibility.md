@@ -34,8 +34,9 @@ provider tokens, and a `backlog: { inject, useFactory }` returning an asynchrono
 source of pending count and oldest age. Roles structurally supply `start()`,
 `stop()` and `snapshot()`; nest-support imports no RabbitMQ adapter.
 
-Composition rejects duplicate roles, messaging without a role (or a role without
-messaging) and a backlog without a publisher before any provider is instantiated.
+Composition rejects duplicate roles or backlogs, messaging without a role (or a
+role without messaging) and a backlog without a publisher before any provider is
+instantiated.
 These are plain author errors; packaged preflight continues checking selections
 without loading Nest or factories. Register roles in the same part as their
 providers. Their readiness always comes from those instances; composition starts

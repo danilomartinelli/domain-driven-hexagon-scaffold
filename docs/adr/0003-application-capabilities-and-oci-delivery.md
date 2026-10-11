@@ -163,12 +163,12 @@ follows the readiness snapshot's single entry per role; consuming several queues
 requires a readiness contract change. Generated applications keep registering
 message handlers with their functionality groups, and the entry collects them for
 the consumer their messaging integration constructs, because integrations are
-composed before groups. A missing or duplicate role and a backlog without a
-publisher are author errors that fail startup before any connection; packaged
-preflight still checks the selection only. User and Wallet keep eager adapter
-imports and unconditional distribution lists by scope, not principle: their
-groups require persistence and messaging, so lazy loading would change no
-observable behavior. Delivery status is recorded below.
+composed before groups. A missing or duplicate role, a duplicate backlog and a
+backlog without a publisher are author errors that fail startup before any
+connection; packaged preflight still checks the selection only. User and Wallet
+keep eager adapter imports and unconditional distribution lists by scope, not
+principle: their groups require persistence and messaging, so lazy loading would
+change no observable behavior. Delivery status is recorded below.
 
 ## Implementation status
 

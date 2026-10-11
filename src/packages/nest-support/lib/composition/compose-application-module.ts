@@ -114,7 +114,12 @@ export async function composeApplicationModule(
     );
   const consumer = roles.find((role) => role.name === 'consumer')?.token;
   const publisher = roles.find((role) => role.name === 'publisher')?.token;
-  const backlog = parts.find((part) => part.backlog)?.backlog;
+  const backlogs = parts.flatMap((part) =>
+    part.backlog ? [part.backlog] : [],
+  );
+  if (backlogs.length > 1)
+    throw new Error(`${declaration.name}: register at most one backlog`);
+  const backlog = backlogs.at(0);
   if (backlog && publisher === undefined)
     throw new Error(`${declaration.name}: a backlog requires a publisher`);
   return {
