@@ -261,6 +261,24 @@ Explicit continuation verifies recovery without rerunning completed migrations.
 Another promotion of the pending application waits for continuation or
 compatibility-reviewed rollback; independent application operations remain available.
 Continuation also enforces the existing data/messaging assessment after a restore.
+
+Promotion runtime separation is implemented (#89), following
+[ADR 0004](0004-promotion-runtime-seam.md). The existing promotion module now uses
+a semantic installation runtime with Docker and independent in-memory test
+adapters. Orchestration retains durable installation and transition records and
+recovery decisions; runtime observations remain independent of those records.
+The injected verification clock preserves the existing polling window, while
+durable timestamps continue to use real time.
+
+Promotion/recovery, Docker readiness interpretation and Docker migration-command
+suites now run in `test-runner:test`, `test:unit`, the light gate and CI quality
+checks. Promotion tests use real temporary records and a manual clock, including
+continuation reconstructed from disk without repeating migrations or backups.
+CLI arguments, preflight, rollback review, desired-selection/deployment linkage,
+real process signals, exit codes, locks, subprocess cleanup and live Docker cases
+remain in `test:operations`; see the
+[verification evidence](../operations.md#verification-and-delivery-evidence).
+
 Applying reviewed topology changes is implemented (#75); see
 [applying a reviewed plan](../operations.md#apply-a-reviewed-plan). `apply` refuses
 a plan that no longer matches before changing anything, provisions identities
