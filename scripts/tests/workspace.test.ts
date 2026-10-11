@@ -537,8 +537,8 @@ test('Nx discovers source dependencies through the supported Bun entry point', a
     });
     for (const [project, dependencies] of Object.entries({
       'type-fixtures': ['core'],
-      wallet: ['core', 'nest-support', 'capabilities'],
-      user: ['core', 'nest-support', 'integration-contracts', 'capabilities'],
+      wallet: ['core', 'nest-support'],
+      user: ['core', 'nest-support', 'integration-contracts'],
       'nest-support': ['core', 'capabilities'],
       e2e: ['test-runner', 'user', 'wallet'],
       'test-runner': ['database', 'infrastructure', 'capabilities'],
