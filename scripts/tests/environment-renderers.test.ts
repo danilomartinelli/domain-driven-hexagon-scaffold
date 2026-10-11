@@ -14,11 +14,44 @@ function composeServices(command: string[], action: 'up' | 'stop'): string[] {
   return command
     .slice(command.indexOf(action) + 1)
     .filter(
-      (argument) =>
-        argument === 'rabbitmq' ||
-        argument === 'gateway' ||
-        argument.startsWith('postgres-'),
+      (argument, index, arguments_) =>
+        !argument.startsWith('-') &&
+        !['--wait-timeout', '--timeout'].includes(arguments_[index - 1] ?? ''),
     );
+}
+
+for (const { action, options } of [
+  {
+    action: 'up' as const,
+    options: ['--detach', '--wait', '--force-recreate', '--wait-timeout', '60'],
+  },
+  { action: 'stop' as const, options: ['--timeout', '10'] },
+]) {
+  test(`reconciliation snapshots record every ${action} service without Compose options`, () => {
+    const services = [
+      'rabbitmq',
+      'gateway',
+      'postgres-order',
+      'app-order-history',
+      'helper',
+      '60',
+      '10',
+    ];
+    expect(
+      composeServices(
+        [
+          'docker',
+          'compose',
+          '--project-name',
+          'fixture',
+          action,
+          ...options,
+          ...services,
+        ],
+        action,
+      ),
+    ).toEqual(services);
+  });
 }
 
 let fixture: Awaited<ReturnType<typeof rendererFixture>>;
