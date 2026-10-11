@@ -59,7 +59,9 @@ for (const app of capabilityCases) {
 
   test(`Compose reference and deployment services preserve ${capabilities}`, () => {
     const installation = fixture.installation([app]);
-    expect(operationsCompose(installation, false)).toMatchSnapshot();
+    expect(
+      JSON.stringify(operationsCompose(installation, false), null, 2),
+    ).toMatchSnapshot();
     expect(
       Object.fromEntries(requiredServices(installation.applied.applications)),
     ).toMatchSnapshot();
@@ -151,7 +153,9 @@ test('multiple applications preserve prefix ownership, retained databases and sh
         ),
       ).toMatchSnapshot();
       const installation = fixture.installation(selection);
-      expect(operationsCompose(installation, false)).toMatchSnapshot();
+      expect(
+        JSON.stringify(operationsCompose(installation, false), null, 2),
+      ).toMatchSnapshot();
       expect(
         Object.fromEntries(requiredServices(installation.applied.applications)),
       ).toMatchSnapshot();

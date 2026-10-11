@@ -115,11 +115,19 @@
         "cwd": "."
       }
     },
+    "test-renderers": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests/environment-renderers.test.ts",
+        "cwd": "."
+      }
+    },
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bun test ./scripts/tests/artifact-approval.test.ts ./scripts/tests/operations-promotion.test.ts ./scripts/tests/operations-readiness.test.ts ./scripts/tests/operations-docker-migrations.test.ts ./scripts/tests/environment-renderers.test.ts",
+        "command": "bun test ./scripts/tests/artifact-approval.test.ts ./scripts/tests/operations-promotion.test.ts ./scripts/tests/operations-readiness.test.ts ./scripts/tests/operations-docker-migrations.test.ts",
         "cwd": "."
       }
     }

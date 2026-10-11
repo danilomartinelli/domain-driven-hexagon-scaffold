@@ -103,50 +103,50 @@ exports[`prepared Compose documents preserve persistence=false, messaging=false,
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=false 1`] = `
-{
-  "configs": {},
-  "networks": {
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {},
+"{
   "services": {
     "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "secrets": [],
       "environment": {
         "NODE_ENV": "production",
-        "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_HTTP_PORT": "3000"
       },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [],
-      "stop_grace_period": "20s",
-    },
+        "retries": 30
+      }
+    }
   },
   "volumes": {},
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {},
+  "configs": {}
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=false 2`] = `
@@ -468,112 +468,112 @@ exports[`prepared Compose documents preserve persistence=false, messaging=false,
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=true 1`] = `
-{
-  "configs": {
-    "routes": {
-      "content": "{"_format_version":"3.0","services":[{"name":"order-history--history","host":"app-order-history","port":3000,"protocol":"http","path":"/history","routes":[{"name":"order-history--history","paths":["~/history$$"],"strip_path":true,"protocols":["https"]}]}],"upstreams":[{"name":"app-order-history","targets":[{"target":"app-order-history:3000"}],"healthchecks":{"active":{"type":"http","http_path":"/health/ready/http","timeout":2,"healthy":{"interval":1,"successes":1},"unhealthy":{"interval":1,"http_failures":1,"tcp_failures":1,"timeouts":1,"http_statuses":[500,502,503,504]}}}}]}",
-    },
-  },
-  "networks": {
-    "ingress": {
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "tls.crt": {
-      "file": "/fixture/$$installation/secrets/tls.crt",
-    },
-    "tls.key": {
-      "file": "/fixture/$$installation/secrets/tls.key",
-    },
-  },
+"{
   "services": {
     "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "secrets": [],
       "environment": {
         "NODE_ENV": "production",
-        "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_HTTP_PORT": "3000"
       },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [],
-      "stop_grace_period": "20s",
+        "retries": 30
+      }
     },
     "gateway": {
-      "configs": [
-        {
-          "source": "routes",
-          "target": "/etc/kong/routes.json",
-        },
-      ],
-      "environment": {
-        "KONG_ADMIN_GUI_LISTEN": "off",
-        "KONG_ADMIN_LISTEN": "off",
-        "KONG_DATABASE": "off",
-        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
-        "KONG_DNS_ERROR_TTL": "1",
-        "KONG_DNS_NOT_FOUND_TTL": "1",
-        "KONG_NGINX_WORKER_PROCESSES": "1",
-        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
-        "KONG_SSL_CERT": "/run/secrets/tls.crt",
-        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
-        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
-      },
-      "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD",
-          "kong",
-          "health",
-        ],
-        "timeout": "5s",
-      },
       "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
       "labels": {
-        "dev.starter.owner": "fixture-owner",
+        "dev.starter.owner": "fixture-owner"
       },
       "networks": [
         "private",
-        "ingress",
+        "ingress"
       ],
       "ports": [
-        "127.0.0.1:8443:8443",
+        "127.0.0.1:8443:8443"
       ],
       "secrets": [
         "tls.crt",
-        "tls.key",
+        "tls.key"
       ],
-    },
+      "configs": [
+        {
+          "source": "routes",
+          "target": "/etc/kong/routes.json"
+        }
+      ],
+      "environment": {
+        "KONG_DATABASE": "off",
+        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
+        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
+        "KONG_SSL_CERT": "/run/secrets/tls.crt",
+        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
+        "KONG_ADMIN_LISTEN": "off",
+        "KONG_ADMIN_GUI_LISTEN": "off",
+        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
+        "KONG_NGINX_WORKER_PROCESSES": "1",
+        "KONG_DNS_NOT_FOUND_TTL": "1",
+        "KONG_DNS_ERROR_TTL": "1"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "kong",
+          "health"
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    }
   },
   "volumes": {},
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "ingress": {
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "tls.crt": {
+      "file": "/fixture/$$installation/secrets/tls.crt"
+    },
+    "tls.key": {
+      "file": "/fixture/$$installation/secrets/tls.key"
+    }
+  },
+  "configs": {
+    "routes": {
+      "content": "{\\"_format_version\\":\\"3.0\\",\\"services\\":[{\\"name\\":\\"order-history--history\\",\\"host\\":\\"app-order-history\\",\\"port\\":3000,\\"protocol\\":\\"http\\",\\"path\\":\\"/history\\",\\"routes\\":[{\\"name\\":\\"order-history--history\\",\\"paths\\":[\\"~/history$$\\"],\\"strip_path\\":true,\\"protocols\\":[\\"https\\"]}]}],\\"upstreams\\":[{\\"name\\":\\"app-order-history\\",\\"targets\\":[{\\"target\\":\\"app-order-history:3000\\"}],\\"healthchecks\\":{\\"active\\":{\\"type\\":\\"http\\",\\"http_path\\":\\"/health/ready/http\\",\\"timeout\\":2,\\"healthy\\":{\\"interval\\":1,\\"successes\\":1},\\"unhealthy\\":{\\"interval\\":1,\\"http_failures\\":1,\\"tcp_failures\\":1,\\"timeouts\\":1,\\"http_statuses\\":[500,502,503,504]}}}}]}"
+    }
+  }
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=true 2`] = `
@@ -870,104 +870,104 @@ exports[`prepared Compose documents preserve persistence=false, messaging=true, 
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=false 1`] = `
-{
-  "configs": {},
-  "networks": {
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "broker-password": {
-      "file": "/fixture/$$installation/secrets/broker-password",
-    },
-  },
+"{
   "services": {
     "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "secrets": [
+        "broker-password"
+      ],
       "environment": {
         "NODE_ENV": "production",
         "ORDER_HISTORY_HTTP_PORT": "3000",
         "RABBITMQ_HOST": "rabbitmq",
-        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
         "RABBITMQ_PORT": "5672",
         "RABBITMQ_USERNAME": "scaffold",
-        "RABBITMQ_VHOST": "fixture-installation",
+        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
+        "RABBITMQ_VHOST": "fixture-installation"
       },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [
-        "broker-password",
-      ],
-      "stop_grace_period": "20s",
+        "retries": 30
+      }
     },
     "rabbitmq": {
-      "entrypoint": [
-        "/bin/sh",
-        "-ec",
-        "export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/broker-password)"; exec docker-entrypoint.sh rabbitmq-server",
+      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "hostname": "fixture-installation-rabbitmq",
+      "secrets": [
+        "broker-password"
       ],
       "environment": {
         "RABBITMQ_DEFAULT_USER": "scaffold",
-        "RABBITMQ_DEFAULT_VHOST": "fixture-installation",
+        "RABBITMQ_DEFAULT_VHOST": "fixture-installation"
       },
+      "entrypoint": [
+        "/bin/sh",
+        "-ec",
+        "export RABBITMQ_DEFAULT_PASS=\\"$$(cat /run/secrets/broker-password)\\"; exec docker-entrypoint.sh rabbitmq-server"
+      ],
+      "volumes": [
+        "rabbitmq:/var/lib/rabbitmq"
+      ],
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "docker-entrypoint.sh",
           "rabbitmq-diagnostics",
           "-q",
-          "check_port_connectivity",
+          "check_port_connectivity"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "hostname": "fixture-installation-rabbitmq",
-      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-      ],
-      "secrets": [
-        "broker-password",
-      ],
-      "volumes": [
-        "rabbitmq:/var/lib/rabbitmq",
-      ],
-    },
+        "retries": 30
+      }
+    }
   },
   "volumes": {
     "rabbitmq": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
   },
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "broker-password": {
+      "file": "/fixture/$$installation/secrets/broker-password"
+    }
+  },
+  "configs": {}
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=false 2`] = `
@@ -1467,165 +1467,165 @@ exports[`prepared Compose documents preserve persistence=false, messaging=true, 
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=true 1`] = `
-{
-  "configs": {
-    "routes": {
-      "content": "{"_format_version":"3.0","services":[{"name":"order-history--history","host":"app-order-history","port":3000,"protocol":"http","path":"/history","routes":[{"name":"order-history--history","paths":["~/history$$"],"strip_path":true,"protocols":["https"]}]}],"upstreams":[{"name":"app-order-history","targets":[{"target":"app-order-history:3000"}],"healthchecks":{"active":{"type":"http","http_path":"/health/ready/http","timeout":2,"healthy":{"interval":1,"successes":1},"unhealthy":{"interval":1,"http_failures":1,"tcp_failures":1,"timeouts":1,"http_statuses":[500,502,503,504]}}}}]}",
-    },
-  },
-  "networks": {
-    "ingress": {
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "broker-password": {
-      "file": "/fixture/$$installation/secrets/broker-password",
-    },
-    "tls.crt": {
-      "file": "/fixture/$$installation/secrets/tls.crt",
-    },
-    "tls.key": {
-      "file": "/fixture/$$installation/secrets/tls.key",
-    },
-  },
+"{
   "services": {
     "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "secrets": [
+        "broker-password"
+      ],
       "environment": {
         "NODE_ENV": "production",
         "ORDER_HISTORY_HTTP_PORT": "3000",
         "RABBITMQ_HOST": "rabbitmq",
-        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
         "RABBITMQ_PORT": "5672",
         "RABBITMQ_USERNAME": "scaffold",
-        "RABBITMQ_VHOST": "fixture-installation",
+        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
+        "RABBITMQ_VHOST": "fixture-installation"
       },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
-        "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [
-        "broker-password",
-      ],
-      "stop_grace_period": "20s",
-    },
-    "gateway": {
-      "configs": [
-        {
-          "source": "routes",
-          "target": "/etc/kong/routes.json",
-        },
-      ],
-      "environment": {
-        "KONG_ADMIN_GUI_LISTEN": "off",
-        "KONG_ADMIN_LISTEN": "off",
-        "KONG_DATABASE": "off",
-        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
-        "KONG_DNS_ERROR_TTL": "1",
-        "KONG_DNS_NOT_FOUND_TTL": "1",
-        "KONG_NGINX_WORKER_PROCESSES": "1",
-        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
-        "KONG_SSL_CERT": "/run/secrets/tls.crt",
-        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
-        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
-      },
-      "healthcheck": {
         "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD",
-          "kong",
-          "health",
-        ],
         "timeout": "5s",
-      },
-      "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "ingress",
-      ],
-      "ports": [
-        "127.0.0.1:8443:8443",
-      ],
-      "secrets": [
-        "tls.crt",
-        "tls.key",
-      ],
+        "retries": 30
+      }
     },
     "rabbitmq": {
-      "entrypoint": [
-        "/bin/sh",
-        "-ec",
-        "export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/broker-password)"; exec docker-entrypoint.sh rabbitmq-server",
+      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "hostname": "fixture-installation-rabbitmq",
+      "secrets": [
+        "broker-password"
       ],
       "environment": {
         "RABBITMQ_DEFAULT_USER": "scaffold",
-        "RABBITMQ_DEFAULT_VHOST": "fixture-installation",
+        "RABBITMQ_DEFAULT_VHOST": "fixture-installation"
       },
+      "entrypoint": [
+        "/bin/sh",
+        "-ec",
+        "export RABBITMQ_DEFAULT_PASS=\\"$$(cat /run/secrets/broker-password)\\"; exec docker-entrypoint.sh rabbitmq-server"
+      ],
+      "volumes": [
+        "rabbitmq:/var/lib/rabbitmq"
+      ],
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "docker-entrypoint.sh",
           "rabbitmq-diagnostics",
           "-q",
-          "check_port_connectivity",
+          "check_port_connectivity"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "hostname": "fixture-installation-rabbitmq",
-      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+        "retries": 30
+      }
+    },
+    "gateway": {
+      "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
       "labels": {
-        "dev.starter.owner": "fixture-owner",
+        "dev.starter.owner": "fixture-owner"
       },
       "networks": [
         "private",
+        "ingress"
+      ],
+      "ports": [
+        "127.0.0.1:8443:8443"
       ],
       "secrets": [
-        "broker-password",
+        "tls.crt",
+        "tls.key"
       ],
-      "volumes": [
-        "rabbitmq:/var/lib/rabbitmq",
+      "configs": [
+        {
+          "source": "routes",
+          "target": "/etc/kong/routes.json"
+        }
       ],
-    },
+      "environment": {
+        "KONG_DATABASE": "off",
+        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
+        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
+        "KONG_SSL_CERT": "/run/secrets/tls.crt",
+        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
+        "KONG_ADMIN_LISTEN": "off",
+        "KONG_ADMIN_GUI_LISTEN": "off",
+        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
+        "KONG_NGINX_WORKER_PROCESSES": "1",
+        "KONG_DNS_NOT_FOUND_TTL": "1",
+        "KONG_DNS_ERROR_TTL": "1"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "kong",
+          "health"
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    }
   },
   "volumes": {
     "rabbitmq": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
   },
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "ingress": {
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "broker-password": {
+      "file": "/fixture/$$installation/secrets/broker-password"
+    },
+    "tls.crt": {
+      "file": "/fixture/$$installation/secrets/tls.crt"
+    },
+    "tls.key": {
+      "file": "/fixture/$$installation/secrets/tls.key"
+    }
+  },
+  "configs": {
+    "routes": {
+      "content": "{\\"_format_version\\":\\"3.0\\",\\"services\\":[{\\"name\\":\\"order-history--history\\",\\"host\\":\\"app-order-history\\",\\"port\\":3000,\\"protocol\\":\\"http\\",\\"path\\":\\"/history\\",\\"routes\\":[{\\"name\\":\\"order-history--history\\",\\"paths\\":[\\"~/history$$\\"],\\"strip_path\\":true,\\"protocols\\":[\\"https\\"]}]}],\\"upstreams\\":[{\\"name\\":\\"app-order-history\\",\\"targets\\":[{\\"target\\":\\"app-order-history:3000\\"}],\\"healthchecks\\":{\\"active\\":{\\"type\\":\\"http\\",\\"http_path\\":\\"/health/ready/http\\",\\"timeout\\":2,\\"healthy\\":{\\"interval\\":1,\\"successes\\":1},\\"unhealthy\\":{\\"interval\\":1,\\"http_failures\\":1,\\"tcp_failures\\":1,\\"timeouts\\":1,\\"http_statuses\\":[500,502,503,504]}}}}]}"
+    }
+  }
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=true 2`] = `
@@ -1988,138 +1988,138 @@ exports[`prepared Compose documents preserve persistence=true, messaging=false, 
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=false 1`] = `
-{
-  "configs": {},
-  "networks": {
-    "database-order-history": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "order-history-admin-password": {
-      "file": "/fixture/$$installation/secrets/order-history-admin-password",
-    },
-    "order-history-owner-password": {
-      "file": "/fixture/$$installation/secrets/order-history-owner-password",
-    },
-    "order-history-runtime-password": {
-      "file": "/fixture/$$installation/secrets/order-history-runtime-password",
-    },
-  },
+"{
   "services": {
-    "app-order-history": {
+    "postgres-order-history": {
+      "image": "postgres:18.6-alpine",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "database-order-history"
+      ],
+      "environment": {
+        "POSTGRES_DB": "order_history",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password"
+      },
+      "secrets": [
+        "order-history-admin-password",
+        "order-history-owner-password",
+        "order-history-runtime-password"
+      ],
+      "volumes": [
+        "postgres-order-history:/var/lib/postgresql"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d \\"$$POSTGRES_DB\\""
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    },
+    "migrate-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "profiles": [
+        "commands"
+      ],
+      "networks": [
+        "database-order-history"
+      ],
       "environment": {
         "NODE_ENV": "production",
+        "DATABASE_APP": "order-history",
         "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password",
         "ORDER_HISTORY_DB_PORT": "5432",
-        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-        "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
+        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password"
       },
+      "secrets": [
+        "order-history-owner-password"
+      ],
+      "command": [
+        "run",
+        "migration:status"
+      ]
+    },
+    "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private",
+        "database-order-history"
+      ],
+      "secrets": [
+        "order-history-runtime-password"
+      ],
+      "environment": {
+        "NODE_ENV": "production",
+        "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
+        "ORDER_HISTORY_DB_PORT": "5432",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
+        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password"
+      },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
-        "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "database-order-history",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [
-        "order-history-runtime-password",
-      ],
-      "stop_grace_period": "20s",
-    },
-    "migrate-order-history": {
-      "command": [
-        "run",
-        "migration:status",
-      ],
-      "environment": {
-        "DATABASE_APP": "order-history",
-        "NODE_ENV": "production",
-        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password",
-        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PORT": "5432",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "profiles": [
-        "commands",
-      ],
-      "secrets": [
-        "order-history-owner-password",
-      ],
-    },
-    "postgres-order-history": {
-      "environment": {
-        "POSTGRES_DB": "order_history",
-        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password",
-      },
-      "healthcheck": {
         "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD-SHELL",
-          "pg_isready -h 127.0.0.1 -U postgres -d "$$POSTGRES_DB"",
-        ],
         "timeout": "5s",
-      },
-      "image": "postgres:18.6-alpine",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "secrets": [
-        "order-history-admin-password",
-        "order-history-owner-password",
-        "order-history-runtime-password",
-      ],
-      "volumes": [
-        "postgres-order-history:/var/lib/postgresql",
-      ],
-    },
+        "retries": 30
+      }
+    }
   },
   "volumes": {
     "postgres-order-history": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
   },
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "database-order-history": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "order-history-admin-password": {
+      "file": "/fixture/$$installation/secrets/order-history-admin-password"
+    },
+    "order-history-owner-password": {
+      "file": "/fixture/$$installation/secrets/order-history-owner-password"
+    },
+    "order-history-runtime-password": {
+      "file": "/fixture/$$installation/secrets/order-history-runtime-password"
+    }
+  },
+  "configs": {}
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=false 2`] = `
@@ -2643,199 +2643,199 @@ exports[`prepared Compose documents preserve persistence=true, messaging=false, 
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=true 1`] = `
-{
-  "configs": {
-    "routes": {
-      "content": "{"_format_version":"3.0","services":[{"name":"order-history--history","host":"app-order-history","port":3000,"protocol":"http","path":"/history","routes":[{"name":"order-history--history","paths":["~/history$$"],"strip_path":true,"protocols":["https"]}]}],"upstreams":[{"name":"app-order-history","targets":[{"target":"app-order-history:3000"}],"healthchecks":{"active":{"type":"http","http_path":"/health/ready/http","timeout":2,"healthy":{"interval":1,"successes":1},"unhealthy":{"interval":1,"http_failures":1,"tcp_failures":1,"timeouts":1,"http_statuses":[500,502,503,504]}}}}]}",
-    },
-  },
-  "networks": {
-    "database-order-history": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "ingress": {
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "order-history-admin-password": {
-      "file": "/fixture/$$installation/secrets/order-history-admin-password",
-    },
-    "order-history-owner-password": {
-      "file": "/fixture/$$installation/secrets/order-history-owner-password",
-    },
-    "order-history-runtime-password": {
-      "file": "/fixture/$$installation/secrets/order-history-runtime-password",
-    },
-    "tls.crt": {
-      "file": "/fixture/$$installation/secrets/tls.crt",
-    },
-    "tls.key": {
-      "file": "/fixture/$$installation/secrets/tls.key",
-    },
-  },
+"{
   "services": {
-    "app-order-history": {
+    "postgres-order-history": {
+      "image": "postgres:18.6-alpine",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "database-order-history"
+      ],
+      "environment": {
+        "POSTGRES_DB": "order_history",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password"
+      },
+      "secrets": [
+        "order-history-admin-password",
+        "order-history-owner-password",
+        "order-history-runtime-password"
+      ],
+      "volumes": [
+        "postgres-order-history:/var/lib/postgresql"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d \\"$$POSTGRES_DB\\""
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    },
+    "migrate-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "profiles": [
+        "commands"
+      ],
+      "networks": [
+        "database-order-history"
+      ],
       "environment": {
         "NODE_ENV": "production",
+        "DATABASE_APP": "order-history",
         "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password",
         "ORDER_HISTORY_DB_PORT": "5432",
-        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-        "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
+        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password"
       },
+      "secrets": [
+        "order-history-owner-password"
+      ],
+      "command": [
+        "run",
+        "migration:status"
+      ]
+    },
+    "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private",
+        "database-order-history"
+      ],
+      "secrets": [
+        "order-history-runtime-password"
+      ],
+      "environment": {
+        "NODE_ENV": "production",
+        "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
+        "ORDER_HISTORY_DB_PORT": "5432",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
+        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password"
+      },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "database-order-history",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [
-        "order-history-runtime-password",
-      ],
-      "stop_grace_period": "20s",
+        "retries": 30
+      }
     },
     "gateway": {
-      "configs": [
-        {
-          "source": "routes",
-          "target": "/etc/kong/routes.json",
-        },
-      ],
-      "environment": {
-        "KONG_ADMIN_GUI_LISTEN": "off",
-        "KONG_ADMIN_LISTEN": "off",
-        "KONG_DATABASE": "off",
-        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
-        "KONG_DNS_ERROR_TTL": "1",
-        "KONG_DNS_NOT_FOUND_TTL": "1",
-        "KONG_NGINX_WORKER_PROCESSES": "1",
-        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
-        "KONG_SSL_CERT": "/run/secrets/tls.crt",
-        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
-        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
-      },
-      "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD",
-          "kong",
-          "health",
-        ],
-        "timeout": "5s",
-      },
       "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
       "labels": {
-        "dev.starter.owner": "fixture-owner",
+        "dev.starter.owner": "fixture-owner"
       },
       "networks": [
         "private",
-        "ingress",
+        "ingress"
       ],
       "ports": [
-        "127.0.0.1:8443:8443",
+        "127.0.0.1:8443:8443"
       ],
       "secrets": [
         "tls.crt",
-        "tls.key",
+        "tls.key"
       ],
-    },
-    "migrate-order-history": {
-      "command": [
-        "run",
-        "migration:status",
+      "configs": [
+        {
+          "source": "routes",
+          "target": "/etc/kong/routes.json"
+        }
       ],
       "environment": {
-        "DATABASE_APP": "order-history",
-        "NODE_ENV": "production",
-        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password",
-        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PORT": "5432",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "profiles": [
-        "commands",
-      ],
-      "secrets": [
-        "order-history-owner-password",
-      ],
-    },
-    "postgres-order-history": {
-      "environment": {
-        "POSTGRES_DB": "order_history",
-        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password",
+        "KONG_DATABASE": "off",
+        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
+        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
+        "KONG_SSL_CERT": "/run/secrets/tls.crt",
+        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
+        "KONG_ADMIN_LISTEN": "off",
+        "KONG_ADMIN_GUI_LISTEN": "off",
+        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
+        "KONG_NGINX_WORKER_PROCESSES": "1",
+        "KONG_DNS_NOT_FOUND_TTL": "1",
+        "KONG_DNS_ERROR_TTL": "1"
       },
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
-          "CMD-SHELL",
-          "pg_isready -h 127.0.0.1 -U postgres -d "$$POSTGRES_DB"",
+          "CMD",
+          "kong",
+          "health"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "image": "postgres:18.6-alpine",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "secrets": [
-        "order-history-admin-password",
-        "order-history-owner-password",
-        "order-history-runtime-password",
-      ],
-      "volumes": [
-        "postgres-order-history:/var/lib/postgresql",
-      ],
-    },
+        "retries": 30
+      }
+    }
   },
   "volumes": {
     "postgres-order-history": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
   },
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "database-order-history": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "ingress": {
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "order-history-admin-password": {
+      "file": "/fixture/$$installation/secrets/order-history-admin-password"
+    },
+    "order-history-owner-password": {
+      "file": "/fixture/$$installation/secrets/order-history-owner-password"
+    },
+    "order-history-runtime-password": {
+      "file": "/fixture/$$installation/secrets/order-history-runtime-password"
+    },
+    "tls.crt": {
+      "file": "/fixture/$$installation/secrets/tls.crt"
+    },
+    "tls.key": {
+      "file": "/fixture/$$installation/secrets/tls.key"
+    }
+  },
+  "configs": {
+    "routes": {
+      "content": "{\\"_format_version\\":\\"3.0\\",\\"services\\":[{\\"name\\":\\"order-history--history\\",\\"host\\":\\"app-order-history\\",\\"port\\":3000,\\"protocol\\":\\"http\\",\\"path\\":\\"/history\\",\\"routes\\":[{\\"name\\":\\"order-history--history\\",\\"paths\\":[\\"~/history$$\\"],\\"strip_path\\":true,\\"protocols\\":[\\"https\\"]}]}],\\"upstreams\\":[{\\"name\\":\\"app-order-history\\",\\"targets\\":[{\\"target\\":\\"app-order-history:3000\\"}],\\"healthchecks\\":{\\"active\\":{\\"type\\":\\"http\\",\\"http_path\\":\\"/health/ready/http\\",\\"timeout\\":2,\\"healthy\\":{\\"interval\\":1,\\"successes\\":1},\\"unhealthy\\":{\\"interval\\":1,\\"http_failures\\":1,\\"tcp_failures\\":1,\\"timeouts\\":1,\\"http_statuses\\":[500,502,503,504]}}}}]}"
+    }
+  }
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=true 2`] = `
@@ -3336,189 +3336,189 @@ exports[`prepared Compose documents preserve persistence=true, messaging=true, e
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=false 1`] = `
-{
-  "configs": {},
-  "networks": {
-    "database-order-history": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "broker-password": {
-      "file": "/fixture/$$installation/secrets/broker-password",
-    },
-    "order-history-admin-password": {
-      "file": "/fixture/$$installation/secrets/order-history-admin-password",
-    },
-    "order-history-owner-password": {
-      "file": "/fixture/$$installation/secrets/order-history-owner-password",
-    },
-    "order-history-runtime-password": {
-      "file": "/fixture/$$installation/secrets/order-history-runtime-password",
-    },
-  },
+"{
   "services": {
-    "app-order-history": {
+    "postgres-order-history": {
+      "image": "postgres:18.6-alpine",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "database-order-history"
+      ],
+      "environment": {
+        "POSTGRES_DB": "order_history",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password"
+      },
+      "secrets": [
+        "order-history-admin-password",
+        "order-history-owner-password",
+        "order-history-runtime-password"
+      ],
+      "volumes": [
+        "postgres-order-history:/var/lib/postgresql"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d \\"$$POSTGRES_DB\\""
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    },
+    "migrate-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "profiles": [
+        "commands"
+      ],
+      "networks": [
+        "database-order-history"
+      ],
       "environment": {
         "NODE_ENV": "production",
+        "DATABASE_APP": "order-history",
         "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password",
         "ORDER_HISTORY_DB_PORT": "5432",
-        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
+        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password"
+      },
+      "secrets": [
+        "order-history-owner-password"
+      ],
+      "command": [
+        "run",
+        "migration:status"
+      ]
+    },
+    "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private",
+        "database-order-history"
+      ],
+      "secrets": [
+        "order-history-runtime-password",
+        "broker-password"
+      ],
+      "environment": {
+        "NODE_ENV": "production",
         "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
+        "ORDER_HISTORY_DB_PORT": "5432",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
+        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password",
         "RABBITMQ_HOST": "rabbitmq",
-        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
         "RABBITMQ_PORT": "5672",
         "RABBITMQ_USERNAME": "scaffold",
-        "RABBITMQ_VHOST": "fixture-installation",
+        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
+        "RABBITMQ_VHOST": "fixture-installation"
       },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
-        "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "database-order-history",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [
-        "order-history-runtime-password",
-        "broker-password",
-      ],
-      "stop_grace_period": "20s",
-    },
-    "migrate-order-history": {
-      "command": [
-        "run",
-        "migration:status",
-      ],
-      "environment": {
-        "DATABASE_APP": "order-history",
-        "NODE_ENV": "production",
-        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password",
-        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PORT": "5432",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "profiles": [
-        "commands",
-      ],
-      "secrets": [
-        "order-history-owner-password",
-      ],
-    },
-    "postgres-order-history": {
-      "environment": {
-        "POSTGRES_DB": "order_history",
-        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password",
-      },
-      "healthcheck": {
         "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD-SHELL",
-          "pg_isready -h 127.0.0.1 -U postgres -d "$$POSTGRES_DB"",
-        ],
         "timeout": "5s",
-      },
-      "image": "postgres:18.6-alpine",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "secrets": [
-        "order-history-admin-password",
-        "order-history-owner-password",
-        "order-history-runtime-password",
-      ],
-      "volumes": [
-        "postgres-order-history:/var/lib/postgresql",
-      ],
+        "retries": 30
+      }
     },
     "rabbitmq": {
-      "entrypoint": [
-        "/bin/sh",
-        "-ec",
-        "export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/broker-password)"; exec docker-entrypoint.sh rabbitmq-server",
+      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "hostname": "fixture-installation-rabbitmq",
+      "secrets": [
+        "broker-password"
       ],
       "environment": {
         "RABBITMQ_DEFAULT_USER": "scaffold",
-        "RABBITMQ_DEFAULT_VHOST": "fixture-installation",
+        "RABBITMQ_DEFAULT_VHOST": "fixture-installation"
       },
+      "entrypoint": [
+        "/bin/sh",
+        "-ec",
+        "export RABBITMQ_DEFAULT_PASS=\\"$$(cat /run/secrets/broker-password)\\"; exec docker-entrypoint.sh rabbitmq-server"
+      ],
+      "volumes": [
+        "rabbitmq:/var/lib/rabbitmq"
+      ],
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "docker-entrypoint.sh",
           "rabbitmq-diagnostics",
           "-q",
-          "check_port_connectivity",
+          "check_port_connectivity"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "hostname": "fixture-installation-rabbitmq",
-      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-      ],
-      "secrets": [
-        "broker-password",
-      ],
-      "volumes": [
-        "rabbitmq:/var/lib/rabbitmq",
-      ],
-    },
+        "retries": 30
+      }
+    }
   },
   "volumes": {
     "postgres-order-history": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
+        "dev.starter.owner": "fixture-owner"
+      }
     },
     "rabbitmq": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
   },
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "database-order-history": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "order-history-admin-password": {
+      "file": "/fixture/$$installation/secrets/order-history-admin-password"
+    },
+    "order-history-owner-password": {
+      "file": "/fixture/$$installation/secrets/order-history-owner-password"
+    },
+    "order-history-runtime-password": {
+      "file": "/fixture/$$installation/secrets/order-history-runtime-password"
+    },
+    "broker-password": {
+      "file": "/fixture/$$installation/secrets/broker-password"
+    }
+  },
+  "configs": {}
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=false 2`] = `
@@ -4218,250 +4218,250 @@ exports[`prepared Compose documents preserve persistence=true, messaging=true, e
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=true 1`] = `
-{
-  "configs": {
-    "routes": {
-      "content": "{"_format_version":"3.0","services":[{"name":"order-history--history","host":"app-order-history","port":3000,"protocol":"http","path":"/history","routes":[{"name":"order-history--history","paths":["~/history$$"],"strip_path":true,"protocols":["https"]}]}],"upstreams":[{"name":"app-order-history","targets":[{"target":"app-order-history:3000"}],"healthchecks":{"active":{"type":"http","http_path":"/health/ready/http","timeout":2,"healthy":{"interval":1,"successes":1},"unhealthy":{"interval":1,"http_failures":1,"tcp_failures":1,"timeouts":1,"http_statuses":[500,502,503,504]}}}}]}",
-    },
-  },
-  "networks": {
-    "database-order-history": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "ingress": {
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "broker-password": {
-      "file": "/fixture/$$installation/secrets/broker-password",
-    },
-    "order-history-admin-password": {
-      "file": "/fixture/$$installation/secrets/order-history-admin-password",
-    },
-    "order-history-owner-password": {
-      "file": "/fixture/$$installation/secrets/order-history-owner-password",
-    },
-    "order-history-runtime-password": {
-      "file": "/fixture/$$installation/secrets/order-history-runtime-password",
-    },
-    "tls.crt": {
-      "file": "/fixture/$$installation/secrets/tls.crt",
-    },
-    "tls.key": {
-      "file": "/fixture/$$installation/secrets/tls.key",
-    },
-  },
+"{
   "services": {
-    "app-order-history": {
+    "postgres-order-history": {
+      "image": "postgres:18.6-alpine",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "database-order-history"
+      ],
+      "environment": {
+        "POSTGRES_DB": "order_history",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password"
+      },
+      "secrets": [
+        "order-history-admin-password",
+        "order-history-owner-password",
+        "order-history-runtime-password"
+      ],
+      "volumes": [
+        "postgres-order-history:/var/lib/postgresql"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d \\"$$POSTGRES_DB\\""
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    },
+    "migrate-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "profiles": [
+        "commands"
+      ],
+      "networks": [
+        "database-order-history"
+      ],
       "environment": {
         "NODE_ENV": "production",
+        "DATABASE_APP": "order-history",
         "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password",
         "ORDER_HISTORY_DB_PORT": "5432",
-        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
+        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password"
+      },
+      "secrets": [
+        "order-history-owner-password"
+      ],
+      "command": [
+        "run",
+        "migration:status"
+      ]
+    },
+    "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private",
+        "database-order-history"
+      ],
+      "secrets": [
+        "order-history-runtime-password",
+        "broker-password"
+      ],
+      "environment": {
+        "NODE_ENV": "production",
         "ORDER_HISTORY_HTTP_PORT": "3000",
+        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
+        "ORDER_HISTORY_DB_PORT": "5432",
+        "ORDER_HISTORY_DB_NAME": "order_history",
+        "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
+        "ORDER_HISTORY_DB_PASSWORD_FILE": "/run/secrets/order-history-runtime-password",
         "RABBITMQ_HOST": "rabbitmq",
-        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
         "RABBITMQ_PORT": "5672",
         "RABBITMQ_USERNAME": "scaffold",
-        "RABBITMQ_VHOST": "fixture-installation",
+        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
+        "RABBITMQ_VHOST": "fixture-installation"
       },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "bun",
           "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
         ],
-        "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "database-order-history",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [
-        "order-history-runtime-password",
-        "broker-password",
-      ],
-      "stop_grace_period": "20s",
-    },
-    "gateway": {
-      "configs": [
-        {
-          "source": "routes",
-          "target": "/etc/kong/routes.json",
-        },
-      ],
-      "environment": {
-        "KONG_ADMIN_GUI_LISTEN": "off",
-        "KONG_ADMIN_LISTEN": "off",
-        "KONG_DATABASE": "off",
-        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
-        "KONG_DNS_ERROR_TTL": "1",
-        "KONG_DNS_NOT_FOUND_TTL": "1",
-        "KONG_NGINX_WORKER_PROCESSES": "1",
-        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
-        "KONG_SSL_CERT": "/run/secrets/tls.crt",
-        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
-        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
-      },
-      "healthcheck": {
         "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD",
-          "kong",
-          "health",
-        ],
         "timeout": "5s",
-      },
-      "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "ingress",
-      ],
-      "ports": [
-        "127.0.0.1:8443:8443",
-      ],
-      "secrets": [
-        "tls.crt",
-        "tls.key",
-      ],
-    },
-    "migrate-order-history": {
-      "command": [
-        "run",
-        "migration:status",
-      ],
-      "environment": {
-        "DATABASE_APP": "order-history",
-        "NODE_ENV": "production",
-        "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-        "ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-history-owner-password",
-        "ORDER_HISTORY_DB_MIGRATION_USERNAME": "order_history_owner",
-        "ORDER_HISTORY_DB_NAME": "order_history",
-        "ORDER_HISTORY_DB_PORT": "5432",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "profiles": [
-        "commands",
-      ],
-      "secrets": [
-        "order-history-owner-password",
-      ],
-    },
-    "postgres-order-history": {
-      "environment": {
-        "POSTGRES_DB": "order_history",
-        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-history-admin-password",
-      },
-      "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD-SHELL",
-          "pg_isready -h 127.0.0.1 -U postgres -d "$$POSTGRES_DB"",
-        ],
-        "timeout": "5s",
-      },
-      "image": "postgres:18.6-alpine",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order-history",
-      ],
-      "secrets": [
-        "order-history-admin-password",
-        "order-history-owner-password",
-        "order-history-runtime-password",
-      ],
-      "volumes": [
-        "postgres-order-history:/var/lib/postgresql",
-      ],
+        "retries": 30
+      }
     },
     "rabbitmq": {
-      "entrypoint": [
-        "/bin/sh",
-        "-ec",
-        "export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/broker-password)"; exec docker-entrypoint.sh rabbitmq-server",
+      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "hostname": "fixture-installation-rabbitmq",
+      "secrets": [
+        "broker-password"
       ],
       "environment": {
         "RABBITMQ_DEFAULT_USER": "scaffold",
-        "RABBITMQ_DEFAULT_VHOST": "fixture-installation",
+        "RABBITMQ_DEFAULT_VHOST": "fixture-installation"
       },
+      "entrypoint": [
+        "/bin/sh",
+        "-ec",
+        "export RABBITMQ_DEFAULT_PASS=\\"$$(cat /run/secrets/broker-password)\\"; exec docker-entrypoint.sh rabbitmq-server"
+      ],
+      "volumes": [
+        "rabbitmq:/var/lib/rabbitmq"
+      ],
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "docker-entrypoint.sh",
           "rabbitmq-diagnostics",
           "-q",
-          "check_port_connectivity",
+          "check_port_connectivity"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "hostname": "fixture-installation-rabbitmq",
-      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+        "retries": 30
+      }
+    },
+    "gateway": {
+      "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
       "labels": {
-        "dev.starter.owner": "fixture-owner",
+        "dev.starter.owner": "fixture-owner"
       },
       "networks": [
         "private",
+        "ingress"
+      ],
+      "ports": [
+        "127.0.0.1:8443:8443"
       ],
       "secrets": [
-        "broker-password",
+        "tls.crt",
+        "tls.key"
       ],
-      "volumes": [
-        "rabbitmq:/var/lib/rabbitmq",
+      "configs": [
+        {
+          "source": "routes",
+          "target": "/etc/kong/routes.json"
+        }
       ],
-    },
+      "environment": {
+        "KONG_DATABASE": "off",
+        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
+        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
+        "KONG_SSL_CERT": "/run/secrets/tls.crt",
+        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
+        "KONG_ADMIN_LISTEN": "off",
+        "KONG_ADMIN_GUI_LISTEN": "off",
+        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
+        "KONG_NGINX_WORKER_PROCESSES": "1",
+        "KONG_DNS_NOT_FOUND_TTL": "1",
+        "KONG_DNS_ERROR_TTL": "1"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "kong",
+          "health"
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    }
   },
   "volumes": {
     "postgres-order-history": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
+        "dev.starter.owner": "fixture-owner"
+      }
     },
     "rabbitmq": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
   },
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "database-order-history": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "ingress": {
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "order-history-admin-password": {
+      "file": "/fixture/$$installation/secrets/order-history-admin-password"
+    },
+    "order-history-owner-password": {
+      "file": "/fixture/$$installation/secrets/order-history-owner-password"
+    },
+    "order-history-runtime-password": {
+      "file": "/fixture/$$installation/secrets/order-history-runtime-password"
+    },
+    "broker-password": {
+      "file": "/fixture/$$installation/secrets/broker-password"
+    },
+    "tls.crt": {
+      "file": "/fixture/$$installation/secrets/tls.crt"
+    },
+    "tls.key": {
+      "file": "/fixture/$$installation/secrets/tls.key"
+    }
+  },
+  "configs": {
+    "routes": {
+      "content": "{\\"_format_version\\":\\"3.0\\",\\"services\\":[{\\"name\\":\\"order-history--history\\",\\"host\\":\\"app-order-history\\",\\"port\\":3000,\\"protocol\\":\\"http\\",\\"path\\":\\"/history\\",\\"routes\\":[{\\"name\\":\\"order-history--history\\",\\"paths\\":[\\"~/history$$\\"],\\"strip_path\\":true,\\"protocols\\":[\\"https\\"]}]}],\\"upstreams\\":[{\\"name\\":\\"app-order-history\\",\\"targets\\":[{\\"target\\":\\"app-order-history:3000\\"}],\\"healthchecks\\":{\\"active\\":{\\"type\\":\\"http\\",\\"http_path\\":\\"/health/ready/http\\",\\"timeout\\":2,\\"healthy\\":{\\"interval\\":1,\\"successes\\":1},\\"unhealthy\\":{\\"interval\\":1,\\"http_failures\\":1,\\"tcp_failures\\":1,\\"timeouts\\":1,\\"http_statuses\\":[500,502,503,504]}}}}]}"
+    }
+  }
+}"
 `;
 
 exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=true 2`] = `
@@ -5261,279 +5261,279 @@ exports[`multiple applications preserve prefix ownership, retained databases and
 `;
 
 exports[`multiple applications preserve prefix ownership, retained databases and shell overrides 2`] = `
-{
-  "configs": {
-    "routes": {
-      "content": "{"_format_version":"3.0","services":[{"name":"order-history--history","host":"app-order-history","port":3000,"protocol":"http","path":"/history","routes":[{"name":"order-history--history","paths":["~/history$$"],"strip_path":true,"protocols":["https"]}]}],"upstreams":[{"name":"app-order-history","targets":[{"target":"app-order-history:3000"}],"healthchecks":{"active":{"type":"http","http_path":"/health/ready/http","timeout":2,"healthy":{"interval":1,"successes":1},"unhealthy":{"interval":1,"http_failures":1,"tcp_failures":1,"timeouts":1,"http_statuses":[500,502,503,504]}}}}]}",
-    },
-  },
-  "networks": {
-    "database-order": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "ingress": {
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-    "private": {
-      "internal": true,
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
-  },
-  "secrets": {
-    "broker-password": {
-      "file": "/fixture/$$installation/secrets/broker-password",
-    },
-    "order-admin-password": {
-      "file": "/fixture/$$installation/secrets/order-admin-password",
-    },
-    "order-owner-password": {
-      "file": "/fixture/$$installation/secrets/order-owner-password",
-    },
-    "order-runtime-password": {
-      "file": "/fixture/$$installation/secrets/order-runtime-password",
-    },
-    "tls.crt": {
-      "file": "/fixture/$$installation/secrets/tls.crt",
-    },
-    "tls.key": {
-      "file": "/fixture/$$installation/secrets/tls.key",
-    },
-  },
+"{
   "services": {
-    "app-order": {
-      "environment": {
-        "NODE_ENV": "production",
-        "ORDER_DB_HOST": "postgres-order",
-        "ORDER_DB_NAME": "order",
-        "ORDER_DB_PASSWORD_FILE": "/run/secrets/order-runtime-password",
-        "ORDER_DB_PORT": "5432",
-        "ORDER_DB_USERNAME": "order_runtime",
-        "ORDER_HTTP_PORT": "3000",
-        "RABBITMQ_HOST": "rabbitmq",
-        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
-        "RABBITMQ_PORT": "5672",
-        "RABBITMQ_USERNAME": "scaffold",
-        "RABBITMQ_VHOST": "fixture-installation",
-      },
-      "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD",
-          "bun",
-          "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
-        ],
-        "timeout": "5s",
-      },
-      "image": "example/order@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "database-order",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [
-        "order-runtime-password",
-        "broker-password",
-      ],
-      "stop_grace_period": "20s",
-    },
-    "app-order-history": {
-      "environment": {
-        "NODE_ENV": "production",
-        "ORDER_HISTORY_HTTP_PORT": "3000",
-      },
-      "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD",
-          "bun",
-          "-e",
-          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)",
-        ],
-        "timeout": "5s",
-      },
-      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-      ],
-      "profiles": [
-        "applications",
-      ],
-      "secrets": [],
-      "stop_grace_period": "20s",
-    },
-    "gateway": {
-      "configs": [
-        {
-          "source": "routes",
-          "target": "/etc/kong/routes.json",
-        },
-      ],
-      "environment": {
-        "KONG_ADMIN_GUI_LISTEN": "off",
-        "KONG_ADMIN_LISTEN": "off",
-        "KONG_DATABASE": "off",
-        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
-        "KONG_DNS_ERROR_TTL": "1",
-        "KONG_DNS_NOT_FOUND_TTL": "1",
-        "KONG_NGINX_WORKER_PROCESSES": "1",
-        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
-        "KONG_SSL_CERT": "/run/secrets/tls.crt",
-        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
-        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
-      },
-      "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD",
-          "kong",
-          "health",
-        ],
-        "timeout": "5s",
-      },
-      "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "private",
-        "ingress",
-      ],
-      "ports": [
-        "127.0.0.1:8443:8443",
-      ],
-      "secrets": [
-        "tls.crt",
-        "tls.key",
-      ],
-    },
-    "migrate-order": {
-      "command": [
-        "run",
-        "migration:status",
-      ],
-      "environment": {
-        "DATABASE_APP": "order",
-        "NODE_ENV": "production",
-        "ORDER_DB_HOST": "postgres-order",
-        "ORDER_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-owner-password",
-        "ORDER_DB_MIGRATION_USERNAME": "order_owner",
-        "ORDER_DB_NAME": "order",
-        "ORDER_DB_PORT": "5432",
-      },
-      "image": "example/order@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-      "networks": [
-        "database-order",
-      ],
-      "profiles": [
-        "commands",
-      ],
-      "secrets": [
-        "order-owner-password",
-      ],
-    },
     "postgres-order": {
-      "environment": {
-        "POSTGRES_DB": "order",
-        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-admin-password",
-      },
-      "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
-        "test": [
-          "CMD-SHELL",
-          "pg_isready -h 127.0.0.1 -U postgres -d "$$POSTGRES_DB"",
-        ],
-        "timeout": "5s",
-      },
       "image": "postgres:18.6-alpine",
       "labels": {
-        "dev.starter.owner": "fixture-owner",
+        "dev.starter.owner": "fixture-owner"
       },
       "networks": [
-        "database-order",
+        "database-order"
       ],
+      "environment": {
+        "POSTGRES_DB": "order",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/order-admin-password"
+      },
       "secrets": [
         "order-admin-password",
         "order-owner-password",
-        "order-runtime-password",
+        "order-runtime-password"
       ],
       "volumes": [
-        "postgres-order:/var/lib/postgresql",
+        "postgres-order:/var/lib/postgresql"
       ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d \\"$$POSTGRES_DB\\""
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    },
+    "migrate-order": {
+      "image": "example/order@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "profiles": [
+        "commands"
+      ],
+      "networks": [
+        "database-order"
+      ],
+      "environment": {
+        "NODE_ENV": "production",
+        "DATABASE_APP": "order",
+        "ORDER_DB_HOST": "postgres-order",
+        "ORDER_DB_PORT": "5432",
+        "ORDER_DB_NAME": "order",
+        "ORDER_DB_MIGRATION_USERNAME": "order_owner",
+        "ORDER_DB_MIGRATION_PASSWORD_FILE": "/run/secrets/order-owner-password"
+      },
+      "secrets": [
+        "order-owner-password"
+      ],
+      "command": [
+        "run",
+        "migration:status"
+      ]
+    },
+    "app-order": {
+      "image": "example/order@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private",
+        "database-order"
+      ],
+      "secrets": [
+        "order-runtime-password",
+        "broker-password"
+      ],
+      "environment": {
+        "NODE_ENV": "production",
+        "ORDER_HTTP_PORT": "3000",
+        "ORDER_DB_HOST": "postgres-order",
+        "ORDER_DB_PORT": "5432",
+        "ORDER_DB_NAME": "order",
+        "ORDER_DB_USERNAME": "order_runtime",
+        "ORDER_DB_PASSWORD_FILE": "/run/secrets/order-runtime-password",
+        "RABBITMQ_HOST": "rabbitmq",
+        "RABBITMQ_PORT": "5672",
+        "RABBITMQ_USERNAME": "scaffold",
+        "RABBITMQ_PASSWORD_FILE": "/run/secrets/broker-password",
+        "RABBITMQ_VHOST": "fixture-installation"
+      },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "bun",
+          "-e",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    },
+    "app-order-history": {
+      "image": "example/order-history@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "secrets": [],
+      "environment": {
+        "NODE_ENV": "production",
+        "ORDER_HISTORY_HTTP_PORT": "3000"
+      },
+      "profiles": [
+        "applications"
+      ],
+      "stop_grace_period": "20s",
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "bun",
+          "-e",
+          "process.exit((await fetch('http://127.0.0.1:3000/health/live')).ok ? 0 : 1)"
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
     },
     "rabbitmq": {
-      "entrypoint": [
-        "/bin/sh",
-        "-ec",
-        "export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/broker-password)"; exec docker-entrypoint.sh rabbitmq-server",
+      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      },
+      "networks": [
+        "private"
+      ],
+      "hostname": "fixture-installation-rabbitmq",
+      "secrets": [
+        "broker-password"
       ],
       "environment": {
         "RABBITMQ_DEFAULT_USER": "scaffold",
-        "RABBITMQ_DEFAULT_VHOST": "fixture-installation",
+        "RABBITMQ_DEFAULT_VHOST": "fixture-installation"
       },
+      "entrypoint": [
+        "/bin/sh",
+        "-ec",
+        "export RABBITMQ_DEFAULT_PASS=\\"$$(cat /run/secrets/broker-password)\\"; exec docker-entrypoint.sh rabbitmq-server"
+      ],
+      "volumes": [
+        "rabbitmq:/var/lib/rabbitmq"
+      ],
       "healthcheck": {
-        "interval": "2s",
-        "retries": 30,
         "test": [
           "CMD",
           "docker-entrypoint.sh",
           "rabbitmq-diagnostics",
           "-q",
-          "check_port_connectivity",
+          "check_port_connectivity"
         ],
+        "interval": "2s",
         "timeout": "5s",
-      },
-      "hostname": "fixture-installation-rabbitmq",
-      "image": "rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe",
+        "retries": 30
+      }
+    },
+    "gateway": {
+      "image": "kong:3.9.1@sha256:76c14b93e989f7f4418039f7f9789ca32564016211c86ac1a18022f4788e7b9c",
       "labels": {
-        "dev.starter.owner": "fixture-owner",
+        "dev.starter.owner": "fixture-owner"
       },
       "networks": [
         "private",
+        "ingress"
+      ],
+      "ports": [
+        "127.0.0.1:8443:8443"
       ],
       "secrets": [
-        "broker-password",
+        "tls.crt",
+        "tls.key"
       ],
-      "volumes": [
-        "rabbitmq:/var/lib/rabbitmq",
+      "configs": [
+        {
+          "source": "routes",
+          "target": "/etc/kong/routes.json"
+        }
       ],
-    },
+      "environment": {
+        "KONG_DATABASE": "off",
+        "KONG_DECLARATIVE_CONFIG": "/etc/kong/routes.json",
+        "KONG_PROXY_LISTEN": "0.0.0.0:8443 ssl",
+        "KONG_SSL_CERT": "/run/secrets/tls.crt",
+        "KONG_SSL_CERT_KEY": "/run/secrets/tls.key",
+        "KONG_ADMIN_LISTEN": "off",
+        "KONG_ADMIN_GUI_LISTEN": "off",
+        "KONG_STATUS_LISTEN": "127.0.0.1:8100",
+        "KONG_NGINX_WORKER_PROCESSES": "1",
+        "KONG_DNS_NOT_FOUND_TTL": "1",
+        "KONG_DNS_ERROR_TTL": "1"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "kong",
+          "health"
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      }
+    }
   },
   "volumes": {
     "postgres-order": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
+        "dev.starter.owner": "fixture-owner"
+      }
     },
     "rabbitmq": {
       "labels": {
-        "dev.starter.owner": "fixture-owner",
-      },
-    },
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
   },
-}
+  "networks": {
+    "private": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "database-order": {
+      "internal": true,
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    },
+    "ingress": {
+      "labels": {
+        "dev.starter.owner": "fixture-owner"
+      }
+    }
+  },
+  "secrets": {
+    "order-admin-password": {
+      "file": "/fixture/$$installation/secrets/order-admin-password"
+    },
+    "order-owner-password": {
+      "file": "/fixture/$$installation/secrets/order-owner-password"
+    },
+    "order-runtime-password": {
+      "file": "/fixture/$$installation/secrets/order-runtime-password"
+    },
+    "broker-password": {
+      "file": "/fixture/$$installation/secrets/broker-password"
+    },
+    "tls.crt": {
+      "file": "/fixture/$$installation/secrets/tls.crt"
+    },
+    "tls.key": {
+      "file": "/fixture/$$installation/secrets/tls.key"
+    }
+  },
+  "configs": {
+    "routes": {
+      "content": "{\\"_format_version\\":\\"3.0\\",\\"services\\":[{\\"name\\":\\"order-history--history\\",\\"host\\":\\"app-order-history\\",\\"port\\":3000,\\"protocol\\":\\"http\\",\\"path\\":\\"/history\\",\\"routes\\":[{\\"name\\":\\"order-history--history\\",\\"paths\\":[\\"~/history$$\\"],\\"strip_path\\":true,\\"protocols\\":[\\"https\\"]}]}],\\"upstreams\\":[{\\"name\\":\\"app-order-history\\",\\"targets\\":[{\\"target\\":\\"app-order-history:3000\\"}],\\"healthchecks\\":{\\"active\\":{\\"type\\":\\"http\\",\\"http_path\\":\\"/health/ready/http\\",\\"timeout\\":2,\\"healthy\\":{\\"interval\\":1,\\"successes\\":1},\\"unhealthy\\":{\\"interval\\":1,\\"http_failures\\":1,\\"tcp_failures\\":1,\\"timeouts\\":1,\\"http_statuses\\":[500,502,503,504]}}}}]}"
+    }
+  }
+}"
 `;
 
 exports[`multiple applications preserve prefix ownership, retained databases and shell overrides 3`] = `

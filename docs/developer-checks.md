@@ -81,6 +81,7 @@ requirement to the suites that exercise it.
 - **Formatting** (`bun run format:check`): Configured source, tooling, docs and root agent guidance
 - **Architecture** (`bun run lint:boundaries`): Nx project ownership/cycles plus file-layer checks in `src/`, `tests/`, `scripts/` and `database/`, including type-only imports, exports and aliases; `deps:validate` is an alias
 - **Core and packages** (`bun run test:unit`): Every project's infrastructure-free `test` target: domain, use cases, commands, exceptions and colocated package tests
+- **Environment renderers** (`bun run test:renderers`): Copied-workspace Compose and runtime-setting snapshots; runs without Docker, on demand and through `check:workspace` in the full gate
 - **Live behavior** (`bun run test:e2e`): Provisions isolated PostgreSQL/RabbitMQ, migrates and seeds, runs the seven original Gherkin cases and database/API regressions, cleans up
 - **Components** (`bun run test:component`): Application targets provision isolated runs, migrate/seed only their app and check APIs/database ownership. The rabbitmq target tests its public consumer and publisher contracts with a real broker and fault injection. The generator target owns PostgreSQL, RabbitMQ and scratch apps to verify all eight capability combinations, consumer recovery and shutdown.
 - **Linux images** (`bun run test:images`): Builds and executes AMD64/ARM64 images using the existing distribution contracts, generated capability matrix and container shutdown tests; `--platform=linux/arm64` selects focused feedback.
@@ -135,6 +136,12 @@ actual target with `bun run nx run <project>:<target> --skip-nx-cache` before
 staged review. Direct Bun invocations are useful for the inner loop but do not
 exercise the task environment inherited from Nx. Use
 [nx-run-tasks](../.agents/skills/nx-run-tasks/SKILL.md) to select the target.
+
+`bun run test:renderers` runs the environment renderer snapshots through
+`test-runner:test-renderers`. Installation Compose snapshots preserve serialized
+JSON key order; other snapshots characterize object values. This suite copies
+and mutates a workspace, so it belongs to `check:workspace` and the full gate,
+outside unit, light and CI quality gates.
 
 Changes to Nx targets, project dependencies or shared workspace fixtures also
 require `bun run nx run test-runner:test-nx-runner` before staged review. This
