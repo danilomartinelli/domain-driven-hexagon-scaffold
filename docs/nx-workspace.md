@@ -163,7 +163,8 @@ the [generated file graph](../assets/dependency-graph.svg) for concrete dependen
 ## Commands
 
 Run commands from the repository root. `check:workspace` bootstraps guardrail
-tests directly under Bun before the Nx quality commands; `audit:changed`
+tests directly under Bun and runs the copied-workspace renderer target before
+the Nx quality commands; `audit:changed`
 runs the conditional registry check and `characterize` runs selected tests
 against a base worktree, both directly. `bun run nx` invokes the installed local
 Nx binary using Bun, without downloading a CLI. It disables Nx's automatic
@@ -234,6 +235,7 @@ bun run check:full
 | `test:images:light`                                                      | `test-runner:test-images-light`; CI subset: build, reproduced readiness defects, startup   |
 | `test:component`                                                         | Every `test-component` target (`generators`, `rabbitmq`, `user` and `wallet`)              |
 | `test:tooling`                                                           | `test-runner:test-live`                                                                    |
+| `test:renderers`                                                         | `test-runner:test-renderers`; copied-workspace snapshots, on demand and in the full gate   |
 | `test:operations`                                                        | `test-runner:test-operations`; Compose bootstrap, planning, updates, rollback and recovery |
 | `migration:up`, `migration:down`, `migration:status`, `migration:create` | Matching `database:migration-*` target                                                     |
 | `seed:up`                                                                | `database:seed`                                                                            |

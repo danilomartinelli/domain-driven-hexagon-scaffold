@@ -104,6 +104,7 @@ function resolvedProjects() {
 /** Suites no automatic gate (hook or CI) runs; `check:full` runs them on demand. */
 const onDemandSuites = [
   'check:workspace',
+  'test:renderers',
   'test:tooling',
   'test:operations',
   'test:e2e',
@@ -402,6 +403,37 @@ function targetTestFiles(
     })
     .filter((file) => file.endsWith('.test.ts'));
 }
+
+test('copied-workspace renderer regressions stay in the on-demand full gate', async () => {
+  const projects = await resolvedProjects();
+  const packageScripts = await readPackageScripts();
+  const suite = 'scripts/tests/environment-renderers.test.ts';
+  expect(packageScripts['test:unit']).toBe('bun run nx run-many --target=test');
+  for (const [project, { data }] of Object.entries(projects)) {
+    if (!data.targets?.test) continue;
+    expect(
+      targetTestFiles(projects, packageScripts, project, 'test'),
+      `${project}:test`,
+    ).not.toContain(suite);
+  }
+  expect(packageScripts['test:renderers']).toBe(
+    'bun run nx run test-runner:test-renderers',
+  );
+  expect(projects['test-runner'].data.targets?.['test-renderers']?.cache).toBe(
+    false,
+  );
+  expect(
+    targetTestFiles(projects, packageScripts, 'test-runner', 'test-renderers'),
+  ).toContain(suite);
+  expect(reachable(packageScripts, 'check:workspace')).toContain(
+    'test:renderers',
+  );
+  expect(reachable(packageScripts, 'check:full')).toContain('test:renderers');
+  for (const gate of ['check:light', 'check:ci'])
+    expect(reachable(packageScripts, gate), gate).not.toContain(
+      'test:renderers',
+    );
+}, 60_000);
 
 test('required native, component, system and distribution suites are not empty', async () => {
   const projects = await resolvedProjects();

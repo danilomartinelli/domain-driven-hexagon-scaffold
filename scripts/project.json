@@ -115,6 +115,14 @@
         "cwd": "."
       }
     },
+    "test-renderers": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bun test ./scripts/tests/environment-renderers.test.ts",
+        "cwd": "."
+      }
+    },
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
