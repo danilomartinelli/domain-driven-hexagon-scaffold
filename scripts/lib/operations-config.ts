@@ -8,7 +8,10 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { applicationDeclarationSchema } from '@starter/capabilities/declaration';
+import {
+  applicationDeclarationSchema,
+  runtimeRole,
+} from '@starter/capabilities/declaration';
 
 export const imageDigest = z
   .string()
@@ -197,7 +200,7 @@ export function retainResources(
       service: `postgres-${declaration.name}`,
       volume: `${state.project}_postgres-${declaration.name}`,
       database,
-      roles: [`${database}_owner`, `${database}_runtime`],
+      roles: [`${database}_owner`, runtimeRole(declaration.name)],
       secrets: ['admin', 'owner', 'runtime'].map(
         (role) => `${declaration.name}-${role}-password`,
       ),

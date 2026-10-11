@@ -42,6 +42,18 @@ _Avoid_: Dead-letter queue, DLQ
 One operated set of applications with their owned identities, data and
 infrastructure.
 
+**Prepared environment**:
+A development or test environment that one checkout prepares and owns, with
+generated credentials and its own owned identities; never an installation.
+_Avoid_: placement, workspace environment, owned environment
+
+**Owned identity**:
+The durable name of a resource an application owns in one installation or prepared
+environment, such as its database, volume or owner role; assigned once and never
+renamed. Names fixed by the application itself, such as its runtime role, are not
+owned identities.
+_Avoid_: resource name
+
 **Desired selection**:
 The images and ingress an operator wants an installation to run; a request, not
 evidence that anything changed.

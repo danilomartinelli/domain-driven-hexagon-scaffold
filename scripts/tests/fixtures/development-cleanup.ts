@@ -4,6 +4,10 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import {
+  environmentPrefix,
+  runtimeRole,
+} from '@starter/capabilities/declaration';
+import {
   environmentLocation,
   type EnvironmentManifest,
 } from '../../../database/environment';
@@ -39,13 +43,13 @@ const manifest: EnvironmentManifest = {
 if (scenario === 'credentials') {
   manifest.databases = names.map((name, index) => ({
     app: name,
-    prefix: `${name.toUpperCase().replaceAll('-', '_')}_DB`,
+    prefix: `${environmentPrefix(name)}_DB`,
     host: '127.0.0.1',
     port: 5400 + index,
     username: 'fixture-owner',
     password: 'fixture-owner-password',
     database: name,
-    runtime: { username: `${name}_runtime`, password: 'fixture-runtime' },
+    runtime: { username: runtimeRole(name), password: 'fixture-runtime' },
   }));
   manifest.broker = {
     port: 5672,
@@ -76,12 +80,12 @@ if (scenario === 'credentials') {
     mkdirSync(directory, { recursive: true });
     if (name !== 'user')
       writeFileSync(join(directory, 'distribution.json'), '[]');
-    const prefix = name.toUpperCase().replaceAll('-', '_');
+    const prefix = environmentPrefix(name);
     const appKeys = Object.keys(
       applicationContainer(manifest, name).environment ?? {},
     );
     for (const other of names) {
-      const otherPrefix = other.toUpperCase().replaceAll('-', '_');
+      const otherPrefix = environmentPrefix(other);
       for (const suffix of [
         'DB_PASSWORD',
         'DB_USERNAME',

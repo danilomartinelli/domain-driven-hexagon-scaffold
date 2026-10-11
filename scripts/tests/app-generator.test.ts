@@ -21,6 +21,44 @@ import {
 import { withApp } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
 
+test('generated application settings and runtime role follow the application contract names', async () => {
+  const workspace = await appWorkspace();
+  try {
+    await run(workspace, generate('order-history', '--persistence=true'));
+    await expectRendered(workspace.root, 'order-history');
+    const read = (file: string) =>
+      readFile(join(workspace.root, 'src/apps/order-history', file), 'utf8');
+    expect(await read('configs/environment.ts')).toContain(
+      "get('ORDER_HISTORY_HTTP_PORT')",
+    );
+    expect(await read('README.md')).toContain(
+      'ORDER_HISTORY_DB_USERNAME=order_history_runtime',
+    );
+    const migrations = await read('database/migrations/README.md');
+    expect(migrations).toContain('`ORDER_HISTORY_DB_MIGRATION_USERNAME`');
+    expect(migrations).toContain('`order_history_runtime`');
+  } finally {
+    await workspace.cleanup();
+  }
+}, 30_000);
+
+test('generator rejects invalid application names through the declaration rule', async () => {
+  const workspace = await appWorkspace();
+  try {
+    const before = await readdir(join(workspace.root, 'src/apps'));
+    for (const name of ['Order_History', '../escape', 'order--history']) {
+      const result = await workspace.run(generate(name));
+      expect(result.code).not.toBe(0);
+      expect(result.stdout + result.stderr).toContain(
+        `Invalid application name: ${name}`,
+      );
+    }
+    expect(await readdir(join(workspace.root, 'src/apps'))).toEqual(before);
+  } finally {
+    await workspace.cleanup();
+  }
+}, 30_000);
+
 test.each([true, false])(
   'generated group controllers follow runtime exposure with initial exposure=%s',
   async (initialExposure) => {

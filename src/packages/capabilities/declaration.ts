@@ -4,5 +4,6 @@ export {
   environmentPrefix,
   exposedAdapters,
   readApplicationDeclaration,
+  runtimeRole,
   type ApplicationDeclaration,
 } from './lib/declaration';

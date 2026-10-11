@@ -1,6 +1,7 @@
 import { expect } from 'bun:test';
 import { Client } from 'pg';
 import { connect } from 'amqplib';
+import { environmentPrefix } from '@starter/capabilities/declaration';
 import {
   readEnvironmentFile,
   assertTestEnvironment,
@@ -12,7 +13,7 @@ import { withCleanup } from '../cleanup';
 const [name, persistence, messaging, exposure, startup] = process.argv.slice(2);
 assertTestEnvironment();
 const manifest = readEnvironmentFile(process.env.DDH_ENVIRONMENT_FILE ?? '');
-const prefix = name.replaceAll('-', '_').toUpperCase();
+const prefix = environmentPrefix(name);
 const p = persistence === 'true';
 const m = messaging === 'true';
 const e = exposure === 'true';

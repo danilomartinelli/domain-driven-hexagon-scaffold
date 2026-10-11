@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import {
   discoverApplications,
   environmentPrefix,
+  runtimeRole,
 } from '@starter/capabilities/declaration';
 import { preflightApplication } from '@starter/capabilities/composition';
 
@@ -43,7 +44,7 @@ export const applications: DatabaseApplication[] = declarations
     prefix: `${environmentPrefix(name)}_DB`,
     migrations: new URL(`${name}/database/migrations/`, apps),
     seeds: seeds(new URL(`${name}/database/seeds/`, apps)),
-    runtimeRole: `${name.replaceAll('-', '_')}_runtime`,
+    runtimeRole: runtimeRole(name),
   }));
 
 export function selectApplication(

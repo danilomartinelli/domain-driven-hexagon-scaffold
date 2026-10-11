@@ -1,6 +1,7 @@
 import { isOwnedCleanupFailure } from './owned-container';
 import {
   environmentPrefix,
+  runtimeRole,
   type ApplicationDeclaration,
 } from '@starter/capabilities/declaration';
 import type { PlatformImageRuntime } from './artifact-approval/ports';
@@ -64,7 +65,8 @@ export async function imageMigrations(
       async () =>
         (
           await runtime.migrate('up', {
-            [`${environmentPrefix(app.name)}_DB_MIGRATION_USERNAME`]: `${app.name.replaceAll('-', '_')}_runtime`,
+            [`${environmentPrefix(app.name)}_DB_MIGRATION_USERNAME`]:
+              runtimeRole(app.name),
           })
         ).code !== 0,
     );
