@@ -140,7 +140,7 @@ identity, and development ones keep `<app>-postgres` volumes; the Compose refere
 keeps underscored database names, `postgres-<app>` volumes and a dedicated owner role.
 Renaming either side would orphan or migrate durable data. One module derives required
 services and process settings from either inventory; each environment still renders
-the deliberate differences recorded in the consequences above. Implementation is
+the deliberate differences listed above. Implementation is
 tracked separately and is not claimed by this section.
 
 ## Implementation status
