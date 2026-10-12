@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { operationsCompose } from '../lib/operations-compose';
-import type { InstallationState } from '../lib/operations-config';
+import { stateSchema, type InstallationState } from '../lib/operations-config';
 import { dockerInstallationRuntime } from '../lib/operations-docker-runtime';
 import { deploymentPlan } from '../lib/operations-plan';
 import { artifact, installationState } from './installation-runtime-fixture';
@@ -155,6 +155,25 @@ test('rendered installation services use their retained identities', () => {
     secrets: ['retained-user-runtime', 'retained-broker-password'],
   });
 });
+
+for (const secrets of [[], ['broker-password', 'extra-password']])
+  for (const active of [true, false])
+    test(`installation rendering refuses ${String(secrets.length)} retained broker secrets while ${active ? 'active' : 'inactive'}`, () => {
+      const state = renamedInventory(
+        '/fixture',
+        active ? [artifact('user', 'b', true, true)] : [],
+      );
+      const parsed = stateSchema.parse({
+        ...state,
+        retained: {
+          ...state.retained,
+          broker: { ...state.retained.broker, secrets },
+        },
+      });
+      expect(() => {
+        operationsCompose(parsed, false);
+      }).toThrow('Invalid retained broker identity');
+    });
 
 test('a removed application keeps its retained database addressable for reactivation', async () => {
   const state = renamedInventory('/fixture');

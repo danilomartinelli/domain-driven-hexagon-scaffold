@@ -211,6 +211,8 @@ export function installationInfrastructure(
       throw new Error(`Missing retained database identity: ${app.name}`);
   if (applications.some((app) => app.messaging) && !retained.broker)
     throw new Error('Missing retained broker identity');
+  if (retained.broker && retained.broker.secrets.length !== 1)
+    throw new Error('Invalid retained broker identity');
   const composeVolume = (volume: string) => {
     if (!volume.startsWith(`${project}_`))
       throw new Error(`Retained volume belongs to another project: ${volume}`);
