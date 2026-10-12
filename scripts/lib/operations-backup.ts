@@ -1,3 +1,8 @@
+import {
+  newIdentities,
+  installationInfrastructure,
+  requiredServices,
+} from '../../database/owned-infrastructure';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -40,14 +45,15 @@ async function fileHash(file: string): Promise<string> {
 
 /** Passwords are read inside the owning database container, never put on a host command line. */
 function ownerCommand(app: string, command: string): string[] {
-  const db = app.replaceAll('-', '_');
+  const identity = newIdentities('installation', '', app).database;
+  const db = identity.database;
   return [
     'exec',
     '-T',
-    `postgres-${app}`,
+    identity.service,
     'sh',
     '-ec',
-    `export PGHOST=127.0.0.1 PGDATABASE=${db} PGUSER=${db}_owner; export PGPASSWORD="$(cat /run/secrets/${app}-owner-password)"; ${command}`,
+    `export PGHOST=127.0.0.1 PGDATABASE=${db} PGUSER=${identity.owner}; export PGPASSWORD="$(cat /run/secrets/${identity.secrets[1]})"; ${command}`,
   ];
 }
 
@@ -91,6 +97,11 @@ export async function backupApplication(
   output: string,
   compose: Compose,
 ): Promise<string> {
+  const identity = newIdentities(
+    'installation',
+    state.project,
+    app.declaration.name,
+  ).database;
   const path = resolve(output);
   if (existsSync(path) || existsSync(`${path}.json`))
     throw new Error('Backup destination already exists');
@@ -105,10 +116,7 @@ export async function backupApplication(
       ),
       300_000,
     );
-    await compose(
-      ['cp', `postgres-${app.declaration.name}:${remote}`, temporary],
-      300_000,
-    );
+    await compose(['cp', `${identity.service}:${remote}`, temporary], 300_000);
     chmodSync(temporary, 0o600);
     const metadata = {
       application: app.declaration.name,
@@ -126,7 +134,7 @@ export async function backupApplication(
     },
     () =>
       compose(
-        ['exec', '-T', `postgres-${app.declaration.name}`, 'rm', '-f', remote],
+        ['exec', '-T', identity.service, 'rm', '-f', remote],
         30_000,
         true,
       ),
@@ -176,7 +184,16 @@ export async function restoreApplication(
   { path, metadata }: VerifiedArchive,
   compose: Compose,
 ): Promise<void> {
-  if (state.applied.applications.some((entry) => entry.declaration.exposure))
+  const identity = newIdentities(
+    'installation',
+    state.project,
+    app.declaration.name,
+  ).database;
+  if (
+    [...requiredServices(installationInfrastructure(state)).values()].includes(
+      'gateway',
+    )
+  )
     await compose(['stop', '--timeout', '20', 'gateway']);
   const remote = `/tmp/operations-${randomUUID()}.dump`;
   // Keep every unresolved application gated, including failed/interrupted restores.
@@ -195,10 +212,7 @@ export async function restoreApplication(
   pending[app.declaration.name] = recovery;
   writeJson(recoveryPath, { applications: pending });
   await withCleanup(async () => {
-    await compose(
-      ['cp', path, `postgres-${app.declaration.name}:${remote}`],
-      300_000,
-    );
+    await compose(['cp', path, `${identity.service}:${remote}`], 300_000);
     await compose(
       ownerCommand(
         app.declaration.name,
@@ -215,15 +229,7 @@ export async function restoreApplication(
   }, [
     () =>
       compose(
-        [
-          'exec',
-          '-T',
-          `postgres-${app.declaration.name}`,
-          'rm',
-          '-f',
-          remote,
-          `${remote}.sql`,
-        ],
+        ['exec', '-T', identity.service, 'rm', '-f', remote, `${remote}.sql`],
         30_000,
         true,
       ),

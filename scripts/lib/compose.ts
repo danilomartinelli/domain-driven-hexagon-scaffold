@@ -1,4 +1,5 @@
 import type { EnvironmentManifest } from '../../database/environment';
+import { preparedInfrastructure } from '../../database/owned-infrastructure';
 import { gatewayConfiguration } from './gateway';
 import { applicationContainer } from './application-containers';
 
@@ -21,17 +22,22 @@ export function composeConfiguration(
   manifest: EnvironmentManifest,
   { shutdown = false }: { shutdown?: boolean } = {},
 ): Record<string, unknown> {
+  const infrastructure = preparedInfrastructure(manifest);
   const labels = { 'dev.starter.owner': manifest.owner };
   const services: Record<string, unknown> = {};
   const volumes: Record<string, unknown> = {};
   const configs: Record<string, unknown> = {};
   for (const db of manifest.databases) {
-    const volume = `${db.app}-postgres`;
-    if (manifest.environment === 'development') volumes[volume] = { labels };
+    const identity = infrastructure.databases.find(
+      (entry) => entry.application === db.app,
+    );
+    if (!identity) throw new Error(`Missing database identity: ${db.app}`);
+    const volume = identity.volume;
+    if (volume) volumes[volume] = { labels };
     const runtimeRole = `${db.app}-runtime-role`;
     if (db.runtime)
       configs[runtimeRole] = { content: runtimeRoleScript(db.runtime) };
-    services[`postgres-${db.app}`] = {
+    services[identity.service] = {
       image: 'postgres:18.6-alpine',
       labels,
       ports: [`127.0.0.1:${String(db.port)}:5432`],
@@ -42,7 +48,7 @@ export function composeConfiguration(
       },
       ...(manifest.environment === 'test'
         ? { tmpfs: ['/var/lib/postgresql'] }
-        : { volumes: [`${volume}:/var/lib/postgresql`] }),
+        : { volumes: [`${String(volume)}:/var/lib/postgresql`] }),
       ...(db.runtime && {
         configs: [
           {

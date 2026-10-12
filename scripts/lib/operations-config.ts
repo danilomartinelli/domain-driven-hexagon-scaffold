@@ -1,3 +1,7 @@
+import {
+  newIdentities,
+  installationInfrastructure,
+} from '../../database/owned-infrastructure';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
@@ -8,10 +12,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import {
-  applicationDeclarationSchema,
-  runtimeRole,
-} from '@starter/capabilities/declaration';
+import { applicationDeclarationSchema } from '@starter/capabilities/declaration';
 
 export const imageDigest = z
   .string()
@@ -194,26 +195,32 @@ export function retainResources(
       databases.some((entry) => entry.application === declaration.name)
     )
       continue;
-    const database = declaration.name.replaceAll('-', '_');
+    const identity = newIdentities(
+      'installation',
+      state.project,
+      declaration.name,
+    ).database;
     databases.push({
       application: declaration.name,
-      service: `postgres-${declaration.name}`,
-      volume: `${state.project}_postgres-${declaration.name}`,
-      database,
-      roles: [`${database}_owner`, runtimeRole(declaration.name)],
-      secrets: ['admin', 'owner', 'runtime'].map(
-        (role) => `${declaration.name}-${role}-password`,
-      ),
+      service: identity.service,
+      volume: `${state.project}_${String(identity.volume)}`,
+      database: identity.database,
+      roles: [identity.owner, identity.runtime],
+      secrets: identity.secrets,
     });
   }
+  const requiredBroker = installationInfrastructure({
+    project: state.project,
+    applied: { applications },
+  }).broker;
   const broker =
     state.retained.broker ??
-    (applications.some(({ declaration }) => declaration.messaging)
+    (requiredBroker
       ? {
-          service: 'rabbitmq',
-          volume: `${state.project}_rabbitmq`,
-          vhost: state.project,
-          username: 'scaffold',
+          service: requiredBroker.service,
+          volume: `${state.project}_${String(requiredBroker.volume)}`,
+          vhost: requiredBroker.vhost,
+          username: requiredBroker.username,
           secrets: ['broker-password'],
         }
       : undefined);

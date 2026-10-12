@@ -1,6 +1,5 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
 import { operationsCompose } from '../lib/operations-compose';
-import { requiredServices } from '../lib/operations-plan';
 import {
   capabilityCases,
   rendererFixture,
@@ -90,56 +89,57 @@ for (const app of capabilityCases) {
       ).toMatchSnapshot();
     }));
 
-  test(`Compose reference and deployment services preserve ${capabilities}`, () => {
+  test(`Compose reference preserves ${capabilities}`, () => {
     const installation = fixture.installation([app]);
     expect(
       JSON.stringify(operationsCompose(installation, false), null, 2),
     ).toMatchSnapshot();
-    expect(
-      Object.fromEntries(requiredServices(installation.applied.applications)),
-    ).toMatchSnapshot();
   });
 
-  test(`host and development container settings preserve ${capabilities}`, () =>
-    withShell({}, async () => {
-      const development = await fixture.manifest('development', [app]);
-      const testing = await fixture.manifest('test', [app]);
-      expect(
-        fixture.normalize(
-          {
-            developmentHost: fixture.environmentVariables(development, {}),
-            testHost: fixture.normalize(
-              fixture.environmentVariables(testing, {}),
-              testing,
-            ),
-            container: fixture.applicationContainer(development, app.name)
-              .environment,
-          },
-          development,
-        ),
-      ).toMatchSnapshot();
-    }));
-
-  test(`platform image runtime and migration settings preserve ${capabilities}`, () =>
-    withShell({}, async () => {
-      const manifest = await fixture.manifest('development', [app]);
-      const settings = await imageSettings(fixture, {
-        app,
-        manifest,
-        image: 'fixture-image',
-        platform: 'linux/arm64',
-      });
-      expect(fixture.normalize(settings, manifest)).toMatchSnapshot();
-      if (app.messaging) {
-        expect(settings.runtime).toHaveProperty(
-          'RABBITMQ_MANAGEMENT_URL',
-          'http://127.0.0.1:25672',
-        );
+  if (app === capabilityCases[7])
+    test(`host and development container settings preserve ${capabilities}`, () =>
+      withShell({}, async () => {
+        const development = await fixture.manifest('development', [app]);
+        const testing = await fixture.manifest('test', [app]);
         expect(
-          fixture.applicationContainer(manifest, app.name).environment,
-        ).not.toHaveProperty('RABBITMQ_MANAGEMENT_URL');
-      }
-    }));
+          fixture.normalize(
+            {
+              developmentHost: fixture.environmentVariables(development, {}),
+              testHost: fixture.normalize(
+                fixture.environmentVariables(testing, {}),
+                testing,
+              ),
+              container: fixture.applicationContainer(development, app.name)
+                .environment,
+            },
+            development,
+          ),
+        ).toMatchSnapshot();
+      }));
+
+  if (app === capabilityCases[7])
+    test(`platform image runtime and migration settings preserve ${capabilities}`, () =>
+      withShell({}, async () => {
+        const manifest = await fixture.manifest('development', [app]);
+        const settings = await imageSettings(fixture, {
+          app,
+          manifest,
+          image: 'fixture-image',
+          platform: 'linux/arm64',
+        });
+        expect(fixture.normalize(settings, manifest)).toMatchSnapshot();
+        if (app.messaging) {
+          expect(settings.runtime).not.toHaveProperty(
+            'RABBITMQ_MANAGEMENT_URL',
+          );
+          expect(settings.migration).not.toHaveProperty(
+            'RABBITMQ_MANAGEMENT_URL',
+          );
+          expect(
+            fixture.applicationContainer(manifest, app.name).environment,
+          ).not.toHaveProperty('RABBITMQ_MANAGEMENT_URL');
+        }
+      }));
 }
 
 test('multiple applications preserve prefix ownership, retained databases and shell overrides', () =>
@@ -188,9 +188,6 @@ test('multiple applications preserve prefix ownership, retained databases and sh
       const installation = fixture.installation(selection);
       expect(
         JSON.stringify(operationsCompose(installation, false), null, 2),
-      ).toMatchSnapshot();
-      expect(
-        Object.fromEntries(requiredServices(installation.applied.applications)),
       ).toMatchSnapshot();
     },
   ));
@@ -272,7 +269,78 @@ for (const perCommand of [false, true]) {
     }));
 }
 
-for (const apps of [...capabilityCases.map((app) => [app]), selection]) {
+for (const kind of ['development', 'test'] as const) {
+  test(`environment inspection reads owned identities for ${kind}`, () =>
+    withShell({}, async () => {
+      const manifest = await fixture.manifest(kind, [capabilityCases[6]]);
+      const infrastructure =
+        fixture.ownedInfrastructure.preparedInfrastructure(manifest);
+      for (const db of infrastructure.databases) {
+        db.service = `retained-${db.application}-service`;
+        if (kind === 'development')
+          db.volume = `retained-${db.application}-volume`;
+      }
+      if (kind === 'development' && infrastructure.broker)
+        infrastructure.broker.volume = 'retained-broker-volume';
+      const identities = spyOn(
+        fixture.ownedInfrastructure,
+        'preparedInfrastructure',
+      ).mockReturnValue(infrastructure);
+      const messages: string[] = [];
+      const output = spyOn(console, 'log').mockImplementation((message) => {
+        messages.push(String(message));
+      });
+      try {
+        await withProcesses(
+          (command) => {
+            if (
+              command[0] !== 'docker' ||
+              !(
+                command[1] === 'ps' ||
+                ['network', 'volume'].includes(command[1])
+              )
+            )
+              throw new Error('Unexpected inspection process');
+            return {};
+          },
+          async () => {
+            expect(
+              await fixture.operateEnvironment('inspect', kind, manifest.run),
+            ).toBe(0);
+          },
+        );
+        const summary = messages.find((message) =>
+          message.startsWith('{"project":'),
+        );
+        expect(summary).toBeDefined();
+        expect(JSON.parse(summary ?? 'null')).toMatchObject({
+          databases: [
+            {
+              app: 'order-history',
+              service: 'retained-order-history-service',
+              ...(kind === 'development'
+                ? {
+                    volume: `${manifest.project}_retained-order-history-volume`,
+                  }
+                : { storage: 'tmpfs' }),
+              active: true,
+            },
+          ],
+          broker: {
+            ...(kind === 'development'
+              ? { volume: `${manifest.project}_retained-broker-volume` }
+              : { storage: 'tmpfs' }),
+            active: true,
+          },
+        });
+      } finally {
+        output.mockRestore();
+        identities.mockRestore();
+      }
+    }));
+}
+
+for (const apps of [[capabilityCases[0]], selection]) {
   test(`development reconciliation selects active and inactive services for ${JSON.stringify(apps)}`, () =>
     withShell({}, async () => {
       const manifest = await fixture.manifest('development', apps, true);

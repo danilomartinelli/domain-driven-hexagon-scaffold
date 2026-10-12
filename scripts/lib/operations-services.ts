@@ -1,3 +1,8 @@
+import {
+  newIdentities,
+  installationInfrastructure,
+  requiredServices,
+} from '../../database/owned-infrastructure';
 import type { Artifact, InstallationState } from './operations-config';
 import { provisionDatabase } from './operations-compose';
 export type OperationsCommand = (
@@ -14,7 +19,7 @@ export const provisionApplication = (
   compose([
     'exec',
     '-T',
-    `postgres-${application}`,
+    newIdentities('installation', '', application).database.service,
     'sh',
     '-ec',
     provisionDatabase(application),
@@ -32,7 +37,11 @@ export const refreshOperationsGateway = async (
   current: InstallationState,
   compose: OperationsCommand,
 ): Promise<void> => {
-  if (current.applied.applications.some((entry) => entry.declaration.exposure))
+  if (
+    [
+      ...requiredServices(installationInfrastructure(current)).values(),
+    ].includes('gateway')
+  )
     await compose([
       'up',
       '-d',

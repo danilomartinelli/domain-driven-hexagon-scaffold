@@ -1,3 +1,8 @@
+import {
+  newIdentities,
+  installationInfrastructure,
+  requiredServices,
+} from '../../database/owned-infrastructure';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -61,7 +66,6 @@ import {
 import {
   deploymentPlan,
   matchesReviewedPlan,
-  requiredServices,
   type DeploymentPlan,
   type PlannedArtifact,
 } from './operations-plan';
@@ -329,7 +333,7 @@ export async function runOperations(args: string[]): Promise<void> {
           '--status',
           'running',
           '--quiet',
-          `postgres-${app}`,
+          newIdentities('installation', project, app).database.service,
         ]))
       )
         return undefined;
@@ -809,7 +813,16 @@ export async function runOperations(args: string[]): Promise<void> {
       );
       await retire([
         `app-${application}`,
-        ...(entry.declaration.persistence ? [`postgres-${application}`] : []),
+        ...[
+          ...requiredServices(
+            installationInfrastructure({
+              project: current.project,
+              applied: { applications: [entry] },
+            }),
+          ),
+        ]
+          .filter(([, role]) => role === 'database')
+          .map(([service]) => service),
       ]);
       promotion.withdraw(application);
       writeJson(statePath, current);
@@ -828,7 +841,7 @@ export async function runOperations(args: string[]): Promise<void> {
         writeJson(statePath, current);
         saveCompose();
       }
-      const required = requiredServices(current.applied.applications);
+      const required = requiredServices(installationInfrastructure(current));
       await retire(
         [...(await ownedServices()).keys()]
           .filter((service) => !required.has(service))
@@ -948,15 +961,9 @@ export async function runOperations(args: string[]): Promise<void> {
       }
     };
     if (action === 'prepare') {
-      const infra = current.applied.applications
-        .filter((entry) => entry.declaration.persistence)
-        .map((entry) => `postgres-${entry.declaration.name}`);
-      if (
-        current.applied.applications.some(
-          (entry) => entry.declaration.messaging,
-        )
-      )
-        infra.push('rabbitmq');
+      const infra = [...requiredServices(installationInfrastructure(current))]
+        .filter(([, role]) => role === 'database' || role === 'broker')
+        .map(([service]) => service);
       try {
         if (infra.length)
           await compose([
@@ -1121,7 +1128,7 @@ export async function runOperations(args: string[]): Promise<void> {
       const volumes = (
         await execute(['docker', 'volume', 'ls', '-q', ...ownedLabels])
       ).split('\n');
-      const active = requiredServices(current.applied.applications);
+      const active = requiredServices(installationInfrastructure(current));
       const describe = (service: string, volume: string) => ({
         activity: active.has(service) ? 'active' : 'inactive',
         container: containers.get(service) ?? 'absent',

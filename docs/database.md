@@ -287,6 +287,12 @@ win over defaults. **Tests reject an override that differs from the selected
 owned target**, instead of silently replacing it or connecting to it.
 Development commands may intentionally use shell overrides.
 
+[Owned infrastructure](../database/owned-infrastructure.ts) derives required
+services and process settings for prepared environments and installations.
+Callers supply explicit overrides; the module reads no shell settings. Container
+settings use private service coordinates and omit the host-only broker management
+URL. Installations expose only the container vantage and use secret-file settings.
+
 Bun automatic environment loading is disabled in `bunfig.toml`, and Nx dotenv
 loading is disabled by the package wrapper. Database tooling skips dotenv inside
 a selected environment. Outside that workflow, database commands read `.env`

@@ -5,6 +5,35 @@ import { commitBaseline, createWorkspace } from './workspace-fixture';
 
 const required = '[focused:required] ';
 
+for (const file of [
+  'database/environment.ts',
+  'database/environment-manifest.ts',
+  'database/owned-infrastructure.ts',
+  'database/topology.ts',
+]) {
+  test(`focused lifecycle checks include an isolated change to ${file}`, async () => {
+    const workspace = await createWorkspace();
+    try {
+      await commitBaseline(workspace);
+      const path = join(workspace.root, file);
+      await writeFile(path, `${await Bun.file(path).text()}\n`);
+
+      const result = await workspace.run(
+        [process.execPath, '--no-env-file', 'scripts/focused-checks.ts'],
+        { timeout: 200_000 },
+      );
+      expect(result.code, result.stdout + result.stderr).toBe(0);
+      for (const target of ['test-broker', 'test-gateway']) {
+        expect(result.stdout).toContain(
+          `${required}bun run nx run test-runner:${target}  #`,
+        );
+      }
+    } finally {
+      await workspace.cleanup();
+    }
+  }, 200_000);
+}
+
 test('focused check selection follows the changed runtime, Nx and lifecycle files', async () => {
   const workspace = await createWorkspace();
   const run = async (...args: string[]) => {
