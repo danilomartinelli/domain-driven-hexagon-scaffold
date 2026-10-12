@@ -102,7 +102,7 @@ exports[`prepared Compose documents preserve persistence=false, messaging=false,
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=false 1`] = `
+exports[`Compose reference preserves persistence=false, messaging=false, exposure=false 1`] = `
 "{
   "services": {
     "app-order-history": {
@@ -147,43 +147,6 @@ exports[`Compose reference and deployment services preserve persistence=false, m
   "secrets": {},
   "configs": {}
 }"
-`;
-
-exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=false 2`] = `
-{
-  "app-order-history": "application",
-}
-`;
-
-exports[`host and development container settings preserve persistence=false, messaging=false, exposure=false 1`] = `
-{
-  "container": {
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "developmentHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "testHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "test",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
-`;
-
-exports[`platform image runtime and migration settings preserve persistence=false, messaging=false, exposure=false 1`] = `
-{
-  "migration": {
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "runtime": {
-    "NODE_ENV": "production",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
 `;
 
 exports[`prepared Compose documents preserve persistence=false, messaging=false, exposure=true 1`] = `
@@ -467,7 +430,7 @@ exports[`prepared Compose documents preserve persistence=false, messaging=false,
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=true 1`] = `
+exports[`Compose reference preserves persistence=false, messaging=false, exposure=true 1`] = `
 "{
   "services": {
     "app-order-history": {
@@ -574,52 +537,6 @@ exports[`Compose reference and deployment services preserve persistence=false, m
     }
   }
 }"
-`;
-
-exports[`Compose reference and deployment services preserve persistence=false, messaging=false, exposure=true 2`] = `
-{
-  "app-order-history": "application",
-  "gateway": "gateway",
-}
-`;
-
-exports[`host and development container settings preserve persistence=false, messaging=false, exposure=true 1`] = `
-{
-  "container": {
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "developmentHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "GATEWAY_ADMIN_PORT": "18001",
-    "GATEWAY_HOST": "host.docker.internal",
-    "GATEWAY_NAME": "<project>-gateway",
-    "GATEWAY_PROXY_PORT": "18000",
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "testHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "GATEWAY_ADMIN_PORT": "18001",
-    "GATEWAY_HOST": "host.docker.internal",
-    "GATEWAY_NAME": "<project>-gateway",
-    "GATEWAY_PROXY_PORT": "18000",
-    "NODE_ENV": "test",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
-`;
-
-exports[`platform image runtime and migration settings preserve persistence=false, messaging=false, exposure=true 1`] = `
-{
-  "migration": {
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "runtime": {
-    "NODE_ENV": "production",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
 `;
 
 exports[`prepared Compose documents preserve persistence=false, messaging=true, exposure=false 1`] = `
@@ -869,7 +786,7 @@ exports[`prepared Compose documents preserve persistence=false, messaging=true, 
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=false 1`] = `
+exports[`Compose reference preserves persistence=false, messaging=true, exposure=false 1`] = `
 "{
   "services": {
     "app-order-history": {
@@ -968,78 +885,6 @@ exports[`Compose reference and deployment services preserve persistence=false, m
   },
   "configs": {}
 }"
-`;
-
-exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=false 2`] = `
-{
-  "app-order-history": "application",
-  "rabbitmq": "broker",
-}
-`;
-
-exports[`host and development container settings preserve persistence=false, messaging=true, exposure=false 1`] = `
-{
-  "container": {
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_PASSWORD": "broker/$$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "developmentHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@127.0.0.1:15672/<project>",
-    "RABBITMQ_HOST": "127.0.0.1",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "15672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "testHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "test",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@127.0.0.1:15672/<project>",
-    "RABBITMQ_HOST": "127.0.0.1",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "15672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-}
-`;
-
-exports[`platform image runtime and migration settings preserve persistence=false, messaging=true, exposure=false 1`] = `
-{
-  "migration": {
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "runtime": {
-    "NODE_ENV": "production",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-}
 `;
 
 exports[`prepared Compose documents preserve persistence=false, messaging=true, exposure=true 1`] = `
@@ -1466,7 +1311,7 @@ exports[`prepared Compose documents preserve persistence=false, messaging=true, 
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=true 1`] = `
+exports[`Compose reference preserves persistence=false, messaging=true, exposure=true 1`] = `
 "{
   "services": {
     "app-order-history": {
@@ -1626,87 +1471,6 @@ exports[`Compose reference and deployment services preserve persistence=false, m
     }
   }
 }"
-`;
-
-exports[`Compose reference and deployment services preserve persistence=false, messaging=true, exposure=true 2`] = `
-{
-  "app-order-history": "application",
-  "gateway": "gateway",
-  "rabbitmq": "broker",
-}
-`;
-
-exports[`host and development container settings preserve persistence=false, messaging=true, exposure=true 1`] = `
-{
-  "container": {
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_PASSWORD": "broker/$$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "developmentHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "GATEWAY_ADMIN_PORT": "18001",
-    "GATEWAY_HOST": "host.docker.internal",
-    "GATEWAY_NAME": "<project>-gateway",
-    "GATEWAY_PROXY_PORT": "18000",
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@127.0.0.1:15672/<project>",
-    "RABBITMQ_HOST": "127.0.0.1",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "15672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "testHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "GATEWAY_ADMIN_PORT": "18001",
-    "GATEWAY_HOST": "host.docker.internal",
-    "GATEWAY_NAME": "<project>-gateway",
-    "GATEWAY_PROXY_PORT": "18000",
-    "NODE_ENV": "test",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@127.0.0.1:15672/<project>",
-    "RABBITMQ_HOST": "127.0.0.1",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "15672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-}
-`;
-
-exports[`platform image runtime and migration settings preserve persistence=false, messaging=true, exposure=true 1`] = `
-{
-  "migration": {
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "runtime": {
-    "NODE_ENV": "production",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-}
 `;
 
 exports[`prepared Compose documents preserve persistence=true, messaging=false, exposure=false 1`] = `
@@ -1987,7 +1751,7 @@ exports[`prepared Compose documents preserve persistence=true, messaging=false, 
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=false 1`] = `
+exports[`Compose reference preserves persistence=true, messaging=false, exposure=false 1`] = `
 "{
   "services": {
     "postgres-order-history": {
@@ -2120,75 +1884,6 @@ exports[`Compose reference and deployment services preserve persistence=true, me
   },
   "configs": {}
 }"
-`;
-
-exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=false 2`] = `
-{
-  "app-order-history": "application",
-  "postgres-order-history": "database",
-}
-`;
-
-exports[`host and development container settings preserve persistence=true, messaging=false, exposure=false 1`] = `
-{
-  "container": {
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "developmentHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_DB_HOST": "127.0.0.1",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "15432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "testHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "test",
-    "ORDER_HISTORY_DB_HOST": "127.0.0.1",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "15432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
-`;
-
-exports[`platform image runtime and migration settings preserve persistence=true, messaging=false, exposure=false 1`] = `
-{
-  "migration": {
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "runtime": {
-    "NODE_ENV": "production",
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
 `;
 
 exports[`prepared Compose documents preserve persistence=true, messaging=false, exposure=true 1`] = `
@@ -2642,7 +2337,7 @@ exports[`prepared Compose documents preserve persistence=true, messaging=false, 
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=true 1`] = `
+exports[`Compose reference preserves persistence=true, messaging=false, exposure=true 1`] = `
 "{
   "services": {
     "postgres-order-history": {
@@ -2836,84 +2531,6 @@ exports[`Compose reference and deployment services preserve persistence=true, me
     }
   }
 }"
-`;
-
-exports[`Compose reference and deployment services preserve persistence=true, messaging=false, exposure=true 2`] = `
-{
-  "app-order-history": "application",
-  "gateway": "gateway",
-  "postgres-order-history": "database",
-}
-`;
-
-exports[`host and development container settings preserve persistence=true, messaging=false, exposure=true 1`] = `
-{
-  "container": {
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "developmentHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "GATEWAY_ADMIN_PORT": "18001",
-    "GATEWAY_HOST": "host.docker.internal",
-    "GATEWAY_NAME": "<project>-gateway",
-    "GATEWAY_PROXY_PORT": "18000",
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_DB_HOST": "127.0.0.1",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "15432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "testHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "GATEWAY_ADMIN_PORT": "18001",
-    "GATEWAY_HOST": "host.docker.internal",
-    "GATEWAY_NAME": "<project>-gateway",
-    "GATEWAY_PROXY_PORT": "18000",
-    "NODE_ENV": "test",
-    "ORDER_HISTORY_DB_HOST": "127.0.0.1",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "15432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
-`;
-
-exports[`platform image runtime and migration settings preserve persistence=true, messaging=false, exposure=true 1`] = `
-{
-  "migration": {
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-  "runtime": {
-    "NODE_ENV": "production",
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-  },
-}
 `;
 
 exports[`prepared Compose documents preserve persistence=true, messaging=true, exposure=false 1`] = `
@@ -3335,7 +2952,7 @@ exports[`prepared Compose documents preserve persistence=true, messaging=true, e
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=false 1`] = `
+exports[`Compose reference preserves persistence=true, messaging=true, exposure=false 1`] = `
 "{
   "services": {
     "postgres-order-history": {
@@ -3519,110 +3136,6 @@ exports[`Compose reference and deployment services preserve persistence=true, me
   },
   "configs": {}
 }"
-`;
-
-exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=false 2`] = `
-{
-  "app-order-history": "application",
-  "postgres-order-history": "database",
-  "rabbitmq": "broker",
-}
-`;
-
-exports[`host and development container settings preserve persistence=true, messaging=true, exposure=false 1`] = `
-{
-  "container": {
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_PASSWORD": "broker/$$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "developmentHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "development",
-    "ORDER_HISTORY_DB_HOST": "127.0.0.1",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "15432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@127.0.0.1:15672/<project>",
-    "RABBITMQ_HOST": "127.0.0.1",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "15672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "testHost": {
-    "DDH_ENVIRONMENT_FILE": "<workspace>/.context/test-runs/<project>/environment.json",
-    "NODE_ENV": "test",
-    "ORDER_HISTORY_DB_HOST": "127.0.0.1",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "15432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@127.0.0.1:15672/<project>",
-    "RABBITMQ_HOST": "127.0.0.1",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "15672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-}
-`;
-
-exports[`platform image runtime and migration settings preserve persistence=true, messaging=true, exposure=false 1`] = `
-{
-  "migration": {
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_MIGRATION_PASSWORD": "owner'$fixture",
-    "ORDER_HISTORY_DB_MIGRATION_USERNAME": "fixture-owner",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-  "runtime": {
-    "NODE_ENV": "production",
-    "ORDER_HISTORY_DB_HOST": "postgres-order-history",
-    "ORDER_HISTORY_DB_NAME": "<database-project>_order-history",
-    "ORDER_HISTORY_DB_PASSWORD": "runtime'$fixture",
-    "ORDER_HISTORY_DB_PORT": "5432",
-    "ORDER_HISTORY_DB_USERNAME": "order_history_runtime",
-    "ORDER_HISTORY_HTTP_PORT": "3100",
-    "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
-    "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
-    "RABBITMQ_PASSWORD": "broker/$fixture",
-    "RABBITMQ_PORT": "5672",
-    "RABBITMQ_USERNAME": "fixture user",
-    "RABBITMQ_VHOST": "<project>",
-  },
-}
 `;
 
 exports[`prepared Compose documents preserve persistence=true, messaging=true, exposure=true 1`] = `
@@ -4217,7 +3730,7 @@ exports[`prepared Compose documents preserve persistence=true, messaging=true, e
 }
 `;
 
-exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=true 1`] = `
+exports[`Compose reference preserves persistence=true, messaging=true, exposure=true 1`] = `
 "{
   "services": {
     "postgres-order-history": {
@@ -4464,15 +3977,6 @@ exports[`Compose reference and deployment services preserve persistence=true, me
 }"
 `;
 
-exports[`Compose reference and deployment services preserve persistence=true, messaging=true, exposure=true 2`] = `
-{
-  "app-order-history": "application",
-  "gateway": "gateway",
-  "postgres-order-history": "database",
-  "rabbitmq": "broker",
-}
-`;
-
 exports[`host and development container settings preserve persistence=true, messaging=true, exposure=true 1`] = `
 {
   "container": {
@@ -4552,7 +4056,6 @@ exports[`platform image runtime and migration settings preserve persistence=true
     "ORDER_HISTORY_HTTP_PORT": "3100",
     "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
     "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
     "RABBITMQ_PASSWORD": "broker/$fixture",
     "RABBITMQ_PORT": "5672",
     "RABBITMQ_USERNAME": "fixture user",
@@ -4568,7 +4071,6 @@ exports[`platform image runtime and migration settings preserve persistence=true
     "ORDER_HISTORY_HTTP_PORT": "3100",
     "ORDER_HISTORY_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
     "RABBITMQ_HOST": "rabbitmq",
-    "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
     "RABBITMQ_PASSWORD": "broker/$fixture",
     "RABBITMQ_PORT": "5672",
     "RABBITMQ_USERNAME": "fixture user",
@@ -5536,16 +5038,6 @@ exports[`multiple applications preserve prefix ownership, retained databases and
 }"
 `;
 
-exports[`multiple applications preserve prefix ownership, retained databases and shell overrides 3`] = `
-{
-  "app-order": "application",
-  "app-order-history": "application",
-  "gateway": "gateway",
-  "postgres-order": "database",
-  "rabbitmq": "broker",
-}
-`;
-
 exports[`platform image settings preserve multiple selections with retained infrastructure 1`] = `
 {
   "order": {
@@ -5561,7 +5053,6 @@ exports[`platform image settings preserve multiple selections with retained infr
       "ORDER_HTTP_PORT": "3100",
       "ORDER_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
       "RABBITMQ_HOST": "rabbitmq",
-      "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
       "RABBITMQ_PASSWORD": "broker/$fixture",
       "RABBITMQ_PORT": "5672",
       "RABBITMQ_USERNAME": "fixture user",
@@ -5578,7 +5069,6 @@ exports[`platform image settings preserve multiple selections with retained infr
       "ORDER_HTTP_PORT": "3100",
       "ORDER_RABBITMQ_URL": "amqp://fixture%20user:broker%2F%24fixture@rabbitmq:5672/<project>",
       "RABBITMQ_HOST": "rabbitmq",
-      "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
       "RABBITMQ_PASSWORD": "broker/$fixture",
       "RABBITMQ_PORT": "5672",
       "RABBITMQ_USERNAME": "fixture user",
@@ -5589,7 +5079,6 @@ exports[`platform image settings preserve multiple selections with retained infr
     "migration": {
       "ORDER_HISTORY_HTTP_PORT": "3101",
       "RABBITMQ_HOST": "127.0.0.1",
-      "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
       "RABBITMQ_PASSWORD": "broker/$fixture",
       "RABBITMQ_PORT": "15672",
       "RABBITMQ_USERNAME": "fixture user",
@@ -5599,7 +5088,6 @@ exports[`platform image settings preserve multiple selections with retained infr
       "NODE_ENV": "production",
       "ORDER_HISTORY_HTTP_PORT": "3101",
       "RABBITMQ_HOST": "127.0.0.1",
-      "RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:25672",
       "RABBITMQ_PASSWORD": "broker/$fixture",
       "RABBITMQ_PORT": "15672",
       "RABBITMQ_USERNAME": "fixture user",
@@ -5675,96 +5163,6 @@ exports[`development reconciliation selects active and inactive services for [{"
     "postgres-order-history",
     "rabbitmq",
   ],
-}
-`;
-
-exports[`development reconciliation selects active and inactive services for [{"name":"order-history","persistence":false,"messaging":false,"exposure":true,"routes":[{"name":"history","paths":["~/history$"],"stripPath":true,"upstreamPath":"/history"}]}] 1`] = `
-{
-  "active": [
-    "gateway",
-    "postgres-legacy",
-  ],
-  "inactive": [
-    "postgres-order-history",
-    "rabbitmq",
-  ],
-}
-`;
-
-exports[`development reconciliation selects active and inactive services for [{"name":"order-history","persistence":false,"messaging":true,"exposure":false}] 1`] = `
-{
-  "active": [
-    "postgres-legacy",
-    "rabbitmq",
-  ],
-  "inactive": [
-    "gateway",
-    "postgres-order-history",
-  ],
-}
-`;
-
-exports[`development reconciliation selects active and inactive services for [{"name":"order-history","persistence":false,"messaging":true,"exposure":true,"routes":[{"name":"history","paths":["~/history$"],"stripPath":true,"upstreamPath":"/history"}]}] 1`] = `
-{
-  "active": [
-    "gateway",
-    "postgres-legacy",
-    "rabbitmq",
-  ],
-  "inactive": [
-    "postgres-order-history",
-  ],
-}
-`;
-
-exports[`development reconciliation selects active and inactive services for [{"name":"order-history","persistence":true,"messaging":false,"exposure":false}] 1`] = `
-{
-  "active": [
-    "postgres-legacy",
-    "postgres-order-history",
-  ],
-  "inactive": [
-    "gateway",
-    "rabbitmq",
-  ],
-}
-`;
-
-exports[`development reconciliation selects active and inactive services for [{"name":"order-history","persistence":true,"messaging":false,"exposure":true,"routes":[{"name":"history","paths":["~/history$"],"stripPath":true,"upstreamPath":"/history"}]}] 1`] = `
-{
-  "active": [
-    "gateway",
-    "postgres-legacy",
-    "postgres-order-history",
-  ],
-  "inactive": [
-    "rabbitmq",
-  ],
-}
-`;
-
-exports[`development reconciliation selects active and inactive services for [{"name":"order-history","persistence":true,"messaging":true,"exposure":false}] 1`] = `
-{
-  "active": [
-    "postgres-legacy",
-    "postgres-order-history",
-    "rabbitmq",
-  ],
-  "inactive": [
-    "gateway",
-  ],
-}
-`;
-
-exports[`development reconciliation selects active and inactive services for [{"name":"order-history","persistence":true,"messaging":true,"exposure":true,"routes":[{"name":"history","paths":["~/history$"],"stripPath":true,"upstreamPath":"/history"}]}] 1`] = `
-{
-  "active": [
-    "gateway",
-    "postgres-legacy",
-    "postgres-order-history",
-    "rabbitmq",
-  ],
-  "inactive": [],
 }
 `;
 

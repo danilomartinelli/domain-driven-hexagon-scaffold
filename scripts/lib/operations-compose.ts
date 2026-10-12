@@ -2,9 +2,11 @@ import { isUtf8 } from 'node:buffer';
 import { accessSync, constants, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  environmentPrefix,
-  runtimeRole,
-} from '@starter/capabilities/declaration';
+  installationInfrastructure,
+  processSettings,
+  newIdentities,
+  requiredServices,
+} from '../../database/owned-infrastructure';
 import type { InstallationState } from './operations-config';
 import { gatewayConfiguration } from './gateway';
 
@@ -13,6 +15,8 @@ export function operationsCompose(
   state: InstallationState,
   verifySecrets = true,
 ): Record<string, unknown> {
+  const infrastructure = installationInfrastructure(state);
+  const required = requiredServices(infrastructure);
   const labels = { 'dev.starter.owner': state.owner };
   const services: Record<string, unknown> = {};
   const secrets: Record<string, unknown> = {};
@@ -51,72 +55,58 @@ export function operationsCompose(
     retries: 30,
   });
   for (const { image, declaration: app } of state.applied.applications) {
-    const prefix = environmentPrefix(app.name);
-    const db = app.name.replaceAll('-', '_');
+    const identity = infrastructure.databases.find(
+      (entry) => entry.application === app.name,
+    );
     const serverSecrets: string[] = [];
-    const environment: Record<string, string> = {
-      NODE_ENV: 'production',
-      [`${prefix}_HTTP_PORT`]: '3000',
-    };
+    const environment = processSettings(
+      infrastructure,
+      app.name,
+      'runtime',
+      'container',
+    );
     const appNetworks = ['private'];
-    if (app.persistence) {
+    if (identity) {
       const databaseNetwork = `database-${app.name}`;
       networks[databaseNetwork] = { internal: true, labels };
       appNetworks.push(databaseNetwork);
-      const admin = secret(`${app.name}-admin-password`);
-      const owner = secret(`${app.name}-owner-password`);
-      const runtime = secret(`${app.name}-runtime-password`);
-      volumes[`postgres-${app.name}`] = { labels };
-      services[`postgres-${app.name}`] = {
+      const [admin, owner, runtime] = identity.secrets.map(secret);
+      if (!identity.volume)
+        throw new Error(`Missing database volume: ${app.name}`);
+      volumes[identity.volume] = { labels };
+      services[identity.service] = {
         image: 'postgres:18.6-alpine',
         labels,
         networks: [databaseNetwork],
         environment: {
-          POSTGRES_DB: db,
+          POSTGRES_DB: identity.database,
           POSTGRES_PASSWORD_FILE: `/run/secrets/${admin}`,
         },
         secrets: [admin, owner, runtime],
-        volumes: [`postgres-${app.name}:/var/lib/postgresql`],
+        volumes: [`${identity.volume}:/var/lib/postgresql`],
         healthcheck: healthcheck([
           'CMD-SHELL',
           'pg_isready -h 127.0.0.1 -U postgres -d "$$POSTGRES_DB"',
         ]),
       };
-      Object.assign(environment, {
-        [`${prefix}_DB_HOST`]: `postgres-${app.name}`,
-        [`${prefix}_DB_PORT`]: '5432',
-        [`${prefix}_DB_NAME`]: db,
-        [`${prefix}_DB_USERNAME`]: runtimeRole(app.name),
-        [`${prefix}_DB_PASSWORD_FILE`]: `/run/secrets/${runtime}`,
-      });
       serverSecrets.push(runtime);
       services[`migrate-${app.name}`] = {
         image,
         labels,
         profiles: ['commands'],
         networks: [databaseNetwork],
-        environment: {
-          NODE_ENV: 'production',
-          DATABASE_APP: app.name,
-          [`${prefix}_DB_HOST`]: `postgres-${app.name}`,
-          [`${prefix}_DB_PORT`]: '5432',
-          [`${prefix}_DB_NAME`]: db,
-          [`${prefix}_DB_MIGRATION_USERNAME`]: `${db}_owner`,
-          [`${prefix}_DB_MIGRATION_PASSWORD_FILE`]: `/run/secrets/${owner}`,
-        },
+        environment: processSettings(
+          infrastructure,
+          app.name,
+          'migration',
+          'container',
+        ),
         secrets: [owner],
         command: ['run', 'migration:status'],
       };
     }
     if (app.messaging) {
       serverSecrets.push(secret('broker-password'));
-      Object.assign(environment, {
-        RABBITMQ_HOST: 'rabbitmq',
-        RABBITMQ_PORT: '5672',
-        RABBITMQ_USERNAME: 'scaffold',
-        RABBITMQ_PASSWORD_FILE: '/run/secrets/broker-password',
-        RABBITMQ_VHOST: state.project,
-      });
     }
     services[`app-${app.name}`] = {
       image,
@@ -134,9 +124,7 @@ export function operationsCompose(
       ]),
     };
   }
-  if (
-    state.applied.applications.some(({ declaration }) => declaration.messaging)
-  ) {
+  if (required.get('rabbitmq') === 'broker') {
     volumes.rabbitmq = { labels };
     services.rabbitmq = {
       image:
@@ -218,8 +206,9 @@ export function operationsCompose(
 
 /** Create identities only when absent; repeated preparation verifies every supplied password. */
 export function provisionDatabase(app: string): string {
-  const db = app.replaceAll('-', '_');
-  const role = runtimeRole(app);
+  const identity = newIdentities('installation', '', app).database;
+  const db = identity.database;
+  const role = identity.runtime;
   return `set -eu
 export PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=${db}
 export PGPASSWORD="$(cat /run/secrets/${app}-admin-password)"

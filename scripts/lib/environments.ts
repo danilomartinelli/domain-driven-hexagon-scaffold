@@ -20,6 +20,11 @@ import {
   type EnvironmentKind,
   type EnvironmentManifest,
 } from '../../database/environment';
+import {
+  newIdentities,
+  preparedInfrastructure,
+  requiredServices,
+} from '../../database/owned-infrastructure';
 import { environmentPrefix } from '@starter/capabilities/declaration';
 import {
   selectedApplications,
@@ -79,17 +84,19 @@ async function scopedDatabase(
   app: DatabaseApplication,
   project: string,
   nextPort: PortAllocator,
+  kind: EnvironmentKind,
 ): Promise<EnvironmentManifest['databases'][number]> {
+  const identity = newIdentities(kind, project, app.name).database;
   return {
     app: app.name,
     prefix: app.prefix,
     host: '127.0.0.1',
     port: await nextPort(`${app.prefix}_PORT`),
-    username: 'starter',
+    username: identity.owner,
     password: randomUUID(),
-    database: `${project.replaceAll('-', '_')}_${app.name}`,
+    database: identity.database,
     ...(app.runtimeRole && {
-      runtime: { username: app.runtimeRole, password: randomUUID() },
+      runtime: { username: identity.runtime, password: randomUUID() },
     }),
   };
 }
@@ -144,6 +151,7 @@ async function reconcileManifest(
           selectApplication(app.name),
           manifest.project,
           nextPort,
+          manifest.environment,
         ),
       );
   }
@@ -336,7 +344,9 @@ export async function operateEnvironment(
           applicationPorts: manifest.applicationPorts,
           databases: manifest.databases.map((db) => ({
             app: db.app,
-            service: `postgres-${db.app}`,
+            service: preparedInfrastructure(manifest).databases.find(
+              (entry) => entry.application === db.app,
+            )?.service,
             database: db.database,
             port: db.port,
             ...(manifest.environment === 'development'
@@ -400,16 +410,16 @@ export async function operateEnvironment(
       }
       manifest.status = 'starting';
       save();
-      const active = [
-        ...activeDatabases(manifest).map((db) => `postgres-${db.app}`),
-        ...(needsMessaging(manifest) ? ['rabbitmq'] : []),
-        ...(needsGateway(manifest) ? ['gateway'] : []),
-      ];
+      const owned = preparedInfrastructure(manifest);
+      const required = requiredServices(owned);
+      const active = [...required]
+        .filter(([, role]) => role !== 'application')
+        .map(([service]) => service);
       const inactive = [
-        ...manifest.databases.map((db) => `postgres-${db.app}`),
-        ...(manifest.broker ? ['rabbitmq'] : []),
-        ...(manifest.gateway ? ['gateway'] : []),
-      ].filter((service) => !active.includes(service));
+        ...owned.databases.map((db) => db.service),
+        ...(owned.broker ? [owned.broker.service] : []),
+        ...(owned.gateway ? [owned.gateway.service] : []),
+      ].filter((service) => !required.has(service));
       if (inactive.length) {
         const stopped = await session.execute(
           [...compose, 'stop', '--timeout', '10', ...inactive],

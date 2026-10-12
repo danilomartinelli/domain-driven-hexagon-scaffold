@@ -1,3 +1,4 @@
+import { newIdentities } from '../../database/owned-infrastructure';
 import { z } from 'zod';
 import { backupApplication } from './operations-backup';
 import type { Artifact, InstallationState } from './operations-config';
@@ -98,7 +99,8 @@ export function dockerInstallationRuntime({
         '--wait',
         '--wait-timeout',
         '60',
-        `postgres-${application}`,
+        newIdentities('installation', current.project, application).database
+          .service,
       ]);
     },
     provisionDatabase: async (application) => {

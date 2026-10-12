@@ -9,6 +9,10 @@ import {
   workspaceRoot,
   type EnvironmentManifest,
 } from '../../database/environment';
+import {
+  preparedInfrastructure,
+  processSettings,
+} from '../../database/owned-infrastructure';
 import { runCommand, type CommandResult } from './command';
 import { withCleanup } from './cleanup';
 import { removeOwnedContainer } from './owned-container';
@@ -68,22 +72,20 @@ export function dockerImageRuntime(options: {
       Object.entries(settings).filter(([key]) => !key.includes('_MIGRATION_')),
     ),
   };
-  const placed = (env: Record<string, string>) => ({
-    ...env,
-    ...(app.persistence
-      ? {
-          [`${prefix}_DB_HOST`]: `postgres-${app.name}`,
-          [`${prefix}_DB_PORT`]: '5432',
-        }
-      : {}),
-    ...(app.messaging && manifest.broker
-      ? {
-          RABBITMQ_HOST: 'rabbitmq',
-          RABBITMQ_PORT: '5672',
-          [`${prefix}_RABBITMQ_URL`]: `amqp://${encodeURIComponent(manifest.broker.username)}:${encodeURIComponent(manifest.broker.password)}@rabbitmq:5672/${encodeURIComponent(manifest.broker.vhost)}`,
-        }
-      : {}),
-  });
+  const infrastructure = preparedInfrastructure(manifest);
+  const placed = (
+    env: Record<string, string>,
+    process: 'runtime' | 'migration',
+    overrides?: Record<string, string>,
+  ) =>
+    processSettings(
+      infrastructure,
+      app.name,
+      process,
+      'container',
+      overrides,
+      env,
+    );
   const variables = (env: Record<string, string>) =>
     Object.entries(env)
       .filter(([key]) => key !== 'PATH')
@@ -149,7 +151,7 @@ export function dockerImageRuntime(options: {
     migrate: (action: string, overrides: Record<string, string> = {}) =>
       oneShot(
         [
-          ...variables({ ...placed(migration), ...overrides }),
+          ...variables(placed(migration, 'migration', overrides)),
           image,
           'run',
           `migration:${action}`,
@@ -172,7 +174,7 @@ export function dockerImageRuntime(options: {
                 gatewayNames(app, manifest.applicationPorts[app.name])
                   .privateHost,
               ]),
-          ...variables({ ...placed(runtime), ...overrides }),
+          ...variables(placed(runtime, 'runtime', overrides)),
           image,
         ],
         timeout,
@@ -244,7 +246,7 @@ export function dockerImageRuntime(options: {
         ),
       ),
     executeRuntime: (args: string[]) =>
-      oneShot([...variables(placed(runtime)), image, ...args]),
+      oneShot([...variables(placed(runtime, 'runtime')), image, ...args]),
   } satisfies DockerImageRuntime & {
     executeRuntime(args: string[]): ReturnType<typeof oneShot>;
   };

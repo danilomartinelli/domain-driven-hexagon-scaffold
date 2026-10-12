@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { operationsCompose } from '../lib/operations-compose';
-import { requiredServices } from '../lib/operations-plan';
 import {
   capabilityCases,
   rendererFixture,
@@ -90,56 +89,57 @@ for (const app of capabilityCases) {
       ).toMatchSnapshot();
     }));
 
-  test(`Compose reference and deployment services preserve ${capabilities}`, () => {
+  test(`Compose reference preserves ${capabilities}`, () => {
     const installation = fixture.installation([app]);
     expect(
       JSON.stringify(operationsCompose(installation, false), null, 2),
     ).toMatchSnapshot();
-    expect(
-      Object.fromEntries(requiredServices(installation.applied.applications)),
-    ).toMatchSnapshot();
   });
 
-  test(`host and development container settings preserve ${capabilities}`, () =>
-    withShell({}, async () => {
-      const development = await fixture.manifest('development', [app]);
-      const testing = await fixture.manifest('test', [app]);
-      expect(
-        fixture.normalize(
-          {
-            developmentHost: fixture.environmentVariables(development, {}),
-            testHost: fixture.normalize(
-              fixture.environmentVariables(testing, {}),
-              testing,
-            ),
-            container: fixture.applicationContainer(development, app.name)
-              .environment,
-          },
-          development,
-        ),
-      ).toMatchSnapshot();
-    }));
-
-  test(`platform image runtime and migration settings preserve ${capabilities}`, () =>
-    withShell({}, async () => {
-      const manifest = await fixture.manifest('development', [app]);
-      const settings = await imageSettings(fixture, {
-        app,
-        manifest,
-        image: 'fixture-image',
-        platform: 'linux/arm64',
-      });
-      expect(fixture.normalize(settings, manifest)).toMatchSnapshot();
-      if (app.messaging) {
-        expect(settings.runtime).toHaveProperty(
-          'RABBITMQ_MANAGEMENT_URL',
-          'http://127.0.0.1:25672',
-        );
+  if (app === capabilityCases[7])
+    test(`host and development container settings preserve ${capabilities}`, () =>
+      withShell({}, async () => {
+        const development = await fixture.manifest('development', [app]);
+        const testing = await fixture.manifest('test', [app]);
         expect(
-          fixture.applicationContainer(manifest, app.name).environment,
-        ).not.toHaveProperty('RABBITMQ_MANAGEMENT_URL');
-      }
-    }));
+          fixture.normalize(
+            {
+              developmentHost: fixture.environmentVariables(development, {}),
+              testHost: fixture.normalize(
+                fixture.environmentVariables(testing, {}),
+                testing,
+              ),
+              container: fixture.applicationContainer(development, app.name)
+                .environment,
+            },
+            development,
+          ),
+        ).toMatchSnapshot();
+      }));
+
+  if (app === capabilityCases[7])
+    test(`platform image runtime and migration settings preserve ${capabilities}`, () =>
+      withShell({}, async () => {
+        const manifest = await fixture.manifest('development', [app]);
+        const settings = await imageSettings(fixture, {
+          app,
+          manifest,
+          image: 'fixture-image',
+          platform: 'linux/arm64',
+        });
+        expect(fixture.normalize(settings, manifest)).toMatchSnapshot();
+        if (app.messaging) {
+          expect(settings.runtime).not.toHaveProperty(
+            'RABBITMQ_MANAGEMENT_URL',
+          );
+          expect(settings.migration).not.toHaveProperty(
+            'RABBITMQ_MANAGEMENT_URL',
+          );
+          expect(
+            fixture.applicationContainer(manifest, app.name).environment,
+          ).not.toHaveProperty('RABBITMQ_MANAGEMENT_URL');
+        }
+      }));
 }
 
 test('multiple applications preserve prefix ownership, retained databases and shell overrides', () =>
@@ -188,9 +188,6 @@ test('multiple applications preserve prefix ownership, retained databases and sh
       const installation = fixture.installation(selection);
       expect(
         JSON.stringify(operationsCompose(installation, false), null, 2),
-      ).toMatchSnapshot();
-      expect(
-        Object.fromEntries(requiredServices(installation.applied.applications)),
       ).toMatchSnapshot();
     },
   ));
@@ -272,7 +269,7 @@ for (const perCommand of [false, true]) {
     }));
 }
 
-for (const apps of [...capabilityCases.map((app) => [app]), selection]) {
+for (const apps of [[capabilityCases[0]], selection]) {
   test(`development reconciliation selects active and inactive services for ${JSON.stringify(apps)}`, () =>
     withShell({}, async () => {
       const manifest = await fixture.manifest('development', apps, true);

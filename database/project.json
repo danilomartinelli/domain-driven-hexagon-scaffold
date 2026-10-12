@@ -94,6 +94,14 @@
         "command": "bun --bun eslint database --max-warnings 0 --fix",
         "cwd": "."
       }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bun test ./database/owned-infrastructure.test.ts",
+        "cwd": "."
+      }
     }
   }
 }

@@ -1,3 +1,7 @@
+import {
+  installationInfrastructure,
+  requiredServices,
+} from '../../database/owned-infrastructure';
 import { join } from 'node:path';
 import { withCleanup } from './cleanup';
 import type { InstallationRuntime } from './installation-runtime';
@@ -316,9 +320,17 @@ export function operationsPromotion({
     const databaseExisted = current.retained.databases.some(
       (entry) => entry.application === application,
     );
-    const brokerActive = current.applied.applications.some(
-      (entry) => entry.declaration.messaging,
-    );
+    const brokerActive = [
+      ...requiredServices(installationInfrastructure(current)).values(),
+    ].includes('broker');
+    const candidateServices = [
+      ...requiredServices(
+        installationInfrastructure({
+          project: current.project,
+          applied: { applications: [target] },
+        }),
+      ).values(),
+    ];
     await withCleanup(async () => {
       try {
         // Identities are recorded before their volumes exist, so a later
@@ -330,12 +342,12 @@ export function operationsPromotion({
           ...current,
           applied: { ...current.applied, applications: promoted() },
         });
-        if (kind === 'apply' && target.declaration.persistence) {
+        if (kind === 'apply' && candidateServices.includes('database')) {
           await runtime.startDatabase(application);
           if (!previous?.declaration.persistence)
             await runtime.provisionDatabase(application);
         }
-        if (kind === 'apply' && target.declaration.messaging) {
+        if (kind === 'apply' && candidateServices.includes('broker')) {
           await runtime.startBroker();
           if (!brokerActive) await runtime.verifyBroker(target);
         }

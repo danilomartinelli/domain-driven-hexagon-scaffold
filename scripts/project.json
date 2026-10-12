@@ -119,7 +119,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "bun test ./scripts/tests/environment-renderers.test.ts",
+        "command": "bun test ./scripts/tests/environment-renderers.test.ts ./scripts/tests/development-credential-settings.test.ts",
         "cwd": "."
       }
     },

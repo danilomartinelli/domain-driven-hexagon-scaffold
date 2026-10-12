@@ -2,13 +2,26 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { z } from 'zod';
 import {
-  applicationDeclarationSchema,
   environmentPrefix,
   runtimeRole,
 } from '@starter/capabilities/declaration';
+import {
+  manifestSchema,
+  type EnvironmentManifest,
+  type EnvironmentKind,
+} from './environment-manifest';
 import { selectedApplications } from './topology';
+import {
+  preparedInfrastructure,
+  processSettings,
+  requiredServices,
+} from './owned-infrastructure';
+
+export type {
+  EnvironmentManifest,
+  EnvironmentKind,
+} from './environment-manifest';
 
 export const workspaceRoot = realpathSync(
   fileURLToPath(new URL('../', import.meta.url)),
@@ -17,52 +30,6 @@ const workspaceId = createHash('sha256')
   .update(workspaceRoot)
   .digest('hex')
   .slice(0, 8);
-const port = z.number().int().min(1).max(65535);
-const targetSchema = z.object({
-  app: z.string(),
-  prefix: z.string(),
-  host: z.literal('127.0.0.1'),
-  port,
-  /** Owner role: migration authority, and the application's role when no runtime role is registered. */
-  username: z.string(),
-  password: z.string(),
-  database: z.string(),
-  runtime: z.object({ username: z.string(), password: z.string() }).optional(),
-});
-const manifestSchema = z.object({
-  environment: z.enum(['test', 'development']),
-  run: z.string(),
-  project: z.string(),
-  owner: z.uuid(),
-  status: z.enum(['starting', 'ready', 'stopped']),
-  // Resource inventory survives declaration removal and capability disablement.
-  databases: z.array(targetSchema),
-  apps: z.array(z.string()).optional(),
-  topology: z.array(applicationDeclarationSchema).optional(),
-  applicationPorts: z.record(z.string(), port).default({}),
-  broker: z
-    .object({
-      port,
-      managementPort: port,
-      username: z.string(),
-      password: z.string(),
-      vhost: z.string(),
-    })
-    .optional(),
-  gateway: z
-    .object({
-      name: z.string(),
-      host: z.string(),
-      proxyPort: port,
-      adminPort: port,
-      // Read compatibility for manifests created before declaration-derived ports.
-      userPort: port.optional(),
-      walletPort: port.optional(),
-    })
-    .optional(),
-});
-export type EnvironmentManifest = z.infer<typeof manifestSchema>;
-export type EnvironmentKind = EnvironmentManifest['environment'];
 
 function legacyDatabase(db: EnvironmentManifest['databases'][number]): boolean {
   return db.app === 'legacy' && db.prefix === 'DB' && !db.runtime;
@@ -162,74 +129,75 @@ export function readEnvironmentFile(
 export function activeDatabases(
   manifest: EnvironmentManifest,
 ): EnvironmentManifest['databases'] {
-  return manifest.databases.filter(
-    (db) =>
-      (manifest.environment === 'development' && legacyDatabase(db)) ||
-      manifest.topology?.some((app) => app.name === db.app && app.persistence),
+  const infrastructure = preparedInfrastructure(manifest);
+  const required = requiredServices(infrastructure);
+  return manifest.databases.filter((db, index) =>
+    required.has(infrastructure.databases[index].service),
   );
 }
 
 export function needsMessaging(manifest: EnvironmentManifest): boolean {
-  return manifest.topology?.some((app) => app.messaging) ?? true;
+  return (
+    manifest.topology === undefined ||
+    [...requiredServices(preparedInfrastructure(manifest)).values()].includes(
+      'broker',
+    )
+  );
 }
 
 export function needsGateway(manifest: EnvironmentManifest): boolean {
-  return manifest.topology?.some((app) => app.exposure) ?? !manifest.apps;
+  return manifest.topology === undefined
+    ? !manifest.apps
+    : [...requiredServices(preparedInfrastructure(manifest)).values()].includes(
+        'gateway',
+      );
+}
+
+function hostDefaults(manifest: EnvironmentManifest): Record<string, string> {
+  const infrastructure = preparedInfrastructure(manifest);
+  const applications = [
+    ...infrastructure.applications.map((app) => app.name),
+    ...infrastructure.databases
+      .filter((db) => infrastructure.kind === 'development' && db.legacy)
+      .map((db) => db.application),
+  ];
+  const settings: Record<string, string> = {};
+  for (const app of applications)
+    Object.assign(
+      settings,
+      processSettings(infrastructure, app, 'migration', 'host'),
+    );
+  return settings;
 }
 
 function databaseVariables(
   manifest: EnvironmentManifest,
 ): Record<string, string> {
-  const variables: Record<string, string> = {};
-  for (const db of activeDatabases(manifest)) {
-    const connectAs = db.runtime ?? db;
-    Object.assign(variables, {
-      [`${db.prefix}_HOST`]: db.host,
-      [`${db.prefix}_PORT`]: String(db.port),
-      [`${db.prefix}_USERNAME`]: connectAs.username,
-      [`${db.prefix}_PASSWORD`]: connectAs.password,
-      [`${db.prefix}_NAME`]: db.database,
-    });
-    if (db.runtime)
-      Object.assign(variables, {
-        [`${db.prefix}_MIGRATION_USERNAME`]: db.username,
-        [`${db.prefix}_MIGRATION_PASSWORD`]: db.password,
-      });
-  }
-  return variables;
+  return Object.fromEntries(
+    Object.entries(hostDefaults(manifest)).filter(([key]) =>
+      /(^|_)DB_/.test(key),
+    ),
+  );
 }
 
 function brokerVariables(
   manifest: EnvironmentManifest,
 ): Record<string, string> {
-  if (!needsMessaging(manifest) || !manifest.broker) return {};
-  const broker = manifest.broker;
-  const url = `amqp://${encodeURIComponent(broker.username)}:${encodeURIComponent(broker.password)}@127.0.0.1:${String(broker.port)}/${encodeURIComponent(broker.vhost)}`;
-  return {
-    ...Object.fromEntries(
-      (manifest.topology ?? [])
-        .filter((app) => app.messaging)
-        .map((app) => [`${environmentPrefix(app.name)}_RABBITMQ_URL`, url]),
+  return Object.fromEntries(
+    Object.entries(hostDefaults(manifest)).filter(
+      ([key]) => key.startsWith('RABBITMQ_') || key.endsWith('_RABBITMQ_URL'),
     ),
-    RABBITMQ_HOST: '127.0.0.1',
-    RABBITMQ_PORT: String(manifest.broker.port),
-    RABBITMQ_USERNAME: manifest.broker.username,
-    RABBITMQ_PASSWORD: manifest.broker.password,
-    RABBITMQ_VHOST: manifest.broker.vhost,
-    RABBITMQ_MANAGEMENT_URL: `http://127.0.0.1:${String(manifest.broker.managementPort)}`,
-  };
+  );
 }
 
 function gatewayVariables(
   manifest: EnvironmentManifest,
 ): Record<string, string> {
-  if (!needsGateway(manifest) || !manifest.gateway) return {};
-  return {
-    GATEWAY_NAME: manifest.gateway.name,
-    GATEWAY_HOST: manifest.gateway.host,
-    GATEWAY_PROXY_PORT: String(manifest.gateway.proxyPort),
-    GATEWAY_ADMIN_PORT: String(manifest.gateway.adminPort),
-  };
+  return Object.fromEntries(
+    Object.entries(hostDefaults(manifest)).filter(([key]) =>
+      key.startsWith('GATEWAY_'),
+    ),
+  );
 }
 
 /** Explicit shell settings win over generated defaults; unsafe test overrides fail closed. */
@@ -237,17 +205,7 @@ export function environmentVariables(
   manifest: EnvironmentManifest,
   shell: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  const defaults = {
-    ...databaseVariables(manifest),
-    ...brokerVariables(manifest),
-    ...gatewayVariables(manifest),
-    ...Object.fromEntries(
-      (manifest.topology ?? []).map((app) => [
-        `${environmentPrefix(app.name)}_HTTP_PORT`,
-        String(manifest.applicationPorts[app.name]),
-      ]),
-    ),
-  };
+  const defaults = hostDefaults(manifest);
   const env = {
     ...defaults,
     ...shell,

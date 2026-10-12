@@ -285,6 +285,12 @@ locally and retain diagnostics in the paths above.
 The manifest provides database and broker settings to `env:exec`; shell values
 win over defaults. **Tests reject an override that differs from the selected
 owned target**, instead of silently replacing it or connecting to it.
+
+[Owned infrastructure](../database/owned-infrastructure.ts) derives required
+services and process settings for prepared environments and installations.
+Callers supply explicit overrides; the module reads no shell settings. Container
+settings use private service coordinates and omit the host-only broker management
+URL. Installations expose only the container vantage and use secret-file settings.
 Development commands may intentionally use shell overrides.
 
 Bun automatic environment loading is disabled in `bunfig.toml`, and Nx dotenv

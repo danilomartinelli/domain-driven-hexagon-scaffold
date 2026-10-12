@@ -8,6 +8,11 @@ import {
   type DeploymentConfig,
   type InstallationState,
 } from './operations-config';
+import {
+  installationInfrastructure,
+  requiredServices,
+  type ServiceRole,
+} from '../../database/owned-infrastructure';
 import { unknownMigrations } from './operations-promotion';
 
 /** A desired image after isolated inspection, with its packaged migrations in order. */
@@ -27,7 +32,6 @@ type SelectedApplication = Capabilities & {
   application: string;
   image: string;
 };
-type ServiceRole = 'application' | 'database' | 'broker' | 'gateway';
 
 export interface DeploymentPlan {
   installation: { name: string; project: string; status: 'new' | 'existing' };
@@ -110,21 +114,6 @@ function capabilities({
     exposure,
     routes: routes ?? [],
   };
-}
-
-/** The long-running Compose services each selection requires, by role. */
-export function requiredServices(
-  applications: Iterable<Artifact>,
-): Map<string, ServiceRole> {
-  const roles = new Map<string, ServiceRole>();
-  for (const { declaration } of applications) {
-    roles.set(`app-${declaration.name}`, 'application');
-    if (declaration.persistence)
-      roles.set(`postgres-${declaration.name}`, 'database');
-    if (declaration.messaging) roles.set('rabbitmq', 'broker');
-    if (declaration.exposure) roles.set('gateway', 'gateway');
-  }
-  return roles;
 }
 
 const stopEffects: Record<ServiceRole, string> = {
@@ -218,8 +207,18 @@ export function deploymentPlan(input: {
       : { from: state.applied.https ?? null, to: desired.https ?? null },
   };
 
-  const before = requiredServices(applied.values());
-  const after = requiredServices(requested.values());
+  const before = requiredServices(
+    installationInfrastructure({
+      ...state,
+      applied: { applications: [...applied.values()] },
+    }),
+  );
+  const after = requiredServices(
+    installationInfrastructure({
+      ...state,
+      applied: { applications: [...requested.values()] },
+    }),
+  );
   const recreate = new Set(
     transitions
       .filter(

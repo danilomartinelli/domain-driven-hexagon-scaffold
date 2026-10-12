@@ -1,6 +1,10 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { environmentPrefix } from '@starter/capabilities/declaration';
+import {
+  preparedInfrastructure,
+  processSettings,
+} from '../../database/owned-infrastructure';
 import { selectedApplications } from '../../database/topology';
 import {
   environmentLocation,
@@ -41,11 +45,10 @@ export function applicationContainer(
   // Resolve declared runtime keys before using prefixes for custom settings.
   const declared = environmentVariables(manifest, {});
   const defaults = environmentVariables({ ...manifest, topology: [app] }, {});
-  const settings = environmentVariables(manifest);
-  const env: Record<string, string> = {
+  const overrides: Record<string, string> = {
     NODE_ENV: process.env.NODE_ENV ?? 'development',
   };
-  for (const [key, value] of Object.entries(settings)) {
+  for (const [key, value] of Object.entries(process.env)) {
     const ownerPrefix = applicationPrefixes.find((candidate) =>
       key.startsWith(`${candidate}_`),
     );
@@ -57,32 +60,28 @@ export function applicationContainer(
       owned &&
       (key.startsWith(`${prefix}_`) ||
         (app.messaging && key.startsWith('RABBITMQ_'))) &&
-      !key.includes('_MIGRATION_')
+      !key.includes('_MIGRATION_') &&
+      value !== defaults[key]
     )
-      env[key] = value;
+      overrides[key] = value;
   }
-  if (app.persistence) {
-    if (
-      env[`${prefix}_DB_HOST`] === defaults[`${prefix}_DB_HOST`] &&
-      env[`${prefix}_DB_PORT`] === defaults[`${prefix}_DB_PORT`]
-    ) {
-      env[`${prefix}_DB_HOST`] = `postgres-${name}`;
-      env[`${prefix}_DB_PORT`] = '5432';
-    }
-  }
-  if (app.messaging && manifest.broker) {
-    if (
-      env.RABBITMQ_HOST === defaults.RABBITMQ_HOST &&
-      env.RABBITMQ_PORT === defaults.RABBITMQ_PORT
-    ) {
-      env.RABBITMQ_HOST = 'rabbitmq';
-      env.RABBITMQ_PORT = '5672';
-    }
-    if (env[`${prefix}_RABBITMQ_URL`] === defaults[`${prefix}_RABBITMQ_URL`])
-      env[`${prefix}_RABBITMQ_URL`] =
-        `amqp://${encodeURIComponent(manifest.broker.username)}:${encodeURIComponent(manifest.broker.password)}@rabbitmq:5672/${encodeURIComponent(manifest.broker.vhost)}`;
-    delete env.RABBITMQ_MANAGEMENT_URL;
-  }
+  // A host/port pair is one explicit endpoint; do not translate its other half.
+  for (const keys of [
+    [`${prefix}_DB_HOST`, `${prefix}_DB_PORT`],
+    ['RABBITMQ_HOST', 'RABBITMQ_PORT'],
+  ])
+    if (keys.some((key) => Object.hasOwn(overrides, key)))
+      for (const key of keys) {
+        const value = process.env[key] ?? defaults[key];
+        if (value !== undefined) overrides[key] = value;
+      }
+  const env = processSettings(
+    preparedInfrastructure(manifest),
+    name,
+    'runtime',
+    'container',
+    overrides,
+  );
   const { dependencies } = distributionSelection(
     join(workspaceRoot, 'src/apps', name),
     app,
