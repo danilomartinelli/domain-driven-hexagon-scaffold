@@ -151,6 +151,10 @@ interface RendererFixture
     Pick<typeof import('../lib/platform-image-runtime'), 'dockerImageRuntime'>,
     Pick<typeof import('../../database/environment'), 'environmentVariables'>,
     Pick<typeof import('../lib/environments'), 'operateEnvironment'> {
+  ownedInfrastructure: Pick<
+    typeof import('../../database/owned-infrastructure'),
+    'preparedInfrastructure'
+  >;
   manifest: (
     kind: EnvironmentKind,
     apps: ApplicationDeclaration[],
@@ -202,6 +206,9 @@ export async function rendererFixture(): Promise<RendererFixture> {
     const environment = (await import(
       join(workspace.root, 'database/environment.ts')
     )) as typeof import('../../database/environment');
+    const ownedInfrastructure = (await import(
+      join(workspace.root, 'database/owned-infrastructure.ts')
+    )) as typeof import('../../database/owned-infrastructure');
     const compose = (await import(
       join(workspace.root, 'scripts/lib/compose.ts')
     )) as typeof import('../lib/compose');
@@ -338,6 +345,7 @@ export async function rendererFixture(): Promise<RendererFixture> {
       dockerImageRuntime: images.dockerImageRuntime,
       environmentVariables: environment.environmentVariables,
       operateEnvironment: environments.operateEnvironment,
+      ownedInfrastructure,
       manifest,
       installation,
       normalize,

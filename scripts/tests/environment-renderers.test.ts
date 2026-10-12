@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
 import { operationsCompose } from '../lib/operations-compose';
 import {
   capabilityCases,
@@ -266,6 +266,77 @@ for (const perCommand of [false, true]) {
           : {},
       );
       expect(fixture.normalize(settings, manifest)).toMatchSnapshot();
+    }));
+}
+
+for (const kind of ['development', 'test'] as const) {
+  test(`environment inspection reads owned identities for ${kind}`, () =>
+    withShell({}, async () => {
+      const manifest = await fixture.manifest(kind, [capabilityCases[6]]);
+      const infrastructure =
+        fixture.ownedInfrastructure.preparedInfrastructure(manifest);
+      for (const db of infrastructure.databases) {
+        db.service = `retained-${db.application}-service`;
+        if (kind === 'development')
+          db.volume = `retained-${db.application}-volume`;
+      }
+      if (kind === 'development' && infrastructure.broker)
+        infrastructure.broker.volume = 'retained-broker-volume';
+      const identities = spyOn(
+        fixture.ownedInfrastructure,
+        'preparedInfrastructure',
+      ).mockReturnValue(infrastructure);
+      const messages: string[] = [];
+      const output = spyOn(console, 'log').mockImplementation((message) => {
+        messages.push(String(message));
+      });
+      try {
+        await withProcesses(
+          (command) => {
+            if (
+              command[0] !== 'docker' ||
+              !(
+                command[1] === 'ps' ||
+                ['network', 'volume'].includes(command[1])
+              )
+            )
+              throw new Error('Unexpected inspection process');
+            return {};
+          },
+          async () => {
+            expect(
+              await fixture.operateEnvironment('inspect', kind, manifest.run),
+            ).toBe(0);
+          },
+        );
+        const summary = messages.find((message) =>
+          message.startsWith('{"project":'),
+        );
+        expect(summary).toBeDefined();
+        expect(JSON.parse(summary ?? 'null')).toMatchObject({
+          databases: [
+            {
+              app: 'order-history',
+              service: 'retained-order-history-service',
+              ...(kind === 'development'
+                ? {
+                    volume: `${manifest.project}_retained-order-history-volume`,
+                  }
+                : { storage: 'tmpfs' }),
+              active: true,
+            },
+          ],
+          broker: {
+            ...(kind === 'development'
+              ? { volume: `${manifest.project}_retained-broker-volume` }
+              : { storage: 'tmpfs' }),
+            active: true,
+          },
+        });
+      } finally {
+        output.mockRestore();
+        identities.mockRestore();
+      }
     }));
 }
 

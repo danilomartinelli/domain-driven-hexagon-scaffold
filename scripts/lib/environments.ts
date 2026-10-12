@@ -335,6 +335,8 @@ export async function operateEnvironment(
     ownership.verified = true;
     if (action === 'inspect') {
       const active = new Set(activeDatabases(manifest).map((db) => db.app));
+      const identities = preparedInfrastructure(manifest);
+      const broker = identities.broker;
       session.log(
         JSON.stringify({
           project: manifest.project,
@@ -342,24 +344,29 @@ export async function operateEnvironment(
           status: manifest.status,
           applications: manifest.topology ?? [],
           applicationPorts: manifest.applicationPorts,
-          databases: manifest.databases.map((db) => ({
-            app: db.app,
-            service: preparedInfrastructure(manifest).databases.find(
+          databases: manifest.databases.map((db) => {
+            const identity = identities.databases.find(
               (entry) => entry.application === db.app,
-            )?.service,
-            database: db.database,
-            port: db.port,
-            ...(manifest.environment === 'development'
-              ? { volume: `${manifest.project}_${db.app}-postgres` }
-              : { storage: 'tmpfs' }),
-            active: active.has(db.app),
-          })),
-          broker: manifest.broker
+            );
+            if (!identity)
+              throw new Error(`Missing database identity: ${db.app}`);
+            return {
+              app: db.app,
+              service: identity.service,
+              database: db.database,
+              port: db.port,
+              ...(identity.volume
+                ? { volume: `${manifest.project}_${identity.volume}` }
+                : { storage: 'tmpfs' }),
+              active: active.has(db.app),
+            };
+          }),
+          broker: broker
             ? {
-                vhost: manifest.broker.vhost,
-                port: manifest.broker.port,
-                ...(manifest.environment === 'development'
-                  ? { volume: `${manifest.project}_rabbitmq` }
+                vhost: broker.vhost,
+                port: broker.port,
+                ...(broker.volume
+                  ? { volume: `${manifest.project}_${broker.volume}` }
                   : { storage: 'tmpfs' }),
                 active: needsMessaging(manifest),
               }
