@@ -8,8 +8,12 @@ import type { ApplicationDeclaration } from '@starter/capabilities/declaration';
 import type {
   EnvironmentKind,
   EnvironmentManifest,
+  RecordedManifest,
 } from '../../database/environment';
-import type { InstallationState } from '../lib/operations-config';
+import {
+  retainResources,
+  type InstallationState,
+} from '../lib/operations-config';
 import { createWorkspace } from './workspace-fixture';
 
 export const capabilityCases: ApplicationDeclaration[] = [
@@ -228,7 +232,8 @@ export async function rendererFixture(): Promise<RendererFixture> {
     ): Promise<EnvironmentManifest> => {
       await declare(apps);
       const location = environment.environmentLocation(kind, 'renderers');
-      const value: EnvironmentManifest = {
+      // Written as manifests were before services and volumes were recorded.
+      const value: RecordedManifest = {
         environment: kind,
         run: 'renderers',
         project: location.project,
@@ -288,44 +293,39 @@ export async function rendererFixture(): Promise<RendererFixture> {
         });
       await mkdir(location.directory, { recursive: true });
       await writeFile(location.manifestPath, JSON.stringify(value));
-      return value;
+      return environment.readEnvironment(kind, 'renderers', {
+        complete: false,
+      });
     };
     const installation = (
       apps: ApplicationDeclaration[],
-    ): InstallationState => ({
-      version: 2,
-      name: 'renderers',
-      project: 'fixture-installation',
-      owner: 'fixture-owner',
-      directory: '/fixture/$installation',
-      applied: {
-        applications: apps.map((declaration) => ({
+    ): InstallationState => {
+      const artifacts = (declarations: ApplicationDeclaration[]) =>
+        declarations.map((declaration) => ({
           image: `example/${declaration.name}@sha256:${'a'.repeat(64)}`,
           declaration,
-        })),
-        https: { bind: '127.0.0.1', port: 8443 },
-      },
-      // Retained identities deliberately differ from declaration-derived reference names.
-      retained: {
-        databases: [
-          {
-            application: 'order-history',
-            service: 'retained-database',
-            volume: 'retained-volume',
-            database: 'retained_history',
-            roles: ['retained-owner'],
-            secrets: ['retained-password'],
-          },
-        ],
-        broker: {
-          service: 'retained-broker',
-          volume: 'retained-broker-volume',
-          vhost: 'retained-vhost',
-          username: 'retained-user',
-          secrets: ['retained-broker-password'],
+        }));
+      const identity = {
+        project: 'fixture-installation',
+        retained: { databases: [] },
+      };
+      return {
+        version: 2,
+        name: 'renderers',
+        owner: 'fixture-owner',
+        directory: '/fixture/$installation',
+        applied: {
+          applications: artifacts(apps),
+          https: { bind: '127.0.0.1', port: 8443 },
         },
-      },
-    });
+        ...identity,
+        // An existing inventory, whose identities outlive capability disablement.
+        retained: retainResources(
+          identity,
+          artifacts([...apps, capabilityCases[7]]),
+        ),
+      };
+    };
     const normalize = (
       value: unknown,
       inventory: EnvironmentManifest,

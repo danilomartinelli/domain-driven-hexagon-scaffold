@@ -328,6 +328,7 @@ export function operationsPromotion({
         installationInfrastructure({
           project: current.project,
           applied: { applications: [target] },
+          retained: retainResources(current, [target]),
         }),
       ).values(),
     ];

@@ -61,6 +61,7 @@ export async function exerciseDistributionRuntime(
         username: 'fixture',
         password: 'fixture',
         database: `${location.project.replaceAll('-', '_')}_${app}`,
+        service: `postgres-${app}`,
         runtime: { username: runtimeRole(app), password: 'fixture' },
       },
     ],

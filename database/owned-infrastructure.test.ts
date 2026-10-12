@@ -5,8 +5,10 @@ import {
   newIdentities,
   preparedInfrastructure,
   installationInfrastructure,
+  ownedDatabase,
   requiredServices,
   processSettings,
+  type InstallationInventory,
 } from './owned-infrastructure';
 
 test('new development identities preserve hyphenated application names', () => {
@@ -65,6 +67,8 @@ function prepared(
         host: '127.0.0.1',
         port: 15432,
         database: 'ddh_dev_fixture_order-history',
+        service: 'postgres-order-history',
+        ...(kind === 'development' && { volume: 'order-history-postgres' }),
         username: 'fixture-owner',
         password: 'owner-secret',
         runtime: {
@@ -79,12 +83,44 @@ function prepared(
       username: 'fixture user',
       password: 'broker/secret',
       vhost: 'ddh-dev-fixture',
+      ...(kind === 'development' && { volume: 'rabbitmq' }),
     },
     gateway: {
       name: 'ddh-dev-fixture-gateway',
       host: 'host.docker.internal',
       proxyPort: 18000,
       adminPort: 18001,
+    },
+  };
+}
+
+/** Identities an installation recorded when it first provisioned an application. */
+function retainedIdentities(
+  project: string,
+  application: string,
+): InstallationInventory['retained'] {
+  const { database, broker } = newIdentities(
+    'installation',
+    project,
+    application,
+  );
+  return {
+    databases: [
+      {
+        application,
+        service: database.service,
+        volume: `${project}_${String(database.volume)}`,
+        database: database.database,
+        roles: [database.owner, database.runtime],
+        secrets: database.secrets,
+      },
+    ],
+    broker: {
+      service: broker.service,
+      volume: `${project}_${String(broker.volume)}`,
+      vhost: broker.vhost,
+      username: broker.username,
+      secrets: broker.secrets,
     },
   };
 }
@@ -154,6 +190,10 @@ for (const capabilities of combinations) {
         ? installationInfrastructure({
             project: 'fixture-installation',
             applied: { applications: [{ declaration: app }] },
+            retained: retainedIdentities(
+              'fixture-installation',
+              'order-history',
+            ),
           })
         : preparedInfrastructure(prepared(kind, app));
     test(`required services for ${kind} ${JSON.stringify(capabilities)}`, () => {
@@ -359,6 +399,8 @@ test('legacy development storage stays active and exposes only its DB settings',
     host: '127.0.0.1',
     port: 15433,
     database: 'ddh_dev_fixture_legacy',
+    service: 'postgres-legacy',
+    volume: 'legacy-postgres',
     username: 'legacy-owner',
     password: 'legacy-secret',
   });
@@ -403,6 +445,7 @@ test('explicit secret-file paths replace generated file paths', () => {
         },
       ],
     },
+    retained: retainedIdentities('fixture-installation', 'order-history'),
   });
   const settings = processSettings(
     infrastructure,
@@ -464,3 +507,120 @@ for (const process of ['runtime', 'migration'] as const) {
     });
   });
 }
+
+const orderHistory = {
+  name: 'order-history',
+  persistence: true,
+  messaging: true,
+  exposure: false,
+};
+
+test('installations read every owned identity from the retained inventory', () => {
+  const infrastructure = installationInfrastructure({
+    project: 'fixture-installation',
+    applied: { applications: [{ declaration: orderHistory }] },
+    // Recorded names deliberately differ from the declaration-derived naming.
+    retained: {
+      databases: [
+        {
+          application: 'order-history',
+          service: 'retained-history',
+          volume: 'fixture-installation_retained-history-volume',
+          database: 'retained_history',
+          roles: ['retained_history_owner', 'order_history_runtime'],
+          secrets: ['history-admin', 'history-owner', 'history-runtime'],
+        },
+        {
+          application: 'ledger',
+          service: 'retained-ledger',
+          volume: 'fixture-installation_retained-ledger-volume',
+          database: 'retained_ledger',
+          roles: ['retained_ledger_owner', 'ledger_runtime'],
+          secrets: ['ledger-admin', 'ledger-owner', 'ledger-runtime'],
+        },
+      ],
+      broker: {
+        service: 'retained-broker',
+        volume: 'fixture-installation_retained-broker-volume',
+        vhost: 'retained-vhost',
+        username: 'retained-user',
+        secrets: ['retained-broker-password'],
+      },
+    },
+  });
+  expect(Object.fromEntries(requiredServices(infrastructure))).toEqual({
+    'app-order-history': 'application',
+    'retained-history': 'database',
+    'retained-broker': 'broker',
+  });
+  expect(
+    processSettings(infrastructure, 'order-history', 'migration', 'container'),
+  ).toEqual({
+    NODE_ENV: 'production',
+    DATABASE_APP: 'order-history',
+    ORDER_HISTORY_DB_HOST: 'retained-history',
+    ORDER_HISTORY_DB_PORT: '5432',
+    ORDER_HISTORY_DB_NAME: 'retained_history',
+    ORDER_HISTORY_DB_MIGRATION_USERNAME: 'retained_history_owner',
+    ORDER_HISTORY_DB_MIGRATION_PASSWORD_FILE: '/run/secrets/history-owner',
+  });
+  expect(
+    processSettings(infrastructure, 'order-history', 'runtime', 'container'),
+  ).toMatchObject({
+    ORDER_HISTORY_DB_USERNAME: 'order_history_runtime',
+    ORDER_HISTORY_DB_PASSWORD_FILE: '/run/secrets/history-runtime',
+    RABBITMQ_HOST: 'retained-broker',
+    RABBITMQ_USERNAME: 'retained-user',
+    RABBITMQ_PASSWORD_FILE: '/run/secrets/retained-broker-password',
+    RABBITMQ_VHOST: 'retained-vhost',
+  });
+  // A removed application's database stays addressable for inspection and reactivation.
+  expect(ownedDatabase(infrastructure, 'ledger')).toMatchObject({
+    service: 'retained-ledger',
+    volume: 'retained-ledger-volume',
+    database: 'retained_ledger',
+    owner: {
+      username: 'retained_ledger_owner',
+      password: { file: '/run/secrets/ledger-owner' },
+    },
+    secrets: ['ledger-admin', 'ledger-owner', 'ledger-runtime'],
+  });
+});
+
+test('installations refuse identities their inventory never recorded', () => {
+  const applied = { applications: [{ declaration: orderHistory }] };
+  const recorded = retainedIdentities('fixture-installation', 'order-history');
+  expect(() =>
+    installationInfrastructure({
+      project: 'fixture-installation',
+      applied,
+      retained: { ...recorded, databases: [] },
+    }),
+  ).toThrow('Missing retained database identity: order-history');
+  expect(() =>
+    installationInfrastructure({
+      project: 'fixture-installation',
+      applied,
+      retained: { databases: recorded.databases },
+    }),
+  ).toThrow('Missing retained broker identity');
+  expect(() =>
+    installationInfrastructure({
+      project: 'another-installation',
+      applied,
+      retained: recorded,
+    }),
+  ).toThrow('Retained volume belongs to another project');
+  // A removed application's incomplete identity cannot be addressed either.
+  expect(() =>
+    installationInfrastructure({
+      project: 'fixture-installation',
+      applied: { applications: [] },
+      retained: {
+        databases: [
+          { ...recorded.databases[0], roles: ['order_history_owner'] },
+        ],
+      },
+    }),
+  ).toThrow('Invalid retained database identity: order-history');
+});

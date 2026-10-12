@@ -21,6 +21,7 @@ export function composeProbeConfiguration(
         username: 'owner',
         password: 'fixture-owner',
         database: 'wallet',
+        service: 'postgres-wallet',
         runtime: { username, password },
       },
     ],

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -767,9 +767,15 @@ test('preparing a development run created before independent apps were registere
         CREATE_RETIRED_MARKER: '1',
       }),
     );
-    expect(upgraded.databases.find((db) => db.app === 'legacy')).toEqual(
-      legacy,
-    );
+    // Preparation records the names the retired database was provisioned with.
+    const persisted = z
+      .object({ databases: z.array(z.object({ app: z.string() }).loose()) })
+      .parse(JSON.parse(await readFile(manifestPath, 'utf8')));
+    expect(persisted.databases.find((db) => db.app === 'legacy')).toEqual({
+      ...legacy,
+      service: 'postgres-legacy',
+      volume: 'legacy-postgres',
+    });
     expect(upgraded.databases.map((db) => db.app).sort()).toEqual([
       'legacy',
       'user',

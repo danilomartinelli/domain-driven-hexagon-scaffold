@@ -22,6 +22,8 @@ import {
 } from '../../database/environment';
 import {
   newIdentities,
+  newSharedIdentities,
+  ownedDatabase,
   preparedInfrastructure,
   requiredServices,
 } from '../../database/owned-infrastructure';
@@ -95,6 +97,8 @@ async function scopedDatabase(
     username: identity.owner,
     password: randomUUID(),
     database: identity.database,
+    service: identity.service,
+    ...(identity.volume !== undefined && { volume: identity.volume }),
     ...(app.runtimeRole && {
       runtime: { username: identity.runtime, password: randomUUID() },
     }),
@@ -155,17 +159,21 @@ async function reconcileManifest(
         ),
       );
   }
+  const shared = newSharedIdentities(manifest.environment, manifest.project);
   if (needsMessaging(manifest) && !manifest.broker)
     manifest.broker = {
       port: await nextPort('RABBITMQ_PORT'),
       managementPort: await nextPort('RABBITMQ_MANAGEMENT_PORT'),
-      username: 'starter',
+      username: shared.broker.username,
       password: randomUUID(),
-      vhost: manifest.project,
+      vhost: shared.broker.vhost,
+      ...(shared.broker.volume !== undefined && {
+        volume: shared.broker.volume,
+      }),
     };
   if (needsGateway(manifest) && !manifest.gateway)
     manifest.gateway = {
-      name: `${manifest.project}-gateway`,
+      name: shared.gateway.name,
       host: process.env.GATEWAY_HOST ?? 'host.docker.internal',
       proxyPort: await nextPort('GATEWAY_PROXY_PORT'),
       adminPort: await nextPort('GATEWAY_ADMIN_PORT'),
@@ -345,11 +353,7 @@ export async function operateEnvironment(
           applications: manifest.topology ?? [],
           applicationPorts: manifest.applicationPorts,
           databases: manifest.databases.map((db) => {
-            const identity = identities.databases.find(
-              (entry) => entry.application === db.app,
-            );
-            if (!identity)
-              throw new Error(`Missing database identity: ${db.app}`);
+            const identity = ownedDatabase(identities, db.app);
             return {
               app: db.app,
               service: identity.service,

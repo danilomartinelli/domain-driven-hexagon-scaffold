@@ -1,7 +1,8 @@
 import {
-  newIdentities,
   installationInfrastructure,
+  ownedDatabase,
   requiredServices,
+  type OwnedDatabase,
 } from '../../database/owned-infrastructure';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
@@ -54,6 +55,7 @@ import {
   newInstallation,
   readInstallation,
   readJson,
+  retainResources,
   sameHttps,
   sameImages,
   selectDesiredImage,
@@ -322,7 +324,7 @@ export async function runOperations(args: string[]): Promise<void> {
   /** Planning reads only running databases; it never starts a service to answer. */
   const appliedHistory = async (
     project: string,
-    app: string,
+    database: OwnedDatabase,
   ): Promise<string[] | undefined> => {
     if (!existsSync(composePath)) return undefined;
     const compose = composeProject(project);
@@ -333,11 +335,11 @@ export async function runOperations(args: string[]): Promise<void> {
           '--status',
           'running',
           '--quiet',
-          newIdentities('installation', project, app).database.service,
+          database.service,
         ]))
       )
         return undefined;
-      return await appliedMigrations(app, compose);
+      return await appliedMigrations(database, compose);
     } catch (error) {
       // The diagnostic log retains the failure; the plan reports it as unavailable.
       if (controller.signal.aborted) throw error;
@@ -388,16 +390,17 @@ export async function runOperations(args: string[]): Promise<void> {
         `Desired selection rejected; nothing was changed:\n- ${rejected.join('\n- ')}`,
       );
     const histories: Record<string, string[] | undefined> = {};
-    for (const { application } of state.retained.databases)
+    for (const database of installationInfrastructure(state).databases)
       if (
         desired.some(
           ({ declaration }) =>
-            declaration.name === application && declaration.persistence,
+            declaration.name === database.application &&
+            declaration.persistence,
         )
       )
-        histories[application] = await appliedHistory(
+        histories[database.application] = await appliedHistory(
           state.project,
-          application,
+          database,
         );
     const secrets = join(directory, 'secrets');
     return {
@@ -443,7 +446,8 @@ export async function runOperations(args: string[]): Promise<void> {
       throw new Error(
         `Supply secret files before applying: ${plan.resources.missingSecrets.join(', ')}`,
       );
-    // Render the target topology to validate every secret it will mount.
+    // Render the target topology, with the identities applying will record,
+    // to validate every secret it will mount.
     operationsCompose({
       ...state,
       applied: {
@@ -453,6 +457,7 @@ export async function runOperations(args: string[]): Promise<void> {
           declaration,
         })),
       },
+      retained: retainResources(state, inspected.artifacts),
     });
     if (existsSync(join(directory, 'recovery.json')))
       throw new Error('Complete restore assessment before changing topology');
@@ -662,8 +667,10 @@ export async function runOperations(args: string[]): Promise<void> {
           },
         }),
       );
+    const retainedDatabase = (application: string) =>
+      ownedDatabase(installationInfrastructure(current), application);
     const provision = (application: string) =>
-      provisionApplication(compose, application);
+      provisionApplication(compose, retainedDatabase(application));
     const verifyBroker = (messenger: Artifact) =>
       verifyBrokerAccess(oneShot, messenger);
     const probe = async (selected: Artifact): Promise<string> =>
@@ -818,6 +825,7 @@ export async function runOperations(args: string[]): Promise<void> {
             installationInfrastructure({
               project: current.project,
               applied: { applications: [entry] },
+              retained: current.retained,
             }),
           ),
         ]
@@ -1254,7 +1262,10 @@ export async function runOperations(args: string[]): Promise<void> {
           .parse(readJson(file));
         compatibilityReview = review;
         const history = previous.declaration.persistence
-          ? await migrationHistory(previous.declaration.name, compose)
+          ? await migrationHistory(
+              retainedDatabase(previous.declaration.name),
+              compose,
+            )
           : [];
         if (JSON.stringify(review.migrationHistory) !== JSON.stringify(history))
           throw new Error(
@@ -1264,7 +1275,7 @@ export async function runOperations(args: string[]): Promise<void> {
       if (action === 'update' && candidate.declaration.persistence) {
         const history = await appliedHistory(
           current.project,
-          candidate.declaration.name,
+          retainedDatabase(candidate.declaration.name),
         );
         const packaged = await packagedMigrations(
           candidate.declaration.name,

@@ -1,7 +1,7 @@
 import {
-  newIdentities,
   installationInfrastructure,
   requiredServices,
+  type OwnedDatabase,
 } from '../../database/owned-infrastructure';
 import type { Artifact, InstallationState } from './operations-config';
 import { provisionDatabase } from './operations-compose';
@@ -14,15 +14,15 @@ export type OneShot = (service: string, command: string[]) => Promise<string>;
 /** Create absent identities and verify every supplied password against retained ones. */
 export const provisionApplication = (
   compose: OperationsCommand,
-  application: string,
+  database: OwnedDatabase,
 ): Promise<string> =>
   compose([
     'exec',
     '-T',
-    newIdentities('installation', '', application).database.service,
+    database.service,
     'sh',
     '-ec',
-    provisionDatabase(application),
+    provisionDatabase(database),
   ]);
 /** Authenticate with the server's own broker configuration; the password never reaches a command line. */
 export const verifyBrokerAccess = (

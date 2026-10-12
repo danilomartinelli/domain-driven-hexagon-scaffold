@@ -326,4 +326,16 @@ continuation resumes without repeated migrations or automatic reversal. Live
 regressions exercise addition, disablement, removal, shutdown, reactivation and
 both failure kinds with real images, PostgreSQL, RabbitMQ and Kong.
 
+Recorded owned identities are implemented (#95). Prepared-environment manifests
+record each database's service and development volume and the development broker
+volume. Manifests prepared earlier are completed on read with the names they were
+provisioned with, never written by inspection, and persisted by the next
+preparation; ownership validation still requires each recorded identity to equal
+its run's naming. Installation rendering, provisioning, backup, restore, promotion,
+retirement and migration-history inspection read database and broker identities
+from the retained inventory, so only provisioning derives new names. Fast suites
+with process and Docker doubles cover both inventories; see the
+[database workflow](../database.md#selection-and-retained-resources) and
+[operations](../operations.md#desired-applied-and-retained-state).
+
 No actual registry publication or deployment is established by this ADR.

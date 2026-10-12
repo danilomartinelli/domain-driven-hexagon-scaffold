@@ -30,6 +30,24 @@ export interface OwnedIdentities {
   gateway: { service: string; name: string };
 }
 
+/** Infrastructure identities shared by every application of one inventory. */
+export function newSharedIdentities(
+  kind: InfrastructureKind,
+  project: string,
+): Pick<OwnedIdentities, 'broker' | 'gateway'> {
+  const installation = kind === 'installation';
+  return {
+    broker: {
+      service: 'rabbitmq',
+      ...(kind !== 'test' && { volume: 'rabbitmq' }),
+      vhost: project,
+      username: installation ? 'scaffold' : 'starter',
+      secrets: installation ? ['broker-password'] : [],
+    },
+    gateway: { service: 'gateway', name: `${project}-gateway` },
+  };
+}
+
 /** Names assigned at provisioning; ports and passwords remain caller-owned. */
 export function newIdentities(
   kind: InfrastructureKind,
@@ -60,15 +78,24 @@ export function newIdentities(
           )
         : [],
     },
-    broker: {
-      service: 'rabbitmq',
-      ...(kind !== 'test' && { volume: 'rabbitmq' }),
-      vhost: project,
-      username: installation ? 'scaffold' : 'starter',
-      secrets: installation ? ['broker-password'] : [],
-    },
-    gateway: { service: 'gateway', name: `${project}-gateway` },
+    ...newSharedIdentities(kind, project),
   };
+}
+
+export interface OwnedDatabase {
+  application: string;
+  prefix: string;
+  service: string;
+  /** Compose volume; absent for tmpfs storage. */
+  volume?: string;
+  database: string;
+  host: string;
+  port: number;
+  owner: { username: string; password: Credential };
+  runtime?: { username: string; password: Credential };
+  /** Installation secret files: administrator, owner and runtime passwords. */
+  secrets: string[];
+  legacy: boolean;
 }
 
 export interface OwnedInfrastructure {
@@ -76,19 +103,8 @@ export interface OwnedInfrastructure {
   project: string;
   applications: readonly ApplicationDeclaration[];
   applicationPorts: Readonly<Record<string, number>>;
-  databases: {
-    application: string;
-    prefix: string;
-    service: string;
-    volume?: string;
-    database: string;
-    host: string;
-    port: number;
-    owner: { username: string; password: Credential };
-    runtime?: { username: string; password: Credential };
-    secrets: string[];
-    legacy: boolean;
-  }[];
+  /** Every recorded database, including those of disabled or removed applications. */
+  databases: OwnedDatabase[];
   broker?: {
     service: string;
     volume?: string;
@@ -98,6 +114,7 @@ export interface OwnedInfrastructure {
     username: string;
     password: Credential;
     vhost: string;
+    secrets: string[];
   };
   gateway?: {
     service: string;
@@ -112,6 +129,7 @@ export interface OwnedInfrastructure {
 export function preparedInfrastructure(
   manifest: EnvironmentManifest,
 ): OwnedInfrastructure {
+  const shared = newSharedIdentities(manifest.environment, manifest.project);
   return {
     kind: manifest.environment,
     project: manifest.project,
@@ -120,10 +138,8 @@ export function preparedInfrastructure(
     databases: manifest.databases.map((db) => ({
       application: db.app,
       prefix: db.prefix,
-      service: `postgres-${db.app}`,
-      ...(manifest.environment === 'development' && {
-        volume: `${db.app}-postgres`,
-      }),
+      service: db.service,
+      ...(db.volume !== undefined && { volume: db.volume }),
       database: db.database,
       host: db.host,
       port: db.port,
@@ -140,82 +156,127 @@ export function preparedInfrastructure(
     ...(manifest.broker && {
       broker: {
         ...manifest.broker,
-        service: 'rabbitmq',
-        ...(manifest.environment === 'development' && { volume: 'rabbitmq' }),
+        service: shared.broker.service,
         host: '127.0.0.1',
         password: { value: manifest.broker.password },
+        secrets: [],
       },
     }),
     ...(manifest.gateway && {
-      gateway: { ...manifest.gateway, service: 'gateway' },
+      gateway: { ...manifest.gateway, service: shared.gateway.service },
     }),
   };
 }
 
 /** Structural input keeps the database tooling independent of script-owned types. */
-export function installationInfrastructure(inventory: {
+export interface InstallationInventory {
   project: string;
   applied: { applications: readonly { declaration: ApplicationDeclaration }[] };
-}): OwnedInfrastructure {
+  /** Identities recorded when first provisioned; they outlive their application's selection. */
+  retained: {
+    databases: readonly {
+      application: string;
+      service: string;
+      /** Docker volume name, scoped by the installation's Compose project. */
+      volume: string;
+      database: string;
+      /** Owner and runtime roles. */
+      roles: readonly string[];
+      /** Administrator, owner and runtime password secrets. */
+      secrets: readonly string[];
+    }[];
+    broker?: {
+      service: string;
+      volume: string;
+      vhost: string;
+      username: string;
+      secrets: readonly string[];
+    };
+  };
+}
+
+/** Normalize the installation inventory from its retained identities, never from declarations. */
+export function installationInfrastructure(
+  inventory: InstallationInventory,
+): OwnedInfrastructure {
+  const { project, retained } = inventory;
   const applications = inventory.applied.applications.map(
     ({ declaration }) => declaration,
   );
+  for (const app of applications)
+    if (
+      app.persistence &&
+      !retained.databases.some((entry) => entry.application === app.name)
+    )
+      throw new Error(`Missing retained database identity: ${app.name}`);
+  if (applications.some((app) => app.messaging) && !retained.broker)
+    throw new Error('Missing retained broker identity');
+  const composeVolume = (volume: string) => {
+    if (!volume.startsWith(`${project}_`))
+      throw new Error(`Retained volume belongs to another project: ${volume}`);
+    return volume.slice(project.length + 1);
+  };
+  const secretFile = (secret: string): Credential => ({
+    file: `/run/secrets/${secret}`,
+  });
+  const { gateway } = newSharedIdentities('installation', project);
   return {
     kind: 'installation',
-    project: inventory.project,
+    project,
     applications,
     applicationPorts: Object.fromEntries(
       applications.map((app) => [app.name, 3000]),
     ),
-    // The Compose reference keeps its established installation identities.
-    databases: applications
-      .filter((app) => app.persistence)
-      .map((app) => {
-        const identity = newIdentities(
-          'installation',
-          inventory.project,
-          app.name,
-        ).database;
-        return {
-          application: app.name,
-          prefix: `${environmentPrefix(app.name)}_DB`,
-          service: identity.service,
-          volume: identity.volume,
-          database: identity.database,
-          host: identity.service,
-          port: 5432,
-          owner: {
-            username: identity.owner,
-            password: { file: `/run/secrets/${identity.secrets[1]}` },
-          },
-          runtime: {
-            username: identity.runtime,
-            password: { file: `/run/secrets/${identity.secrets[2]}` },
-          },
-          secrets: identity.secrets,
-          legacy: false,
-        };
-      }),
-    ...(applications.some((app) => app.messaging) && {
+    databases: retained.databases.map((entry) => {
+      if (entry.roles.length !== 2 || entry.secrets.length !== 3)
+        throw new Error(
+          `Invalid retained database identity: ${entry.application}`,
+        );
+      const [owner, runtime] = entry.roles;
+      const [, ownerSecret, runtimeSecret] = entry.secrets;
+      return {
+        application: entry.application,
+        prefix: `${environmentPrefix(entry.application)}_DB`,
+        service: entry.service,
+        volume: composeVolume(entry.volume),
+        database: entry.database,
+        host: entry.service,
+        port: 5432,
+        owner: { username: owner, password: secretFile(ownerSecret) },
+        runtime: { username: runtime, password: secretFile(runtimeSecret) },
+        secrets: [...entry.secrets],
+        legacy: false,
+      };
+    }),
+    ...(retained.broker && {
       broker: {
-        service: 'rabbitmq',
-        volume: 'rabbitmq',
-        host: 'rabbitmq',
+        service: retained.broker.service,
+        volume: composeVolume(retained.broker.volume),
+        host: retained.broker.service,
         port: 5672,
-        username: 'scaffold',
-        password: { file: '/run/secrets/broker-password' },
-        vhost: inventory.project,
+        username: retained.broker.username,
+        password: secretFile(retained.broker.secrets[0]),
+        vhost: retained.broker.vhost,
+        secrets: [...retained.broker.secrets],
       },
     }),
+    // The gateway keeps no durable state, so it is not retained.
     ...(applications.some((app) => app.exposure) && {
-      gateway: {
-        service: 'gateway',
-        name: `${inventory.project}-gateway`,
-        host: 'gateway',
-        proxyPort: 8443,
-      },
+      gateway: { ...gateway, host: gateway.service, proxyPort: 8443 },
     }),
   };
+}
+
+/** One application's recorded database, also after the application is disabled or removed. */
+export function ownedDatabase(
+  infrastructure: OwnedInfrastructure,
+  application: string,
+): OwnedDatabase {
+  const database = infrastructure.databases.find(
+    (entry) => entry.application === application,
+  );
+  if (!database) throw new Error(`Missing database identity: ${application}`);
+  return database;
 }
 
 /** The long-running services required by a selection, with legacy development storage retained. */
@@ -223,24 +284,27 @@ export function requiredServices(
   infrastructure: OwnedInfrastructure,
 ): Map<string, ServiceRole> {
   const roles = new Map<string, ServiceRole>();
+  // Resources a preparation has not allocated yet are named as it will provision them.
+  const { kind, project } = infrastructure;
+  const shared = newSharedIdentities(kind, project);
   for (const app of infrastructure.applications) {
-    if (infrastructure.kind !== 'test')
-      roles.set(`app-${app.name}`, 'application');
-    if (app.persistence) {
-      const db = infrastructure.databases.find(
-        (entry) => entry.application === app.name,
-      );
+    if (kind !== 'test') roles.set(`app-${app.name}`, 'application');
+    if (app.persistence)
       roles.set(
-        db?.service ??
-          newIdentities(infrastructure.kind, infrastructure.project, app.name)
-            .database.service,
+        infrastructure.databases.find((entry) => entry.application === app.name)
+          ?.service ?? newIdentities(kind, project, app.name).database.service,
         'database',
       );
-    }
     if (app.messaging)
-      roles.set(infrastructure.broker?.service ?? 'rabbitmq', 'broker');
+      roles.set(
+        infrastructure.broker?.service ?? shared.broker.service,
+        'broker',
+      );
     if (app.exposure)
-      roles.set(infrastructure.gateway?.service ?? 'gateway', 'gateway');
+      roles.set(
+        infrastructure.gateway?.service ?? shared.gateway.service,
+        'gateway',
+      );
   }
   if (infrastructure.kind === 'development')
     for (const db of infrastructure.databases)

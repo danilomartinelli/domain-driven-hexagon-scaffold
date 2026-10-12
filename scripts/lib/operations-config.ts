@@ -1,6 +1,6 @@
 import {
   newIdentities,
-  installationInfrastructure,
+  newSharedIdentities,
 } from '../../database/owned-infrastructure';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -209,19 +209,16 @@ export function retainResources(
       secrets: identity.secrets,
     });
   }
-  const requiredBroker = installationInfrastructure({
-    project: state.project,
-    applied: { applications },
-  }).broker;
+  const identity = newSharedIdentities('installation', state.project).broker;
   const broker =
     state.retained.broker ??
-    (requiredBroker
+    (applications.some(({ declaration }) => declaration.messaging)
       ? {
-          service: requiredBroker.service,
-          volume: `${state.project}_${String(requiredBroker.volume)}`,
-          vhost: requiredBroker.vhost,
-          username: requiredBroker.username,
-          secrets: ['broker-password'],
+          service: identity.service,
+          volume: `${state.project}_${String(identity.volume)}`,
+          vhost: identity.vhost,
+          username: identity.username,
+          secrets: identity.secrets,
         }
       : undefined);
   return { databases, ...(broker ? { broker } : {}) };

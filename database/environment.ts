@@ -2,17 +2,17 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  environmentPrefix,
-  runtimeRole,
-} from '@starter/capabilities/declaration';
+import { environmentPrefix } from '@starter/capabilities/declaration';
 import {
   manifestSchema,
   type EnvironmentManifest,
   type EnvironmentKind,
+  type RecordedManifest,
 } from './environment-manifest';
 import { selectedApplications } from './topology';
 import {
+  newIdentities,
+  newSharedIdentities,
   preparedInfrastructure,
   processSettings,
   requiredServices,
@@ -21,6 +21,7 @@ import {
 export type {
   EnvironmentManifest,
   EnvironmentKind,
+  RecordedManifest,
 } from './environment-manifest';
 
 export const workspaceRoot = realpathSync(
@@ -50,6 +51,33 @@ export function environmentLocation(
   };
 }
 
+/** Manifests prepared before services and volumes were recorded keep the names they were provisioned with. */
+function completeIdentities(recorded: RecordedManifest): EnvironmentManifest {
+  const { environment, project } = recorded;
+  const volume = (name?: string) =>
+    name === undefined ? {} : { volume: name };
+  return {
+    ...recorded,
+    databases: recorded.databases.map((db) => {
+      const identity = newIdentities(environment, project, db.app).database;
+      return {
+        ...db,
+        service: db.service ?? identity.service,
+        ...volume(db.volume ?? identity.volume),
+      };
+    }),
+    ...(recorded.broker && {
+      broker: {
+        ...recorded.broker,
+        ...volume(
+          recorded.broker.volume ??
+            newSharedIdentities(environment, project).broker.volume,
+        ),
+      },
+    }),
+  };
+}
+
 export function readEnvironment(
   environment: EnvironmentKind,
   run: string,
@@ -70,7 +98,9 @@ export function readEnvironmentFile(
   path: string,
   { complete = true }: { complete?: boolean } = {},
 ): EnvironmentManifest {
-  const manifest = manifestSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
+  const manifest = completeIdentities(
+    manifestSchema.parse(JSON.parse(readFileSync(path, 'utf8'))),
+  );
   const location = environmentLocation(manifest.environment, manifest.run);
   if (
     realpathSync(path) !== location.manifestPath ||
@@ -85,13 +115,19 @@ export function readEnvironmentFile(
     const legacy =
       manifest.environment === 'development' && legacyDatabase(target);
     const prefix = legacy ? 'DB' : `${environmentPrefix(target.app)}_DB`;
+    // Recorded identities must equal this run's naming; nothing is adopted.
+    const identity = newIdentities(
+      manifest.environment,
+      manifest.project,
+      target.app,
+    ).database;
     if (
       listed.has(target.app) ||
       target.prefix !== prefix ||
-      target.database !==
-        `${manifest.project.replaceAll('-', '_')}_${target.app}` ||
-      target.runtime?.username !==
-        (legacy ? undefined : runtimeRole(target.app))
+      target.database !== identity.database ||
+      target.service !== identity.service ||
+      target.volume !== identity.volume ||
+      target.runtime?.username !== (legacy ? undefined : identity.runtime)
     ) {
       throw new Error(
         'Database is not scoped to the selected application and run.',
@@ -116,10 +152,12 @@ export function readEnvironmentFile(
         ? 'Environment application declarations changed; prepare it again to reconcile the selected topology.'
         : 'Environment application registry changed; prepare a new run.',
     );
+  const shared = newSharedIdentities(manifest.environment, manifest.project);
   if (
-    (manifest.broker && manifest.broker.vhost !== manifest.project) ||
-    (manifest.gateway &&
-      manifest.gateway.name !== `${manifest.project}-gateway`)
+    (manifest.broker &&
+      (manifest.broker.vhost !== shared.broker.vhost ||
+        manifest.broker.volume !== shared.broker.volume)) ||
+    (manifest.gateway && manifest.gateway.name !== shared.gateway.name)
   ) {
     throw new Error('Broker or gateway belongs to another run.');
   }

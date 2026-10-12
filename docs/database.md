@@ -91,12 +91,19 @@ Reactivation reuses the same inventory and resumes with the retained state.
 Preparation recreates the stateless gateway to load changed routes, including
 removals; this can briefly interrupt local gateway traffic.
 
+The manifest records each database's service and, in development, its volume, and
+the development broker volume. Manifests prepared before these names were recorded
+are completed on read with the names they were provisioned with (`postgres-<app>`
+services and `<app>-postgres` volumes); the next preparation records them. Every
+recorded identity must equal the run's naming, or the manifest is refused.
+
 `env:inspect` checks ownership and reports active and retained resource identities
-without printing passwords. `env:down` discovers and stops retained resources even
-when their application declaration has disappeared. Preparation, inspection and
-shutdown refuse foreign resource owners. No command retires resources or deletes
-volumes. Direct manifest edits are unsupported; keep `.context/test-runs/` to retain
-resource identities. After editing declarations, prepare before `env:exec`.
+without printing passwords or writing the manifest. `env:down` discovers and stops
+retained resources even when their application declaration has disappeared.
+Preparation, inspection and shutdown refuse foreign resource owners. No command
+retires resources or deletes volumes. Direct manifest edits are unsupported; keep
+`.context/test-runs/` to retain resource identities. After editing declarations,
+prepare before `env:exec`.
 
 ### Explicit public routes
 

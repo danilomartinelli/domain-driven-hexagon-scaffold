@@ -49,6 +49,8 @@ if (scenario === 'credentials') {
     username: 'fixture-owner',
     password: 'fixture-owner-password',
     database: name,
+    service: `postgres-${name}`,
+    volume: `${name}-postgres`,
     runtime: { username: runtimeRole(name), password: 'fixture-runtime' },
   }));
   manifest.broker = {

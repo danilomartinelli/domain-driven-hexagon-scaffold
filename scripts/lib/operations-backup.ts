@@ -1,7 +1,8 @@
 import {
-  newIdentities,
   installationInfrastructure,
+  ownedDatabase,
   requiredServices,
+  type OwnedDatabase,
 } from '../../database/owned-infrastructure';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -44,16 +45,15 @@ async function fileHash(file: string): Promise<string> {
 }
 
 /** Passwords are read inside the owning database container, never put on a host command line. */
-function ownerCommand(app: string, command: string): string[] {
-  const identity = newIdentities('installation', '', app).database;
-  const db = identity.database;
+function ownerCommand(database: OwnedDatabase, command: string): string[] {
+  const [, owner] = database.secrets;
   return [
     'exec',
     '-T',
-    identity.service,
+    database.service,
     'sh',
     '-ec',
-    `export PGHOST=127.0.0.1 PGDATABASE=${db} PGUSER=${identity.owner}; export PGPASSWORD="$(cat /run/secrets/${identity.secrets[1]})"; ${command}`,
+    `export PGHOST=127.0.0.1 PGDATABASE=${database.database} PGUSER=${database.owner.username}; export PGPASSWORD="$(cat /run/secrets/${owner})"; ${command}`,
   ];
 }
 
@@ -61,30 +61,30 @@ const historyQuery =
   "psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT name FROM public.pgmigrations ORDER BY id'";
 
 async function readHistory(
-  app: string,
+  database: OwnedDatabase,
   compose: Compose,
   command: string,
 ): Promise<string[]> {
-  const output = await compose(ownerCommand(app, command));
+  const output = await compose(ownerCommand(database, command));
   return output ? output.split('\n') : [];
 }
 
 /** Applied migration names in order; fails when the database has no migration history. */
 export function migrationHistory(
-  app: string,
+  database: OwnedDatabase,
   compose: Compose,
 ): Promise<string[]> {
-  return readHistory(app, compose, historyQuery);
+  return readHistory(database, compose, historyQuery);
 }
 
 /** Planning reads a database that was never migrated as having no applied migrations. */
 export function appliedMigrations(
-  app: string,
+  database: OwnedDatabase,
   compose: Compose,
 ): Promise<string[]> {
   // A standalone assignment lets sh -e propagate a failed existence probe.
   return readHistory(
-    app,
+    database,
     compose,
     `exists="$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.pgmigrations') IS NOT NULL")"; if [ "$exists" = t ]; then ${historyQuery}; fi`,
   );
@@ -97,11 +97,10 @@ export async function backupApplication(
   output: string,
   compose: Compose,
 ): Promise<string> {
-  const identity = newIdentities(
-    'installation',
-    state.project,
+  const identity = ownedDatabase(
+    installationInfrastructure(state),
     app.declaration.name,
-  ).database;
+  );
   const path = resolve(output);
   if (existsSync(path) || existsSync(`${path}.json`))
     throw new Error('Backup destination already exists');
@@ -111,7 +110,7 @@ export async function backupApplication(
   return withCleanup(async () => {
     await compose(
       ownerCommand(
-        app.declaration.name,
+        identity,
         `umask 077; pg_dump --format=custom --file=${remote}`,
       ),
       300_000,
@@ -184,16 +183,9 @@ export async function restoreApplication(
   { path, metadata }: VerifiedArchive,
   compose: Compose,
 ): Promise<void> {
-  const identity = newIdentities(
-    'installation',
-    state.project,
-    app.declaration.name,
-  ).database;
-  if (
-    [...requiredServices(installationInfrastructure(state)).values()].includes(
-      'gateway',
-    )
-  )
+  const infrastructure = installationInfrastructure(state);
+  const identity = ownedDatabase(infrastructure, app.declaration.name);
+  if ([...requiredServices(infrastructure).values()].includes('gateway'))
     await compose(['stop', '--timeout', '20', 'gateway']);
   const remote = `/tmp/operations-${randomUUID()}.dump`;
   // Keep every unresolved application gated, including failed/interrupted restores.
@@ -215,7 +207,7 @@ export async function restoreApplication(
     await compose(['cp', path, `${identity.service}:${remote}`], 300_000);
     await compose(
       ownerCommand(
-        app.declaration.name,
+        identity,
         // Materialize SQL first: a failed archive decode must not commit schema cleanup.
         // DROP OWNED also removes objects introduced after the backup, including FKs.
         // initdb's public schema is assumed to exist in its first archive; later
