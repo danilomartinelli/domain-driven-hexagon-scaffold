@@ -47,6 +47,7 @@ async function withReadyManifest(
             username: 'fixture',
             password: 'fixture',
             database: `${location.project.replaceAll('-', '_')}_user`,
+            service: 'postgres-user',
             runtime: { username: 'user_runtime', password: 'fixture' },
           },
         ]

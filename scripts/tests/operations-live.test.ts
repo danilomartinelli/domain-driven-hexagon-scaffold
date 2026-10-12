@@ -18,7 +18,11 @@ import { z } from 'zod';
 import { appWorkspace, generate, run } from './app-generator-fixture';
 import { operationsDatabaseFixture } from './operations-database-fixture';
 import { availablePort } from '../lib/environments';
-import { stateSchema } from '../lib/operations-config';
+import { stateSchema, type InstallationState } from '../lib/operations-config';
+import {
+  installationInfrastructure,
+  ownedDatabase,
+} from '../../database/owned-infrastructure';
 import { transitionSchema } from '../lib/operations-transition';
 import type { DeploymentPlan } from '../lib/operations-plan';
 import {
@@ -29,14 +33,20 @@ import {
   verifyArchive,
 } from '../lib/operations-backup';
 
+/** Operator commands address the user database through the retained inventory. */
+const userDatabase = (state: InstallationState) =>
+  ownedDatabase(installationInfrastructure(state), 'user');
+
 test('planning distinguishes an empty migration history from an unreadable running database', async () => {
   const fixture = await operationsDatabaseFixture();
   await withCleanup(async () => {
-    expect(await appliedMigrations('user', fixture.compose)).toEqual([
-      'baseline',
-    ]);
+    expect(
+      await appliedMigrations(userDatabase(fixture.state), fixture.compose),
+    ).toEqual(['baseline']);
     await fixture.sql('DROP TABLE pgmigrations');
-    expect(await appliedMigrations('user', fixture.compose)).toEqual([]);
+    expect(
+      await appliedMigrations(userDatabase(fixture.state), fixture.compose),
+    ).toEqual([]);
     await fixture.compose([
       'exec',
       '-T',
@@ -53,7 +63,10 @@ test('planning distinguishes an empty migration history from an unreadable runni
       'ALTER ROLE user_owner NOLOGIN',
     ]);
     for (const read of [migrationHistory, appliedMigrations]) {
-      const failure = await read('user', fixture.compose).then(
+      const failure = await read(
+        userDatabase(fixture.state),
+        fixture.compose,
+      ).then(
         () => undefined,
         (error: unknown) => error,
       );
@@ -155,7 +168,10 @@ for (const [failure, recovery] of [
           data: { query: '{ __typename }' },
         }),
       ).toMatchObject({ data: { __typename: 'Query' } });
-      const history = await migrationHistory('user', fixture.compose);
+      const history = await migrationHistory(
+        userDatabase(fixture.state()),
+        fixture.compose,
+      );
       expect(history).toContain('1990000000003_candidate');
       const container = await fixture.compose([
         'ps',
@@ -293,7 +309,9 @@ for (const [failure, recovery] of [
         });
         expect(await fixture.compose(['ps', '-q', 'app-user'])).toBe(container);
       }
-      expect(await migrationHistory('user', fixture.compose)).toEqual(history);
+      expect(
+        await migrationHistory(userDatabase(fixture.state()), fixture.compose),
+      ).toEqual(history);
       expect(fixture.state().applied.applications[0].startup).toMatchObject({
         image: recovery === 'rollback' ? fixture.images.user : candidate,
         readiness: 'full',
@@ -365,7 +383,10 @@ test('candidate messaging degradation retains HTTP and requires explicit continu
       'messaging_unavailable',
     );
     const container = await fixture.compose(['ps', '-q', 'app-user']);
-    const history = await migrationHistory('user', fixture.compose);
+    const history = await migrationHistory(
+      userDatabase(fixture.state()),
+      fixture.compose,
+    );
     expect(history).toContain('1990000000000_operations-compatible');
     const blocked = await fixture.opsResult(
       'update',
@@ -394,7 +415,9 @@ test('candidate messaging degradation retains HTTP and requires explicit continu
       status: 'verified',
       verification: { outcome: 'verified' },
     });
-    expect(await migrationHistory('user', fixture.compose)).toEqual(history);
+    expect(
+      await migrationHistory(userDatabase(fixture.state()), fixture.compose),
+    ).toEqual(history);
     expect(await fixture.compose(['ps', '-q', 'app-user'])).toBe(container);
     expect(await fixture.compose(['ps', '-q', 'app-wallet'])).toBe(sibling);
   }, [fixture.cleanup]);
@@ -431,9 +454,9 @@ for (const foreignKey of [false, true]) {
         ),
       ).toBe('t');
       expect(await fixture.sql('SELECT id FROM users ORDER BY id')).toBe('1');
-      expect(await migrationHistory('user', fixture.compose)).toEqual([
-        'baseline',
-      ]);
+      expect(
+        await migrationHistory(userDatabase(fixture.state), fixture.compose),
+      ).toEqual(['baseline']);
       expect(
         await fixture.sql(
           "SELECT has_table_privilege('user_runtime', 'users', 'SELECT')",
@@ -445,10 +468,9 @@ for (const foreignKey of [false, true]) {
         ),
       ).toBe('t');
       await fixture.sql(migration);
-      expect(await migrationHistory('user', fixture.compose)).toEqual([
-        'baseline',
-        'later',
-      ]);
+      expect(
+        await migrationHistory(userDatabase(fixture.state), fixture.compose),
+      ).toEqual(['baseline', 'later']);
       const repeated = join(fixture.directory, 'repeated.dump');
       await backupApplication(
         fixture.state,
@@ -467,10 +489,9 @@ for (const foreignKey of [false, true]) {
         ),
         fixture.compose,
       );
-      expect(await migrationHistory('user', fixture.compose)).toEqual([
-        'baseline',
-        'later',
-      ]);
+      expect(
+        await migrationHistory(userDatabase(fixture.state), fixture.compose),
+      ).toEqual(['baseline', 'later']);
     }, [fixture.cleanup]);
   }, 60_000);
 }

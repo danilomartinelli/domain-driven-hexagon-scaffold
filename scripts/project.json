@@ -125,9 +125,9 @@
     },
     "test": {
       "executor": "nx:run-commands",
-      "cache": true,
+      "cache": false,
       "options": {
-        "command": "bun test ./scripts/tests/artifact-approval.test.ts ./scripts/tests/operations-promotion.test.ts ./scripts/tests/operations-readiness.test.ts ./scripts/tests/operations-docker-migrations.test.ts",
+        "command": "bun test ./scripts/tests/artifact-approval.test.ts ./scripts/tests/operations-promotion.test.ts ./scripts/tests/operations-readiness.test.ts ./scripts/tests/operations-docker-migrations.test.ts ./scripts/tests/operations-identities.test.ts ./scripts/tests/environment-identities.test.ts",
         "cwd": "."
       }
     }

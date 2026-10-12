@@ -99,7 +99,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bun test ./database/owned-infrastructure.test.ts",
+        "command": "bun test ./database/owned-infrastructure.test.ts ./database/environment.test.ts",
         "cwd": "."
       }
     }

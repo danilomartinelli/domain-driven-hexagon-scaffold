@@ -31,31 +31,35 @@ import {
 import { promotionFixture } from './operations-promotion-fixture';
 import { until } from './app-runtime-fixture';
 import { withCleanup } from './cleanup';
+import {
+  installationInfrastructure,
+  ownedDatabase,
+} from '../../database/owned-infrastructure';
 
 const userImage = `example/user@sha256:${'a'.repeat(64)}`;
 const userDeployment = { name: 'example', images: { user: userImage } };
 
 function secretState(directory: string): InstallationState {
+  const applications = [
+    {
+      image: userImage,
+      declaration: {
+        name: 'user',
+        persistence: true,
+        messaging: true,
+        exposure: false,
+      },
+    },
+  ];
+  const identity = { project: 'owned', retained: { databases: [] } };
   return {
     version: 2,
     name: 'example',
-    project: 'owned',
     owner: 'owner',
     directory,
-    applied: {
-      applications: [
-        {
-          image: userImage,
-          declaration: {
-            name: 'user',
-            persistence: true,
-            messaging: true,
-            exposure: false,
-          },
-        },
-      ],
-    },
-    retained: { databases: [] },
+    applied: { applications },
+    ...identity,
+    retained: retainResources(identity, applications),
   };
 }
 
@@ -74,6 +78,10 @@ test.each([
   (name, prefix, database, ownerRole, runtimeRole) => {
     const state = secretState('/fixture');
     state.applied.applications[0].declaration.name = name;
+    state.retained = retainResources(
+      { project: state.project, retained: { databases: [] } },
+      state.applied.applications,
+    );
     expect(operationsCompose(state, false)).toMatchObject({
       services: {
         [`app-${name}`]: {
@@ -90,7 +98,9 @@ test.each([
         },
       },
     });
-    const provisioning = provisionDatabase(name);
+    const provisioning = provisionDatabase(
+      ownedDatabase(installationInfrastructure(state), name),
+    );
     for (const statement of [
       `CREATE ROLE ${ownerRole} LOGIN`,
       `CREATE ROLE ${runtimeRole} LOGIN`,
@@ -325,7 +335,10 @@ test('backup preserves the operation failure and a failed temporary archive clea
     owner: 'owner',
     directory,
     applied: { applications: [app] },
-    retained: { databases: [] },
+    retained: retainResources(
+      { project: 'owned', retained: { databases: [] } },
+      [app],
+    ),
   };
   const primary = new Error('pg_dump failed');
   const cleanup = new Error('archive cleanup failed');

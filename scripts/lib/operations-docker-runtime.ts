@@ -1,4 +1,7 @@
-import { newIdentities } from '../../database/owned-infrastructure';
+import {
+  installationInfrastructure,
+  ownedDatabase,
+} from '../../database/owned-infrastructure';
 import { z } from 'zod';
 import { backupApplication } from './operations-backup';
 import type { Artifact, InstallationState } from './operations-config';
@@ -91,6 +94,9 @@ export function dockerInstallationRuntime({
   execute: OperationsCommand;
   oneShot: OneShot;
 }): InstallationRuntime {
+  // Read on each effect: promotion records new identities before starting them.
+  const database = (application: string) =>
+    ownedDatabase(installationInfrastructure(current), application);
   return {
     startDatabase: async (application) => {
       await compose([
@@ -99,15 +105,23 @@ export function dockerInstallationRuntime({
         '--wait',
         '--wait-timeout',
         '60',
-        newIdentities('installation', current.project, application).database
-          .service,
+        database(application).service,
       ]);
     },
     provisionDatabase: async (application) => {
-      await provisionApplication(compose, application);
+      await provisionApplication(compose, database(application));
     },
     startBroker: async () => {
-      await compose(['up', '-d', '--wait', '--wait-timeout', '60', 'rabbitmq']);
+      const broker = installationInfrastructure(current).broker;
+      if (!broker) throw new Error('Missing retained broker identity');
+      await compose([
+        'up',
+        '-d',
+        '--wait',
+        '--wait-timeout',
+        '60',
+        broker.service,
+      ]);
     },
     verifyBroker: async (target) => {
       await verifyBrokerAccess(oneShot, target);

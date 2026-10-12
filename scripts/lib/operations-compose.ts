@@ -3,9 +3,10 @@ import { accessSync, constants, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   installationInfrastructure,
+  ownedDatabase,
   processSettings,
-  newIdentities,
   requiredServices,
+  type OwnedDatabase,
 } from '../../database/owned-infrastructure';
 import type { InstallationState } from './operations-config';
 import { gatewayConfiguration } from './gateway';
@@ -54,10 +55,12 @@ export function operationsCompose(
     timeout: '5s',
     retries: 30,
   });
+  const broker = infrastructure.broker;
   for (const { image, declaration: app } of state.applied.applications) {
-    const identity = infrastructure.databases.find(
-      (entry) => entry.application === app.name,
-    );
+    // A disabled capability keeps its retained database inactive.
+    const identity = app.persistence
+      ? ownedDatabase(infrastructure, app.name)
+      : undefined;
     const serverSecrets: string[] = [];
     const environment = processSettings(
       infrastructure,
@@ -105,8 +108,8 @@ export function operationsCompose(
         command: ['run', 'migration:status'],
       };
     }
-    if (app.messaging) {
-      serverSecrets.push(secret('broker-password'));
+    if (app.messaging && broker) {
+      serverSecrets.push(...broker.secrets.map(secret));
     }
     services[`app-${app.name}`] = {
       image,
@@ -124,25 +127,27 @@ export function operationsCompose(
       ]),
     };
   }
-  if (required.get('rabbitmq') === 'broker') {
-    volumes.rabbitmq = { labels };
-    services.rabbitmq = {
+  if (broker && required.get(broker.service) === 'broker') {
+    if (!broker.volume) throw new Error('Missing broker volume');
+    const [password] = broker.secrets.map(secret);
+    volumes[broker.volume] = { labels };
+    services[broker.service] = {
       image:
         'rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe',
       labels,
       networks: ['private'],
       hostname: `${state.project}-rabbitmq`,
-      secrets: [secret('broker-password')],
+      secrets: [password],
       environment: {
-        RABBITMQ_DEFAULT_USER: 'scaffold',
-        RABBITMQ_DEFAULT_VHOST: state.project,
+        RABBITMQ_DEFAULT_USER: broker.username,
+        RABBITMQ_DEFAULT_VHOST: broker.vhost,
       },
       entrypoint: [
         '/bin/sh',
         '-ec',
-        'export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/broker-password)"; exec docker-entrypoint.sh rabbitmq-server',
+        `export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/${password})"; exec docker-entrypoint.sh rabbitmq-server`,
       ],
-      volumes: ['rabbitmq:/var/lib/rabbitmq'],
+      volumes: [`${broker.volume}:/var/lib/rabbitmq`],
       healthcheck: healthcheck([
         'CMD',
         'docker-entrypoint.sh',
@@ -205,26 +210,28 @@ export function operationsCompose(
 }
 
 /** Create identities only when absent; repeated preparation verifies every supplied password. */
-export function provisionDatabase(app: string): string {
-  const identity = newIdentities('installation', '', app).database;
+export function provisionDatabase(identity: OwnedDatabase): string {
   const db = identity.database;
-  const role = identity.runtime;
+  const owner = identity.owner.username;
+  const role = identity.runtime?.username;
+  if (!role) throw new Error(`Missing runtime role: ${identity.application}`);
+  const [admin, ownerSecret, runtimeSecret] = identity.secrets;
   return `set -eu
 export PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=${db}
-export PGPASSWORD="$(cat /run/secrets/${app}-admin-password)"
-export OWNER_PASSWORD="$(cat /run/secrets/${app}-owner-password)"
-export RUNTIME_PASSWORD="$(cat /run/secrets/${app}-runtime-password)"
+export PGPASSWORD="$(cat /run/secrets/${admin})"
+export OWNER_PASSWORD="$(cat /run/secrets/${ownerSecret})"
+export RUNTIME_PASSWORD="$(cat /run/secrets/${runtimeSecret})"
 psql -X -v ON_ERROR_STOP=1 <<'SQL'
 \\getenv owner_password OWNER_PASSWORD
 \\getenv runtime_password RUNTIME_PASSWORD
-SELECT format('CREATE ROLE ${db}_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'owner_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${db}_owner') \\gexec
+SELECT format('CREATE ROLE ${owner} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'owner_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${owner}') \\gexec
 SELECT format('CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'runtime_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') \\gexec
-ALTER DATABASE "${db}" OWNER TO ${db}_owner;
+ALTER DATABASE "${db}" OWNER TO ${owner};
 REVOKE ALL ON DATABASE "${db}" FROM PUBLIC;
-GRANT CONNECT ON DATABASE "${db}" TO ${db}_owner, ${role};
-ALTER SCHEMA public OWNER TO ${db}_owner;
+GRANT CONNECT ON DATABASE "${db}" TO ${owner}, ${role};
+ALTER SCHEMA public OWNER TO ${owner};
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 SQL
-PGUSER=${db}_owner PGPASSWORD="$OWNER_PASSWORD" psql -X -v ON_ERROR_STOP=1 -c 'SELECT current_user' >/dev/null
+PGUSER=${owner} PGPASSWORD="$OWNER_PASSWORD" psql -X -v ON_ERROR_STOP=1 -c 'SELECT current_user' >/dev/null
 PGUSER=${role} PGPASSWORD="$RUNTIME_PASSWORD" psql -X -v ON_ERROR_STOP=1 -c 'SELECT current_user' >/dev/null`;
 }

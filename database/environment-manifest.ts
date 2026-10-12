@@ -11,6 +11,10 @@ const targetSchema = z.object({
   username: z.string(),
   password: z.string(),
   database: z.string(),
+  // Recorded when first provisioned; older manifests are completed on read.
+  service: z.string().optional(),
+  /** Development storage; test databases use tmpfs. */
+  volume: z.string().optional(),
   runtime: z.object({ username: z.string(), password: z.string() }).optional(),
 });
 export const manifestSchema = z.object({
@@ -31,6 +35,8 @@ export const manifestSchema = z.object({
       username: z.string(),
       password: z.string(),
       vhost: z.string(),
+      /** Development storage; test brokers use tmpfs. */
+      volume: z.string().optional(),
     })
     .optional(),
   gateway: z
@@ -45,5 +51,10 @@ export const manifestSchema = z.object({
     })
     .optional(),
 });
-export type EnvironmentManifest = z.infer<typeof manifestSchema>;
+/** A manifest as recorded, possibly before service and volume names were recorded. */
+export type RecordedManifest = z.infer<typeof manifestSchema>;
+/** A manifest whose owned identities are all recorded. */
+export type EnvironmentManifest = Omit<RecordedManifest, 'databases'> & {
+  databases: (RecordedManifest['databases'][number] & { service: string })[];
+};
 export type EnvironmentKind = EnvironmentManifest['environment'];

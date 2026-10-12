@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runCommand } from '../lib/command';
+import {
+  installationInfrastructure,
+  ownedDatabase,
+} from '../../database/owned-infrastructure';
 import { provisionDatabase } from '../lib/operations-compose';
 import {
+  retainResources,
   writeJson,
   type Artifact,
   type InstallationState,
@@ -47,7 +52,7 @@ export async function operationsDatabaseFixture(): Promise<{
     owner,
     directory,
     applied: { applications: [app] },
-    retained: { databases: [] },
+    retained: retainResources({ project, retained: { databases: [] } }, [app]),
   };
   const container = { name: `${project}-postgres`, owner };
   const composePath = join(directory, 'compose.json');
@@ -119,7 +124,9 @@ export async function operationsDatabaseFixture(): Promise<{
       'postgres-user',
       'sh',
       '-ec',
-      provisionDatabase('user'),
+      provisionDatabase(
+        ownedDatabase(installationInfrastructure(state), 'user'),
+      ),
     ]);
     await sql(
       "CREATE TABLE users (id integer PRIMARY KEY); INSERT INTO users VALUES (1); CREATE TABLE pgmigrations (id integer PRIMARY KEY, name text); INSERT INTO pgmigrations VALUES (1, 'baseline'); GRANT SELECT ON users TO user_runtime;",

@@ -207,6 +207,8 @@ export function deploymentPlan(input: {
       : { from: state.applied.https ?? null, to: desired.https ?? null },
   };
 
+  // Desired applications without retained identities are planned as provisioned.
+  const retained = retainResources(state, desired.applications);
   const before = requiredServices(
     installationInfrastructure({
       ...state,
@@ -217,6 +219,7 @@ export function deploymentPlan(input: {
     installationInfrastructure({
       ...state,
       applied: { applications: [...requested.values()] },
+      retained,
     }),
   );
   const recreate = new Set(
@@ -256,7 +259,6 @@ export function deploymentPlan(input: {
   const retainedDatabases = new Set(
     state.retained.databases.map((entry) => entry.application),
   );
-  const retained = retainResources(state, desired.applications);
   const required = new Set<string>();
   for (const entry of retained.databases)
     if (activity(requested, usesDatabase(entry.application)) === 'active')

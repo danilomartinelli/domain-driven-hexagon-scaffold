@@ -1,5 +1,8 @@
 import type { EnvironmentManifest } from '../../database/environment';
-import { preparedInfrastructure } from '../../database/owned-infrastructure';
+import {
+  ownedDatabase,
+  preparedInfrastructure,
+} from '../../database/owned-infrastructure';
 import { gatewayConfiguration } from './gateway';
 import { applicationContainer } from './application-containers';
 
@@ -28,10 +31,7 @@ export function composeConfiguration(
   const volumes: Record<string, unknown> = {};
   const configs: Record<string, unknown> = {};
   for (const db of manifest.databases) {
-    const identity = infrastructure.databases.find(
-      (entry) => entry.application === db.app,
-    );
-    if (!identity) throw new Error(`Missing database identity: ${db.app}`);
+    const identity = ownedDatabase(infrastructure, db.app);
     const volume = identity.volume;
     if (volume) volumes[volume] = { labels };
     const runtimeRole = `${db.app}-runtime-role`;
@@ -46,9 +46,9 @@ export function composeConfiguration(
         POSTGRES_PASSWORD: db.password,
         POSTGRES_DB: db.database,
       },
-      ...(manifest.environment === 'test'
-        ? { tmpfs: ['/var/lib/postgresql'] }
-        : { volumes: [`${String(volume)}:/var/lib/postgresql`] }),
+      ...(volume
+        ? { volumes: [`${volume}:/var/lib/postgresql`] }
+        : { tmpfs: ['/var/lib/postgresql'] }),
       ...(db.runtime && {
         configs: [
           {
@@ -68,8 +68,9 @@ export function composeConfiguration(
       },
     };
   }
-  if (manifest.broker) {
-    services.rabbitmq = {
+  const broker = infrastructure.broker;
+  if (manifest.broker && broker) {
+    services[broker.service] = {
       hostname: `${manifest.project}-rabbitmq`,
       image:
         'rabbitmq:4-management-alpine@sha256:628bd74c1c7e2a820bf417b32e75eed1bd8d517345d9749ee8bd4076ae393abe',
@@ -83,9 +84,9 @@ export function composeConfiguration(
         RABBITMQ_DEFAULT_PASS: manifest.broker.password,
         RABBITMQ_DEFAULT_VHOST: manifest.broker.vhost,
       },
-      ...(manifest.environment === 'test'
-        ? { tmpfs: ['/var/lib/rabbitmq'] }
-        : { volumes: ['rabbitmq:/var/lib/rabbitmq'] }),
+      ...(broker.volume
+        ? { volumes: [`${broker.volume}:/var/lib/rabbitmq`] }
+        : { tmpfs: ['/var/lib/rabbitmq'] }),
       healthcheck: {
         // The image entrypoint runs diagnostics as rabbitmq, preserving cookie ownership.
         test: [
@@ -100,7 +101,7 @@ export function composeConfiguration(
         retries: 30,
       },
     };
-    if (manifest.environment === 'development') volumes.rabbitmq = { labels };
+    if (broker.volume) volumes[broker.volume] = { labels };
   }
   if (manifest.gateway) {
     configs['kong-routes'] = {

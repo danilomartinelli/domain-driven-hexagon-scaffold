@@ -144,10 +144,13 @@ ingress. Editing it changes only that request. `state.json` separately records:
   last startup verification (`verified`, `failed` or `interrupted`, with `http` or
   `full` readiness). A selected digest or committed migration is not a verified
   startup.
-- **Retained resources:** each persistent application's database volume, database,
-  owner/runtime roles and credential files, and the broker volume, vhost and
-  credential file. They are recorded when first applied and never removed by
-  these commands.
+- **Retained resources:** each persistent application's database service, volume,
+  database, owner/runtime roles and credential files, and the broker service,
+  volume, vhost and credential file. They are recorded when first applied and never
+  removed by these commands. Rendering, provisioning, backup, restore, promotion,
+  retirement and migration-history inspection address these recorded identities;
+  they never derive them again from a declaration. Commands refuse an inventory
+  whose retained identity is incomplete or scoped to another Compose project.
 - **Pending deployment:** the incomplete [topology deployment](#partial-outcomes-and-continuation),
   if any.
 
@@ -571,7 +574,10 @@ independent runtime effects, real temporary records and a manual verification
 clock. The [readiness suite](../scripts/tests/operations-readiness.test.ts)
 characterizes Docker response interpretation, and the
 [Docker migration suite](../scripts/tests/operations-docker-migrations.test.ts)
-pins the migration command and its rejection when that command fails. All three
+pins the migration command and its rejection when that command fails. The
+[retained identity suite](../scripts/tests/operations-identities.test.ts) shows
+that retained entries, not declarations, determine the services, databases, roles
+and secrets that rendering, provisioning, backup and planning address. All four
 run in `test-runner:test`, `test:unit`, the light gate and CI quality checks. The
 polling window still starts after startup and gateway refresh, checks readiness
 before expiration, and can accept an observation that finishes after 60 seconds;
